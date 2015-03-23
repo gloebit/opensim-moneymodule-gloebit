@@ -490,7 +490,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
             return ret;
         }
 
-        # region Standalone box enablers only
+        #region Standalone box enablers only
 
         public XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
