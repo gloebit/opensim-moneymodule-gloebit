@@ -78,15 +78,9 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         private IConfigSource m_gConfig;
 
         /// <summary>
-        /// Region UUIDS indexed by AgentID
-        /// </summary>
-
-        /// <summary>
         /// Scenes by Region Handle
         /// </summary>
         private Dictionary<ulong, Scene> m_scenel = new Dictionary<ulong, Scene>();
-
-        // private int m_stipend = 1000;
 
         private int ObjectCount = 0;
         private int PriceEnergyUnit = 0;
@@ -112,21 +106,21 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <param name="config">Configuration source.</param>
         public void Initialise(IConfigSource config)
         {
-            m_log.Info ("[GLOEBIT] Initialising.");
+            m_log.Info ("[GLOEBITMONEYMODULE] Initialising.");
             m_gConfig = config;
 
-            String[] sections = {"Startup", "Gloebit", "Economy"};
+            string[] sections = {"Startup", "Gloebit", "Economy"};
             foreach (string section in sections) {
                 IConfig sec_config = m_gConfig.Configs[section];
             
                 if (null == sec_config) {
-                    m_log.WarnFormat("[GloebitMoneyModule] Config section {0} is missing. Skipping.", section);
+                    m_log.WarnFormat("[GLOEBITMONEYMODULE] Config section {0} is missing. Skipping.", section);
                     continue;
                 }
                 ReadConfigAndPopulate(sec_config, section);
             }
 
-            m_log.InfoFormat("[Gloebit] Initialised. Gloebit enabled: {0}", m_enabled);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}", m_enabled);
         }
 
         /// <summary>
@@ -138,13 +132,16 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         {
             if (section == "Startup") {
                 m_enabled = (config.GetString("economymodule", "Gloebit") == "Gloebit");
+                if(m_enabled) {
+                    m_log.Info ("[GLOEBITMONEYMODULE] selected as economymodule.");
+                }
             }
 
             if (section == "Gloebit") {
                 bool enabled = config.GetBoolean("Enabled", false);
                 m_enabled = m_enabled && enabled;
                 if (!enabled) {
-                    m_log.Info ("[Gloebit] Not enabled. (to enable set \"Enabled = true\" in [Gloebit])");
+                    m_log.Info ("[GLOEBITMONEYMODULE] Not enabled. (to enable set \"Enabled = true\" in [Gloebit])");
                     return;
                 }
             }
@@ -173,6 +170,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         {
             if (m_enabled)
             {
+                m_log.Info("[GLOEBITMONEYMODULE] region added");
                 scene.RegisterModuleInterface<IMoneyModule>(this);
                 IHttpServer httpServer = MainServer.Instance;
 
@@ -211,7 +209,6 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
                 scene.EventManager.OnClientClosed += ClientClosed;
                 scene.EventManager.OnAvatarEnteringNewParcel += AvatarEnteringParcel;
                 scene.EventManager.OnMakeChildAgent += MakeChildAgent;
-                scene.EventManager.OnClientClosed += ClientLoggedOut;
                 scene.EventManager.OnValidateLandBuy += ValidateLandBuy;
                 scene.EventManager.OnLandBuy += processLandBuy;
             }
@@ -248,6 +245,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         public bool ObjectGiveMoney(UUID objectID, UUID fromID, UUID toID, int amount)
         {
             string description = String.Format("Object {0} pays {1}", resolveObjectName(objectID), resolveAgentName(toID));
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney {0}", description);
 
             bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description);
 
@@ -259,6 +257,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         public int GetBalance(UUID agentID)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GetBalance for agent {0}", agentID);
             return 0;
         }
 
@@ -267,10 +266,12 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         //
         public bool UploadCovered(UUID agentID, int amount)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] UploadCovered for agent {0}", agentID);
             return true;
         }
         public bool AmountCovered(UUID agentID, int amount)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] AmountCovered for agent {0}", agentID);
             return true;
         }
 
@@ -279,14 +280,17 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         //
         public void ApplyCharge(UUID agentID, int amount, MoneyTransactionType type, string extraData)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyCharge for agent {0} with extraData {1}", agentID, extraData);
         }
 
         public void ApplyCharge(UUID agentID, int amount, MoneyTransactionType type)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyCharge for agent {0}", agentID);
         }
 
         public void ApplyUploadCharge(UUID agentID, int amount, string text)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyUploadCharge for agent {0}", agentID);
         }
 
         // property to store fee for uploading assets
@@ -309,25 +313,21 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         #endregion // IMoneyModule members
 
 
-        private void GetClientFunds(IClientAPI client)
-        {
-            CheckExistAndRefreshFunds(client.AgentId);
-        }
-
         /// <summary>
         /// New Client Event Handler
         /// </summary>
         /// <param name="client"></param>
         private void OnNewClient(IClientAPI client)
         {
-            GetClientFunds(client);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnNewClient for {0}", client.AgentId);
+            CheckExistAndRefreshFunds(client.AgentId);
 
             // Subscribe to Money messages
             client.OnEconomyDataRequest += EconomyDataRequestHandler;
             client.OnMoneyBalanceRequest += SendMoneyBalance;
             client.OnRequestPayPrice += requestPayPrice;
             client.OnObjectBuy += ObjectBuy;
-            client.OnLogout += ClientClosed;
+            client.OnLogout += ClientLoggedOut;
         }
 
         /// <summary>
@@ -339,6 +339,8 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <returns></returns>
         private bool doMoneyTransfer(UUID Sender, UUID Receiver, int amount, int transactiontype, string description)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] doMoneyTransfer from {0} to {1}, for amount {2}, transactiontype: {3}, description: {4}",
+                Sender, Receiver, amount, transactiontype, description);
             bool result = true;
             
             return result;
@@ -354,6 +356,8 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <param name="TransactionID"></param>
         private void SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] SendMoneyBalance request from {0} about {1}", client.AgentId, agentID);
+
             if (client.AgentId == agentID && client.SessionId == SessionID)
             {
                 int returnfunds = 0;
@@ -414,7 +418,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
             else
             {
                 m_log.ErrorFormat(
-                    "[MONEY]: Could not resolve user {0}", 
+                    "[GLOEBITMONEYMODULE]: Could not resolve user {0}", 
                     agentID);
             }
             
@@ -423,6 +427,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         private void BalanceUpdate(UUID senderID, UUID receiverID, bool transactionresult, string description)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] BalanceUpdate from {0} to {1}", senderID, receiverID);
             IClientAPI sender = LocateClientObject(senderID);
             IClientAPI receiver = LocateClientObject(receiverID);
 
@@ -440,61 +445,11 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
             }
         }
 
-        /// <summary>
-        /// XMLRPC handler to send alert message and sound to client
-        /// </summary>
-        private XmlRpcResponse UserAlert(XmlRpcRequest request, IPEndPoint remoteClient)
-        {
-            XmlRpcResponse ret = new XmlRpcResponse();
-            Hashtable retparam = new Hashtable();
-            Hashtable requestData = (Hashtable) request.Params[0];
-
-            UUID agentId;
-            UUID soundId;
-            UUID regionId;
-
-            UUID.TryParse((string) requestData["agentId"], out agentId);
-            UUID.TryParse((string) requestData["soundId"], out soundId);
-            UUID.TryParse((string) requestData["regionId"], out regionId);
-            string text = (string) requestData["text"];
-            string secret = (string) requestData["secret"];
-
-            Scene userScene = GetSceneByUUID(regionId);
-            if (userScene != null)
-            {
-                if (userScene.RegionInfo.regionSecret == secret)
-                {
-
-                    IClientAPI client = LocateClientObject(agentId);
-                       if (client != null)
-                       {
-
-                           if (soundId != UUID.Zero)
-                               client.SendPlayAttachedSound(soundId, UUID.Zero, UUID.Zero, 1.0f, 0);
-
-                           client.SendBlueBoxMessage(UUID.Zero, "", text);
-
-                           retparam.Add("success", true);
-                       }
-                    else
-                    {
-                        retparam.Add("success", false);
-                    }
-                }
-                else
-                {
-                    retparam.Add("success", false);
-                }
-            }
-
-            ret.Value = retparam;
-            return ret;
-        }
-
         #region Standalone box enablers only
 
         private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func");
             // Hashtable requestData = (Hashtable) request.Params[0];
             // UUID agentId = UUID.Zero;
             int amount = 0;
@@ -519,6 +474,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func");
             // Hashtable requestData = (Hashtable) request.Params[0];
             // UUID agentId = UUID.Zero;
             // int amount = 0;
@@ -532,6 +488,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         private XmlRpcResponse preflightBuyLandPrep_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] preflightBuyLandPrep_func");
             XmlRpcResponse ret = new XmlRpcResponse();
             Hashtable retparam = new Hashtable();
             Hashtable membershiplevels = new Hashtable();
@@ -567,6 +524,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         private XmlRpcResponse landBuy_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] landBuy_func");
             XmlRpcResponse ret = new XmlRpcResponse();
             Hashtable retparam = new Hashtable();
             // Hashtable requestData = (Hashtable) request.Params[0];
@@ -699,6 +657,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         private void requestPayPrice(IClientAPI client, UUID objectID)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] requestPayPrice");
             Scene scene = LocateSceneClientIn(client.AgentId);
             if (scene == null)
                 return;
@@ -721,7 +680,16 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <see cref="OpenSim.Region.Framework.Scenes.EventManager.ClientClosed"/>
         private void ClientClosed(UUID AgentID, Scene scene)
         {
-            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ClientClosed {0}", AgentID);
+        }
+
+        /// <summary>
+        /// Call this when the client disconnects.
+        /// </summary>
+        /// <param name="client"></param>
+        private void ClientClosed(IClientAPI client)
+        {
+            ClientClosed(client.AgentId, null);
         }
 
         /// <summary>
@@ -730,6 +698,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <param name="agentId"></param>
         private void EconomyDataRequestHandler(IClientAPI user)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] EconomyDataRequestHandler {0}", user.AgentId);
             Scene s = (Scene)user.Scene;
 
             user.SendEconomyData(EnergyEfficiency, s.RegionInfo.ObjectCapacity, ObjectCount, PriceEnergyUnit, PriceGroupCreate,
@@ -762,6 +731,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <param name="e"></param>
         private void MoneyTransferAction(Object osender, EventManager.MoneyTransferArgs e)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] MoneyTransferAction");
             
         }
 
@@ -778,18 +748,10 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// Event Handler for when the client logs out.
         /// </summary>
         /// <param name="AgentId"></param>
-        private void ClientLoggedOut(UUID AgentId, Scene scene)
+        private void ClientLoggedOut(IClientAPI client)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ClientLoggedOut {0}", client.AgentId);
             
-        }
-
-        /// <summary>
-        /// Call this when the client disconnects.
-        /// </summary>
-        /// <param name="client"></param>
-        private void ClientClosed(IClientAPI client)
-        {
-            ClientClosed(client.AgentId, null);
         }
 
         /// <summary>
@@ -800,6 +762,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <param name="regionID"></param>
         private void AvatarEnteringParcel(ScenePresence avatar, int localLandID, UUID regionID)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] AvatarEnteringParcel {0}", avatar.Name);
             
             //m_log.Info("[FRIEND]: " + avatar.Name + " status:" + (!avatar.IsChildAgent).ToString());
         }
@@ -810,9 +773,10 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
                 UUID sessionID, UUID groupID, UUID categoryID,
                 uint localID, byte saleType, int salePrice)
         {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy client:{0}, agentID: {1}", remoteClient.AgentId, agentID);
             if (!m_sellEnabled)
             {
-                remoteClient.SendBlueBoxMessage(UUID.Zero, "", "Buying is not implemented in this version");
+                remoteClient.SendBlueBoxMessage(UUID.Zero, "", "Buying is not enabled");
                 return;
             }
 
@@ -855,8 +819,12 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
             }
 
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
-            if (module != null)
-                module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice);
+            if (module == null) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] FAILED to access to IBuySellModule");
+                return;
+            }
+            bool success = module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
         }
     }
 }
