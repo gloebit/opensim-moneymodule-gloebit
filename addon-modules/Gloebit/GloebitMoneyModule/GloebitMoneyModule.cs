@@ -113,7 +113,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 #pragma warning restore 0067
 
         // member variable to store fee for uploading assets
-        // TODO: ask why this can't be applied to meshes
+        // NOTE: fees are not applied to meshes right now because functionality to compute prim equivalent has not been written
         public int UploadCharge
         {
             get { return 0; }
