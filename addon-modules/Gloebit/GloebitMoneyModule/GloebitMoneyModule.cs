@@ -231,12 +231,14 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         public void Close()
         {
+            m_enabled = false;
         }
 
-        public Type ReplaceableInterface { get { return null; } }
+        public Type ReplaceableInterface {
+            get { return null; }
+        }
 
-        public string Name
-        {
+        public string Name {
             get { return "GloebitMoneyModule"; }
         }
 
@@ -272,7 +274,6 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
             return true;
         }
 
-        // member variable to store fee for uploading assets
         // Please do not refactor these to be just one method
         // Existing implementations need the distinction
         //
@@ -288,14 +289,14 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         {
         }
 
-        // member variable to store fee for uploading assets
+        // property to store fee for uploading assets
         // NOTE: fees are not applied to meshes right now because functionality to compute prim equivalent has not been written
         public int UploadCharge
         {
             get { return 0; }
         }
 
-        // member variable to store fee for creating a group
+        // property to store fee for creating a group
         public int GroupCreationCharge
         {
             get { return 0; }
@@ -351,7 +352,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <param name="agentID"></param>
         /// <param name="SessionID"></param>
         /// <param name="TransactionID"></param>
-        public void SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
+        private void SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
         {
             if (client.AgentId == agentID && client.SessionId == SessionID)
             {
@@ -442,7 +443,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <summary>
         /// XMLRPC handler to send alert message and sound to client
         /// </summary>
-        public XmlRpcResponse UserAlert(XmlRpcRequest request, IPEndPoint remoteClient)
+        private XmlRpcResponse UserAlert(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             XmlRpcResponse ret = new XmlRpcResponse();
             Hashtable retparam = new Hashtable();
@@ -492,7 +493,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         #region Standalone box enablers only
 
-        public XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
+        private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             // Hashtable requestData = (Hashtable) request.Params[0];
             // UUID agentId = UUID.Zero;
@@ -516,7 +517,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         }
 
-        public XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
+        private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             // Hashtable requestData = (Hashtable) request.Params[0];
             // UUID agentId = UUID.Zero;
@@ -529,7 +530,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
             return returnval;
         }
 
-        public XmlRpcResponse preflightBuyLandPrep_func(XmlRpcRequest request, IPEndPoint remoteClient)
+        private XmlRpcResponse preflightBuyLandPrep_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             XmlRpcResponse ret = new XmlRpcResponse();
             Hashtable retparam = new Hashtable();
@@ -564,7 +565,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
             return ret;
         }
 
-        public XmlRpcResponse landBuy_func(XmlRpcRequest request, IPEndPoint remoteClient)
+        private XmlRpcResponse landBuy_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             XmlRpcResponse ret = new XmlRpcResponse();
             Hashtable retparam = new Hashtable();
@@ -603,11 +604,6 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
             
             return returnfunds;
         }
-
-        // private void SetLocalFundsForAgentID(UUID AgentID, int amount)
-        // {
-            
-        // }
 
         #endregion
 
@@ -667,7 +663,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// Utility function Gets a Random scene in the instance.  For when which scene exactly you're doing something with doesn't matter
         /// </summary>
         /// <returns></returns>
-        public Scene GetRandomScene()
+        private Scene GetRandomScene()
         {
             lock (m_scenel)
             {
@@ -682,7 +678,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// </summary>
         /// <param name="RegionID"></param>
         /// <returns></returns>
-        public Scene GetSceneByUUID(UUID RegionID)
+        private Scene GetSceneByUUID(UUID RegionID)
         {
             lock (m_scenel)
             {
@@ -701,7 +697,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         #region event Handlers
 
-        public void requestPayPrice(IClientAPI client, UUID objectID)
+        private void requestPayPrice(IClientAPI client, UUID objectID)
         {
             Scene scene = LocateSceneClientIn(client.AgentId);
             if (scene == null)
@@ -723,7 +719,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <param name="AgentID">UUID of agent</param>
         /// <param name="scene">Scene the agent was connected to.</param>
         /// <see cref="OpenSim.Region.Framework.Scenes.EventManager.ClientClosed"/>
-        public void ClientClosed(UUID AgentID, Scene scene)
+        private void ClientClosed(UUID AgentID, Scene scene)
         {
             
         }
@@ -732,7 +728,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// Event called Economy Data Request handler.
         /// </summary>
         /// <param name="agentId"></param>
-        public void EconomyDataRequestHandler(IClientAPI user)
+        private void EconomyDataRequestHandler(IClientAPI user)
         {
             Scene s = (Scene)user.Scene;
 
@@ -791,7 +787,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// Call this when the client disconnects.
         /// </summary>
         /// <param name="client"></param>
-        public void ClientClosed(IClientAPI client)
+        private void ClientClosed(IClientAPI client)
         {
             ClientClosed(client.AgentId, null);
         }
@@ -810,7 +806,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
 
         #endregion
 
-        public void ObjectBuy(IClientAPI remoteClient, UUID agentID,
+        private void ObjectBuy(IClientAPI remoteClient, UUID agentID,
                 UUID sessionID, UUID groupID, UUID categoryID,
                 uint localID, byte saleType, int salePrice)
         {
@@ -862,13 +858,5 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
             if (module != null)
                 module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice);
         }
-    }
-
-    public enum TransactionType : int
-    {
-        SystemGenerated = 0,
-        RegionMoneyRequest = 1,
-        Gift = 2,
-        Purchase = 3
     }
 }
