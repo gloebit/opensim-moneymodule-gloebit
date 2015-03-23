@@ -106,25 +106,6 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         private float TeleportPriceExponent = 0f;
 
 
-        #region IMoneyModule Members
-
-#pragma warning disable 0067
-        public event ObjectPaid OnObjectPaid;
-#pragma warning restore 0067
-
-        // member variable to store fee for uploading assets
-        // NOTE: fees are not applied to meshes right now because functionality to compute prim equivalent has not been written
-        public int UploadCharge
-        {
-            get { return 0; }
-        }
-
-        // member variable to store fee for creating a group
-        public int GroupCreationCharge
-        {
-            get { return 0; }
-        }
-
         /// <summary>
         /// Called on startup so the module can be configured.
         /// </summary>
@@ -132,16 +113,17 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         public void Initialise(IConfigSource config)
         {
             m_log.Info ("[GLOEBIT] Initialising.");
-            m_gConfig = source;
+            m_gConfig = config;
 
-            foreach (string section in {"Gloebit", "Startup", "Economy"}) {
-                IConfig config = m_gConfig.Configs[section];
+            String[] sections = {"Startup", "Gloebit", "Economy"};
+            foreach (string section in sections) {
+                IConfig sec_config = m_gConfig.Configs[section];
             
-                if (null == config) {
+                if (null == sec_config) {
                     m_log.WarnFormat("[GloebitMoneyModule] Config section {0} is missing. Skipping.", section);
                     continue;
                 }
-                ReadConfigAndPopulate(config, section);
+                ReadConfigAndPopulate(sec_config, section);
             }
 
             m_log.InfoFormat("[Gloebit] Initialised. Gloebit enabled: {0}", m_enabled);
@@ -154,17 +136,17 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// <param name="section"></param>
         private void ReadConfigAndPopulate(IConfig config, string section)
         {
+            if (section == "Startup") {
+                m_enabled = (config.GetString("economymodule", "Gloebit") == "Gloebit");
+            }
+
             if (section == "Gloebit") {
                 bool enabled = config.GetBoolean("Enabled", false);
-                m_enabled &&= enabled;
+                m_enabled = m_enabled && enabled;
                 if (!enabled) {
                     m_log.Info ("[Gloebit] Not enabled. (to enable set \"Enabled = true\" in [Gloebit])");
                     return;
                 }
-            }
-
-            if (section == "Startup") {
-                m_enabled = (config.GetString("economymodule", "Gloebit") == "Gloebit");
             }
 
             if (section == "Economy") {
@@ -243,7 +225,54 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         {
         }
 
+        public void PostInitialise()
+        {
+        }
 
+        public void Close()
+        {
+        }
+
+        public Type ReplaceableInterface { get { return null; } }
+
+        public string Name
+        {
+            get { return "GloebitMoneyModule"; }
+        }
+
+
+        #region IMoneyModule Members
+
+        public bool ObjectGiveMoney(UUID objectID, UUID fromID, UUID toID, int amount)
+        {
+            string description = String.Format("Object {0} pays {1}", resolveObjectName(objectID), resolveAgentName(toID));
+
+            bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description);
+
+            
+            BalanceUpdate(fromID, toID, give_result, description);
+
+            return give_result;
+        }
+
+        public int GetBalance(UUID agentID)
+        {
+            return 0;
+        }
+
+        // Please do not refactor these to be just one method
+        // Existing implementations need the distinction
+        //
+        public bool UploadCovered(UUID agentID, int amount)
+        {
+            return true;
+        }
+        public bool AmountCovered(UUID agentID, int amount)
+        {
+            return true;
+        }
+
+        // member variable to store fee for uploading assets
         // Please do not refactor these to be just one method
         // Existing implementations need the distinction
         //
@@ -259,37 +288,24 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         {
         }
 
-        public bool ObjectGiveMoney(UUID objectID, UUID fromID, UUID toID, int amount)
+        // member variable to store fee for uploading assets
+        // NOTE: fees are not applied to meshes right now because functionality to compute prim equivalent has not been written
+        public int UploadCharge
         {
-            string description = String.Format("Object {0} pays {1}", resolveObjectName(objectID), resolveAgentName(toID));
-
-            bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description);
-
-            
-            BalanceUpdate(fromID, toID, give_result, description);
-
-            return give_result;
+            get { return 0; }
         }
 
-        public void PostInitialise()
+        // member variable to store fee for creating a group
+        public int GroupCreationCharge
         {
+            get { return 0; }
         }
 
-        public void Close()
-        {
-        }
+//#pragma warning disable 0067
+        public event ObjectPaid OnObjectPaid;
+//#pragma warning restore 0067
 
-        public Type ReplaceableInterface
-        {
-            get { return typeof(IMoneyModule); }
-        }
-
-        public string Name
-        {
-            get { return "BetaGridLikeMoneyModule"; }
-        }
-
-        #endregion
+        #endregion // IMoneyModule members
 
 
         private void GetClientFunds(IClientAPI client)
@@ -790,23 +806,6 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         {
             
             //m_log.Info("[FRIEND]: " + avatar.Name + " status:" + (!avatar.IsChildAgent).ToString());
-        }
-
-        public int GetBalance(UUID agentID)
-        {
-            return 0;
-        }
-
-        // Please do not refactor these to be just one method
-        // Existing implementations need the distinction
-        //
-        public bool UploadCovered(UUID agentID, int amount)
-        {
-            return true;
-        }
-        public bool AmountCovered(UUID agentID, int amount)
-        {
-            return true;
         }
 
         #endregion
