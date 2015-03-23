@@ -112,14 +112,14 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         public event ObjectPaid OnObjectPaid;
 #pragma warning restore 0067
 
-		// member variable to store fee for uploading assets
-		// TODO: ask why this can't be applied to meshes
+        // member variable to store fee for uploading assets
+        // TODO: ask why this can't be applied to meshes
         public int UploadCharge
         {
             get { return 0; }
         }
 
-		// member variable to store fee for creating a group
+        // member variable to store fee for creating a group
         public int GroupCreationCharge
         {
             get { return 0; }
