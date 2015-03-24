@@ -47,8 +47,15 @@ using OpenSim.Services.Interfaces;
 [assembly: Addin("Gloebit", "0.1")]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
 
-namespace OpenSim.Region.OptionalModules.World.MoneyModule
+namespace Gloebit.GloebitMoneyModule
 {
+    enum GLBEnv {
+        None = 0,
+        Custom = 1,
+        Sandbox = 2,
+        Production = 3,
+    }
+
     /// <summary>
     /// This is only the functionality required to make the functionality associated with money work
     /// (such as land transfers).  There is no money code here!  Use FORGE as an example for money code.
@@ -74,6 +81,10 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         // private ObjectPaid handerOnObjectPaid;
         private bool m_enabled = true;
         private bool m_sellEnabled = false;
+        private GLBEnv m_environment = GLBEnv.None;
+        private string m_keyAlias;
+        private string m_key;
+        private string m_secret;
 
         private IConfigSource m_gConfig;
 
@@ -120,7 +131,13 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
                 ReadConfigAndPopulate(sec_config, section);
             }
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}", m_enabled);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}, GLBEnvironment: {1}, GLBKeyAlias {2}, GLBKey: {3}, GLBSecret {4}",
+                m_enabled, m_environment, m_keyAlias, m_key, (m_secret == null ? "null" : "configured"));
+
+            if(m_environment != GLBEnv.Sandbox && m_environment GLBEnv.Production) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] Unsupported environment selected: {0}, disabling GloebitMoneyModule", m_environment);
+                m_enabled = false;
+            }
         }
 
         /// <summary>
@@ -144,6 +161,27 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
                     m_log.Info ("[GLOEBITMONEYMODULE] Not enabled. (to enable set \"Enabled = true\" in [Gloebit])");
                     return;
                 }
+                string envString = config.GetString("GLBEnvironment", "sandbox");
+                switch(envString) {
+                    case "sandbox":
+                        m_environment = GLBEnv.Sandbox;
+                        break;
+                    case "production":
+                        m_environment = GLBEnv.Production;
+                        break;
+                    case "custom":
+                        m_environment = GLBEnv.Custom;
+                        m_log.Warn("[GLOEBITMONEYMODULE] GLBEnvironment \"custom\" unimplemented, things will probably fail later");
+                        break;
+                    default:
+                        m_environment = GLB
+                        m_log.WarnFormat("[GLOEBITMONEYMODULE] GLBEnvironment \"{0}\" unrecognized, setting to None", envString); 
+v.None;
+                        break;
+                }
+                m_keyAlias = config.GetString("GLBKeyAlias", null);
+                m_key = config.GetString("GLBKey", null);
+                m_secret = config.GetString("GLBSecret", null);
             }
 
             if (section == "Economy") {
@@ -205,7 +243,7 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
                 }
 
                 scene.EventManager.OnNewClient += OnNewClient;
-                scene.EventManager.OnMoneyTransfer += MoneyTransferAction;
+                scene.EventManager.OnMoneyTransfer += OnMoneyTransfer;
                 scene.EventManager.OnClientClosed += ClientClosed;
                 scene.EventManager.OnAvatarEnteringNewParcel += AvatarEnteringParcel;
                 scene.EventManager.OnMakeChildAgent += MakeChildAgent;
@@ -729,9 +767,9 @@ namespace OpenSim.Region.OptionalModules.World.MoneyModule
         /// </summary>
         /// <param name="osender"></param>
         /// <param name="e"></param>
-        private void MoneyTransferAction(Object osender, EventManager.MoneyTransferArgs e)
+        private void OnMoneyTransfer(Object osender, EventManager.MoneyTransferArgs e)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] MoneyTransferAction");
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnMoneyTransfer");
             
         }
 
