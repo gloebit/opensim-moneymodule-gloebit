@@ -85,6 +85,7 @@ namespace Gloebit.GloebitMoneyModule
         private string m_keyAlias;
         private string m_key;
         private string m_secret;
+        private string m_apiUrl;
 
         private IConfigSource m_gConfig;
 
@@ -134,7 +135,7 @@ namespace Gloebit.GloebitMoneyModule
             m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}, GLBEnvironment: {1}, GLBKeyAlias {2}, GLBKey: {3}, GLBSecret {4}",
                 m_enabled, m_environment, m_keyAlias, m_key, (m_secret == null ? "null" : "configured"));
 
-            if(m_environment != GLBEnv.Sandbox && m_environment GLBEnv.Production) {
+            if(m_environment != GLBEnv.Sandbox && m_environment != GLBEnv.Production) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] Unsupported environment selected: {0}, disabling GloebitMoneyModule", m_environment);
                 m_enabled = false;
             }
@@ -165,18 +166,21 @@ namespace Gloebit.GloebitMoneyModule
                 switch(envString) {
                     case "sandbox":
                         m_environment = GLBEnv.Sandbox;
+                        m_apiUrl = "https://sandbox.gloebit.com/";
                         break;
                     case "production":
                         m_environment = GLBEnv.Production;
+                        m_apiUrl = "https://www.gloebit.com/";
                         break;
                     case "custom":
                         m_environment = GLBEnv.Custom;
+                        m_apiUrl = config.GetString("GLBApiUrl", "https://sandbox.gloebit.com/");
                         m_log.Warn("[GLOEBITMONEYMODULE] GLBEnvironment \"custom\" unimplemented, things will probably fail later");
                         break;
                     default:
-                        m_environment = GLB
+                        m_environment = GLBEnv.None;
+                        m_apiUrl = null;
                         m_log.WarnFormat("[GLOEBITMONEYMODULE] GLBEnvironment \"{0}\" unrecognized, setting to None", envString); 
-v.None;
                         break;
                 }
                 m_keyAlias = config.GetString("GLBKeyAlias", null);
