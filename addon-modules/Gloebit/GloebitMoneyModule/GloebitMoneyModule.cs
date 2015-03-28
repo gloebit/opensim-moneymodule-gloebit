@@ -491,21 +491,30 @@ namespace Gloebit.GloebitMoneyModule
 
         private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
+            Hashtable requestData = (Hashtable) request.Params[0];
+            UUID agentId = UUID.Zero;
             m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func");
-            // Hashtable requestData = (Hashtable) request.Params[0];
-            // UUID agentId = UUID.Zero;
-            int amount = 0;
+
+            foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
+
+            int amount = (int) requestData["currencyBuy"];
             Hashtable quoteResponse = new Hashtable();
             XmlRpcResponse returnval = new XmlRpcResponse();
 
             
             Hashtable currencyResponse = new Hashtable();
-            currencyResponse.Add("estimatedCost", 0);
+            currencyResponse.Add("estimatedCost", amount);
             currencyResponse.Add("currencyBuy", amount);
 
             quoteResponse.Add("success", true);
             quoteResponse.Add("currency", currencyResponse);
             quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
+
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func quoteResponse");
+            foreach(DictionaryEntry e in quoteResponse) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
+
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func currencyResponse");
+            foreach(DictionaryEntry e in currencyResponse) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
 
             returnval.Value = quoteResponse;
             return returnval;
