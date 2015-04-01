@@ -72,6 +72,9 @@ namespace Gloebit.GloebitMoneyModule
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+        private const string SANDBOX_URL = "https://sandbox.gloebit.com/";
+        private const string PRODUCTION_URL = "https://www.gloebit.com/";
+
         /// <summary>
         /// Where Stipends come from and Fees go to.
         /// </summary>
@@ -112,6 +115,8 @@ namespace Gloebit.GloebitMoneyModule
         private float TeleportPriceExponent = 0f;
 
 
+        private GloebitAPI m_api;
+
         /// <summary>
         /// Called on startup so the module can be configured.
         /// </summary>
@@ -138,6 +143,11 @@ namespace Gloebit.GloebitMoneyModule
             if(m_environment != GLBEnv.Sandbox && m_environment != GLBEnv.Production) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] Unsupported environment selected: {0}, disabling GloebitMoneyModule", m_environment);
                 m_enabled = false;
+            }
+
+            if(m_enabled) {
+                //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
+                m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl));
             }
         }
 
@@ -166,16 +176,16 @@ namespace Gloebit.GloebitMoneyModule
                 switch(envString) {
                     case "sandbox":
                         m_environment = GLBEnv.Sandbox;
-                        m_apiUrl = "https://sandbox.gloebit.com/";
+                        m_apiUrl = SANDBOX_URL;
                         break;
                     case "production":
                         m_environment = GLBEnv.Production;
-                        m_apiUrl = "https://www.gloebit.com/";
+                        m_apiUrl = PRODUCTION_URL;
                         break;
                     case "custom":
                         m_environment = GLBEnv.Custom;
-                        m_apiUrl = config.GetString("GLBApiUrl", "https://sandbox.gloebit.com/");
-                        m_log.Warn("[GLOEBITMONEYMODULE] GLBEnvironment \"custom\" unimplemented, things will probably fail later");
+                        m_apiUrl = config.GetString("GLBApiUrl", SANDBOX_URL);
+                        m_log.Warn("[GLOEBITMONEYMODULE] GLBEnvironment \"custom\" unsupported, things will probably fail later");
                         break;
                     default:
                         m_environment = GLBEnv.None;
@@ -233,6 +243,8 @@ namespace Gloebit.GloebitMoneyModule
                         httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
                         httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
                         httpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func);
+
+                        httpServer.AddHTTPHandler("/gloebit/auth_complete", authComplete_func);
                        
                     }
 
@@ -258,6 +270,10 @@ namespace Gloebit.GloebitMoneyModule
 
         public void RemoveRegion(Scene scene)
         {
+            lock (m_scenel)
+            {
+                m_scenel.Remove(scene.RegionInfo.RegionHandle);
+            }
         }
 
         public void RegionLoaded(Scene scene)
@@ -492,35 +508,32 @@ namespace Gloebit.GloebitMoneyModule
         private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             Hashtable requestData = (Hashtable) request.Params[0];
-            UUID agentId = UUID.Zero;
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func");
 
-            foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
-
+            string agentIdStr = requestData["agentId"] as string;
+            UUID agentId = UUID.Parse(agentIdStr);
+            UUID sessionId = UUID.Parse(requestData["secureSessionId"] as string);
             int amount = (int) requestData["currencyBuy"];
-            Hashtable quoteResponse = new Hashtable();
-            XmlRpcResponse returnval = new XmlRpcResponse();
 
-            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func agentId: {0} sessionId: {1} currencyBuy: {2}", agentId, sessionId, amount);
+            // foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
+
+            XmlRpcResponse returnval = new XmlRpcResponse();
+            Hashtable quoteResponse = new Hashtable();
             Hashtable currencyResponse = new Hashtable();
-            currencyResponse.Add("estimatedCost", amount);
+
+            currencyResponse.Add("estimatedCost", amount / 2);
             currencyResponse.Add("currencyBuy", amount);
 
             quoteResponse.Add("success", true);
             quoteResponse.Add("currency", currencyResponse);
+
+            // TODO - generate a unique confirmation token
             quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func quoteResponse");
-            foreach(DictionaryEntry e in quoteResponse) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
-
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func currencyResponse");
-            foreach(DictionaryEntry e in currencyResponse) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
-
+            IClientAPI user = LocateClientObject(agentId);
+            m_api.Authorize(user);
             returnval.Value = quoteResponse;
             return returnval;
-            
-
-
         }
 
         private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
@@ -587,6 +600,16 @@ namespace Gloebit.GloebitMoneyModule
             ret.Value = retparam;
 
             return ret;
+        }
+
+        private Hashtable authComplete_func(Hashtable requestData) {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func");
+            foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
+            Hashtable response = new Hashtable();
+            response["int_response_code"] = 200;
+            response["str_response_string"] = "<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window.</body></html>";
+            response["content_type"] = "text/html";
+            return response;
         }
 
         #endregion
