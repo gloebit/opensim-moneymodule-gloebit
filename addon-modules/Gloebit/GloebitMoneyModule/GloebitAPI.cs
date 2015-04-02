@@ -30,9 +30,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Reflection;
+using System.Text;
 using System.Web;
 using log4net;
 using OpenMetaverse;
+using OpenMetaverse.StructuredData;
 
 using OpenSim.Framework;
 
@@ -40,6 +42,8 @@ namespace Gloebit.GloebitMoneyModule {
 
     public class GloebitAPI {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        // TODO - build this redirect_uri correctly with the correct public hostname and port
+        private const string REDIRECT_URI = "http://localhost:9000/gloebit/auth_complete";
 
         private string m_key;
         private string m_keyAlias;
@@ -59,8 +63,7 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["client_id"] = m_key;
             auth_params["r"] = m_keyAlias;
             auth_params["scope"] = "user balance transact";
-            // TODO - build this redirect_uri correctly with the correct public hostname and port
-            auth_params["redirect_uri"] = "http://localhost:9000/gloebit/auth_complete";
+            auth_params["redirect_uri"] = REDIRECT_URI;
             auth_params["response_type"] = "code";
             auth_params["user"] = user.AgentId.ToString();
             // TODO - make use of 'state' param for XSRF protection
@@ -103,6 +106,66 @@ namespace Gloebit.GloebitMoneyModule {
             im.timestamp = (uint)Util.UnixTimeSinceEpoch();
             
             user.SendInstantMessage(im);
+        }
+
+        public string ExchangeAccessToken(IClientAPI user, string auth_code) {
+
+            Uri request_uri = new Uri(m_url, "oauth2/access-token");
+            //Uri request_uri = new Uri("http://localhost:8000/oauth2/access-token");
+            m_log.InfoFormat("GloebitAPI.ExchangeAccessToken request_uri: {0}", request_uri);
+            HttpWebRequest request = (HttpWebRequest) WebRequest.Create(request_uri);
+            request.Method = "POST";
+            request.KeepAlive = false;
+
+            //OSDMap auth_params = new OSDMap();
+            Dictionary<string,string> auth_params = new Dictionary<string,string>();
+
+            auth_params["client_id"] = m_key;
+            auth_params["client_secret"] = m_secret;
+            auth_params["code"] = auth_code;
+            auth_params["grant_type"] = "authorization_code";
+            auth_params["scope"] = "user balance transact";
+            auth_params["redirect_uri"] = REDIRECT_URI;
+
+            //string params_json = OSDParser.SerializeJsonString(auth_params);
+            //byte[] post_data = System.Text.Encoding.UTF8.GetBytes(params_json);
+            //request.ContentType = "application/json";
+
+            StringBuilder params_str = new StringBuilder();
+            foreach(KeyValuePair<string,string> p in auth_params) {
+                if(params_str.Length != 0) {
+                    params_str.Append('&');
+                }
+                params_str.AppendFormat("{0}={1}", p.Key, HttpUtility.UrlEncode(p.Value));
+            }
+            byte[] post_data = System.Text.Encoding.UTF8.GetBytes(params_str.ToString());
+            request.ContentType = "application/x-www-form-urlencoded";
+
+            m_log.InfoFormat("GloebitAPI.ExchangeAccessToken post_data: {0} Length:{1}", System.Text.Encoding.Default.GetString(post_data), post_data.Length);
+
+            request.Proxy = null;
+            request.ContentLength = post_data.Length;
+            using (Stream s = request.GetRequestStream()) {
+                s.Write(post_data, 0, post_data.Length);
+            }
+
+            HttpWebResponse response = (HttpWebResponse) request.GetResponse();
+            string status = response.StatusDescription;
+            using(StreamReader response_stream = new StreamReader(response.GetResponseStream())) {
+                string response_str = response_stream.ReadToEnd();
+                m_log.InfoFormat("GloebitAPI.ExchangeAccessToken response: {0}", response_str);
+                OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
+
+                string token = responseData["access_token"];
+                // TODO - do something to handle the "refresh_token" field properly
+                if(token != String.Empty) {
+                    return token;
+                } else {
+                    m_log.ErrorFormat("GloebitAPI.ExchangeAccessToken error: {0}, reason: {1}", responseData["error"], responseData["reason"]);
+                    return null;
+                }
+            }
+
         }
     }
 

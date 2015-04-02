@@ -605,6 +605,13 @@ namespace Gloebit.GloebitMoneyModule
         private Hashtable authComplete_func(Hashtable requestData) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func");
             foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
+
+            string code = requestData["code"] as string;
+
+            string token = m_api.ExchangeAccessToken(null, code);
+
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
+
             Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
             response["str_response_string"] = "<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window.</body></html>";
