@@ -93,22 +93,24 @@ namespace Gloebit.GloebitMoneyModule {
             //m_log.InfoFormat("GloebitAPI.Authorize response: {0}", response_str);
             //response.Close();
 
-            GridInstantMessage im = new GridInstantMessage();
-            im.fromAgentID = Guid.Empty;
-            im.fromAgentName = "Gloebit";
-            im.toAgentID = user.AgentId.Guid;
-            im.dialog = (byte)19;  // Object message
-            im.fromGroup = false;
-            im.message = String.Format("To use Gloebit currency, please autorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
-            im.imSessionID = UUID.Random().Guid;
-            im.offline = 0;
-            im.Position = Vector3.Zero;
-            im.binaryBucket = new byte[0];
-            im.ParentEstateID = 0;
-            im.RegionID = Guid.Empty;
-            im.timestamp = (uint)Util.UnixTimeSinceEpoch();
-            
-            user.SendInstantMessage(im);
+            string message = String.Format("To use Gloebit currency, please autorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
+            // GridInstantMessage im = new GridInstantMessage();
+            // im.fromAgentID = Guid.Empty;
+            // im.fromAgentName = "Gloebit";
+            // im.toAgentID = user.AgentId.Guid;
+            // im.dialog = (byte)19;  // Object message
+            // im.fromGroup = false;
+            // im.message = message;
+            // im.imSessionID = UUID.Random().Guid;
+            // im.offline = 0;
+            // im.Position = Vector3.Zero;
+            // im.binaryBucket = new byte[0];
+            // im.ParentEstateID = 0;
+            // im.RegionID = Guid.Empty;
+            // im.timestamp = (uint)Util.UnixTimeSinceEpoch();
+            // 
+            // user.SendInstantMessage(im);
+            user.SendBlueBoxMessage(UUID.Zero, "Gloebit", message);
         }
 
         public string ExchangeAccessToken(IClientAPI user, string auth_code) {
