@@ -146,7 +146,6 @@ namespace Gloebit.GloebitMoneyModule {
 
             m_log.InfoFormat("GloebitAPI.ExchangeAccessToken post_data: {0} Length:{1}", System.Text.Encoding.Default.GetString(post_data), post_data.Length);
 
-            request.Proxy = null;
             request.ContentLength = post_data.Length;
             using (Stream s = request.GetRequestStream()) {
                 s.Write(post_data, 0, post_data.Length);
