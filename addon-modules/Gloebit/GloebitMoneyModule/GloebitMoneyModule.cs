@@ -466,7 +466,7 @@ namespace Gloebit.GloebitMoneyModule
         private string resolveAgentName(UUID agentID)
         {
             // try avatar username surname
-            Scene scene = GetRandomScene();
+            Scene scene = GetAnyScene();
             UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
             if (account != null)
             {
@@ -700,10 +700,10 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         /// <summary>
-        /// Utility function Gets a Random scene in the instance.  For when which scene exactly you're doing something with doesn't matter
+        /// Utility function Gets an arbitrary scene in the instance.  For when which scene exactly you're doing something with doesn't matter
         /// </summary>
         /// <returns></returns>
-        private Scene GetRandomScene()
+        private Scene GetAnyScene()
         {
             lock (m_scenel)
             {
