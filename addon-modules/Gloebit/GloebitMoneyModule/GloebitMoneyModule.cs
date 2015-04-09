@@ -606,9 +606,10 @@ namespace Gloebit.GloebitMoneyModule
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func");
             foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
 
+            string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
 
-            string token = m_api.ExchangeAccessToken(null, code);
+            string token = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
 
@@ -637,9 +638,9 @@ namespace Gloebit.GloebitMoneyModule
         /// </summary>
         /// <param name="AgentID"></param>
         /// <returns></returns>
-        private int GetFundsForAgentID(UUID AgentID)
+        private int GetFundsForAgentID(UUID agentID)
         {
-            int returnfunds = 0;
+            int returnfunds = m_api.GetBalance(agentID);
             
             return returnfunds;
         }
