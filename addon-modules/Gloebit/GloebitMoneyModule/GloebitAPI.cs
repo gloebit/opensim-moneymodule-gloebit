@@ -204,6 +204,10 @@ namespace Gloebit.GloebitMoneyModule {
             }
 
         }
+
+        public void Transact(UUID senderID, UUID transactionId) {
+            // TODO - implement calls to the transact endpoint
+        }
     }
 
 }

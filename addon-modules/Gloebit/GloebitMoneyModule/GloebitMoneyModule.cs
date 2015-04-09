@@ -401,6 +401,8 @@ namespace Gloebit.GloebitMoneyModule
                 Sender, Receiver, amount, transactiontype, description);
             bool result = true;
             
+            // TODO - implement real money transfer transactions
+            m_api.Transact(UUID.Zero, UUID.Zero);
             return result;
         }
 
@@ -414,7 +416,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="TransactionID"></param>
         private void SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] SendMoneyBalance request from {0} about {1}", client.AgentId, agentID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] SendMoneyBalance request from {0} about {1} for transaction {2}", client.AgentId, agentID, TransactionID);
 
             if (client.AgentId == agentID && client.SessionId == SessionID)
             {
@@ -543,6 +545,7 @@ namespace Gloebit.GloebitMoneyModule
  
             m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", (IEnumerable)requestData.Keys));
 
+            // TODO - maybe call the /purchase endpoint for this? so that we can get a callback when the purchase is done and then send a balance update to the viewer?
             string url = String.Format("{0}/purchase/?reset", m_apiUrl);
             string message = String.Format("Unfortunately we cannot yet sell Gloebits direcrlt in the viewer.  Please visit {0} to buy Gloebits.", url);
 
@@ -864,12 +867,6 @@ namespace Gloebit.GloebitMoneyModule
             if (!m_sellEnabled)
             {
                 remoteClient.SendBlueBoxMessage(UUID.Zero, "", "Buying is not enabled");
-                return;
-            }
-
-            if (salePrice != 0)
-            {
-                remoteClient.SendBlueBoxMessage(UUID.Zero, "", "Buying anything for a price other than zero is not implemented");
                 return;
             }
 
