@@ -538,14 +538,19 @@ namespace Gloebit.GloebitMoneyModule
 
         private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func");
-            // Hashtable requestData = (Hashtable) request.Params[0];
-            // UUID agentId = UUID.Zero;
-            // int amount = 0;
-           
+            Hashtable requestData = (Hashtable) request.Params[0];
+            UUID agentId = UUID.Zero;
+ 
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", (IEnumerable)requestData.Keys));
+
+            string url = String.Format("{0}/purchase/?reset", m_apiUrl);
+            string message = String.Format("Unfortunately we cannot yet sell Gloebits direcrlt in the viewer.  Please visit {0} to buy Gloebits.", url);
+
             XmlRpcResponse returnval = new XmlRpcResponse();
             Hashtable returnresp = new Hashtable();
-            returnresp.Add("success", true);
+            returnresp.Add("success", false);
+            returnresp.Add("errorMessage", message);
+            returnresp.Add("errorUrl", url);
             returnval.Value = returnresp;
             return returnval;
         }
