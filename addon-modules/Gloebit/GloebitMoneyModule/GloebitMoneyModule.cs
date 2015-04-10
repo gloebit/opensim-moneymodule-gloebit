@@ -403,7 +403,8 @@ namespace Gloebit.GloebitMoneyModule
             bool result = true;
             
             // TODO - implement real money transfer transactions
-            m_api.Transact(UUID.Zero, UUID.Zero);
+            m_api.Transact(Sender, resolveAgentName(Sender), amount, description);
+            //m_api.Transact(Receiver, resolveAgentName(Receiver), -amount, description);
             return result;
         }
 
@@ -534,6 +535,7 @@ namespace Gloebit.GloebitMoneyModule
             quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
 
             IClientAPI user = LocateClientObject(agentId);
+            // TODO - only generate a new authorize request if the user haven't been authorized yet.
             m_api.Authorize(user);
             returnval.Value = quoteResponse;
             return returnval;
@@ -917,6 +919,11 @@ namespace Gloebit.GloebitMoneyModule
                 return;
             }
             bool success = module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice);
+            if(success) {
+                string agentName = resolveAgentName(agentID);
+                string description = String.Format("agent {0} - {1} bought object {2} - {3}", agentName, agentID, part.Name, part.UUID);
+                doMoneyTransfer(agentID, UUID.Zero, salePrice, 2, description);
+            }
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
         }
     }

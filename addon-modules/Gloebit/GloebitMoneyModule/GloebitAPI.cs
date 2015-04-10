@@ -79,10 +79,10 @@ namespace Gloebit.GloebitMoneyModule {
 
             string query_string = String.Join("&", (string[])query_args.ToArray(typeof(string)));
 
-            m_log.InfoFormat("GloebitAPI.Authorize query_string: {0}", query_string);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize query_string: {0}", query_string);
 
             Uri request_uri = new Uri(m_url, String.Format("oauth2/authorize?{0}", query_string));
-            m_log.InfoFormat("GloebitAPI.Authorize request_uri: {0}", request_uri);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize request_uri: {0}", request_uri);
             //WebRequest request = WebRequest.Create(request_uri);
             //request.Method = "GET";
 
@@ -90,7 +90,7 @@ namespace Gloebit.GloebitMoneyModule {
             //string status = response.StatusDescription;
             //StreamReader response_stream = new StreamReader(response.GetResponseStream());
             //string response_str = response_stream.ReadToEnd();
-            //m_log.InfoFormat("GloebitAPI.Authorize response: {0}", response_str);
+            //m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize response: {0}", response_str);
             //response.Close();
 
             string message = String.Format("To use Gloebit currency, please autorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
@@ -144,7 +144,7 @@ namespace Gloebit.GloebitMoneyModule {
             byte[] post_data = System.Text.Encoding.UTF8.GetBytes(params_str.ToString());
             request.ContentType = "application/x-www-form-urlencoded";
 
-            m_log.InfoFormat("GloebitAPI.ExchangeAccessToken post_data: {0} Length:{1}", System.Text.Encoding.Default.GetString(post_data), post_data.Length);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken post_data: {0} Length:{1}", System.Text.Encoding.Default.GetString(post_data), post_data.Length);
 
             request.ContentLength = post_data.Length;
             using (Stream s = request.GetRequestStream()) {
@@ -156,7 +156,7 @@ namespace Gloebit.GloebitMoneyModule {
             using(StreamReader response_stream = new StreamReader(response.GetResponseStream())) {
                 string response_str = response_stream.ReadToEnd();
                 // TODO - do not actually log the token
-                m_log.InfoFormat("GloebitAPI.ExchangeAccessToken response: {0}", response_str);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken response: {0}", response_str);
                 OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
 
                 string token = responseData["access_token"];
@@ -164,13 +164,13 @@ namespace Gloebit.GloebitMoneyModule {
                 if(token != String.Empty) {
                     string agentId = user.AgentId.ToString();
                     // TODO - do not actually log the token
-                    m_log.InfoFormat("GloebitAPI.ExchangeAccessToken saving token for agent: {0} as token: {1}", agentId, token);
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken saving token for agent: {0} as token: {1}", agentId, token);
                     lock(m_tokenMap) {
                         m_tokenMap[agentId] = token;
                     }
                     return token;
                 } else {
-                    m_log.ErrorFormat("GloebitAPI.ExchangeAccessToken error: {0}, reason: {1}", responseData["error"], responseData["reason"]);
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken error: {0}, reason: {1}", responseData["error"], responseData["reason"]);
                     return null;
                 }
             }
@@ -199,14 +199,66 @@ namespace Gloebit.GloebitMoneyModule {
                 OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
 
                 int balance = int.Parse(responseData["balance"]);
-                m_log.InfoFormat("GloebitAPI.ExchangeAccessToken balance: {0}", balance);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken balance: {0}", balance);
                 return balance;
             }
 
         }
 
-        public void Transact(UUID senderID, UUID transactionId) {
-            // TODO - implement calls to the transact endpoint
+        public void Transact(UUID senderID, string senderName, int amount, string description) {
+            string token;
+            lock(m_tokenMap) {
+                bool found = m_tokenMap.TryGetValue(senderID.ToString(), out token);
+            }
+            if(token == null) {
+                return;
+            }
+
+            UUID transactionId = UUID.Random();
+
+            OSDMap transact_params = new OSDMap();
+
+            transact_params["version"] = 1;
+            transact_params["application-key"] = m_key;
+            transact_params["request-created"] = (int)(DateTime.UtcNow.Ticks / 10000000);  // TODO - figure out if this is in the right units
+            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, senderID.ToString());
+
+            transact_params["transaction-id"] = transactionId.ToString();
+            transact_params["gloebit-balance-change"] = amount;
+            transact_params["asset-code"] = "TODO - fill in a useful asset code here";
+            transact_params["asset-quantity"] = 1;
+
+            string params_json = OSDParser.SerializeJsonString(transact_params);
+            byte[] post_data = System.Text.Encoding.UTF8.GetBytes(params_json);
+
+            Uri request_uri = new Uri(m_url, "transact");
+            HttpWebRequest request = (HttpWebRequest) WebRequest.Create(request_uri);
+            request.Method = "POST";
+            request.ContentType = "application/json";
+            request.Headers.Add("Authorization", String.Format("Bearer {0}", token));
+
+            request.ContentLength = post_data.Length;
+            using (Stream s = request.GetRequestStream()) {
+                s.Write(post_data, 0, post_data.Length);
+            }
+
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact sending request");
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact post_data: {0} Length:{1}", System.Text.Encoding.Default.GetString(post_data), post_data.Length);
+            HttpWebResponse response = (HttpWebResponse) request.GetResponse();
+            string status = response.StatusDescription;
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response status: {0}", status);
+            using(StreamReader response_stream = new StreamReader(response.GetResponseStream())) {
+                string response_str = response_stream.ReadToEnd();
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", response_str);
+
+                OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
+
+                bool success = (bool)responseData["success"];
+                int balance = int.Parse(responseData["balance"]);
+                string reason = responseData["reason"];
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact success: {0} balance: {1} reason: {2}", success, balance, reason);
+                // TODO - update the user's balance
+            }
         }
     }
 
