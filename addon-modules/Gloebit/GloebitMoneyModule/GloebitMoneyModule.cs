@@ -542,11 +542,11 @@ namespace Gloebit.GloebitMoneyModule
         private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             Hashtable requestData = (Hashtable) request.Params[0];
-            UUID agentId = UUID.Parse(requestData["agentId"]);
-            string confirm = requestData["confirm"];
-            int currencyBuy = requestData["currencyBuy"];
-            int estimatedCost = requestData["estimatedCost"];
-            string secureSessionId = requestData["secureSessionId"];
+            UUID agentId = UUID.Parse(requestData["agentId"] as string);
+            string confirm = requestData["confirm"] as string;
+            int currencyBuy = (int) requestData["currencyBuy"];
+            int estimatedCost = (int) requestData["estimatedCost"];
+            string secureSessionId = requestData["secureSessionId"] as string;
 
             // currencyBuy:viewerMinorVersion:secureSessionId:viewerBuildVersion:estimatedCost:confirm:agentId:viewerPatchVersion:viewerMajorVersion:viewerChannel:language
  
