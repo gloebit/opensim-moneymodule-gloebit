@@ -30,6 +30,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using log4net;
@@ -541,13 +542,21 @@ namespace Gloebit.GloebitMoneyModule
         private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             Hashtable requestData = (Hashtable) request.Params[0];
-            UUID agentId = UUID.Zero;
+            UUID agentId = UUID.Parse(requestData["agentId"]);
+            string confirm = requestData["confirm"];
+            int currencyBuy = requestData["currencyBuy"];
+            int estimatedCost = requestData["estimatedCost"];
+            string secureSessionId = requestData["secureSessionId"];
+
+            // currencyBuy:viewerMinorVersion:secureSessionId:viewerBuildVersion:estimatedCost:confirm:agentId:viewerPatchVersion:viewerMajorVersion:viewerChannel:language
  
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", (IEnumerable)requestData.Keys));
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
+                agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
 
             // TODO - maybe call the /purchase endpoint for this? so that we can get a callback when the purchase is done and then send a balance update to the viewer?
             string url = String.Format("{0}/purchase/?reset", m_apiUrl);
-            string message = String.Format("Unfortunately we cannot yet sell Gloebits direcrlt in the viewer.  Please visit {0} to buy Gloebits.", url);
+            string message = String.Format("Unfortunately we cannot yet sell Gloebits directly in the viewer.  Please visit {0} to buy Gloebits.", url);
 
             XmlRpcResponse returnval = new XmlRpcResponse();
             Hashtable returnresp = new Hashtable();
