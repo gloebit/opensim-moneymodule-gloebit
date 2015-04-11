@@ -225,7 +225,7 @@ namespace Gloebit.GloebitMoneyModule {
 
             transact_params["transaction-id"] = transactionId.ToString();
             transact_params["gloebit-balance-change"] = amount;
-            transact_params["asset-code"] = "TODO - fill in a useful asset code here";
+            transact_params["asset-code"] = description;
             transact_params["asset-quantity"] = 1;
 
             string params_json = OSDParser.SerializeJsonString(transact_params);
