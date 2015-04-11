@@ -90,6 +90,7 @@ namespace Gloebit.GloebitMoneyModule
         private string m_key;
         private string m_secret;
         private string m_apiUrl;
+        private string m_gridnick = "unknown_grid";
 
         private IConfigSource m_gConfig;
 
@@ -127,7 +128,7 @@ namespace Gloebit.GloebitMoneyModule
             m_log.Info ("[GLOEBITMONEYMODULE] Initialising.");
             m_gConfig = config;
 
-            string[] sections = {"Startup", "Gloebit", "Economy"};
+            string[] sections = {"Startup", "Gloebit", "Economy", "GridInfoService"};
             foreach (string section in sections) {
                 IConfig sec_config = m_gConfig.Configs[section];
             
@@ -216,6 +217,10 @@ namespace Gloebit.GloebitMoneyModule
                 PriceParcelRent = config.GetInt("PriceParcelRent", 1);
                 PriceGroupCreate = config.GetInt("PriceGroupCreate", -1);
                 m_sellEnabled = config.GetBoolean("SellEnabled", false);
+            }
+
+            if (section == "GridInfoService") {
+                m_gridnick = config.GetString("gridnick", m_gridnick);
             }
         }
 
@@ -403,7 +408,8 @@ namespace Gloebit.GloebitMoneyModule
             bool result = true;
             
             // TODO - implement real money transfer transactions
-            m_api.Transact(UUID.Zero, UUID.Zero);
+            m_api.Transact(Sender, resolveAgentName(Sender), amount, description);
+            //m_api.Transact(Receiver, resolveAgentName(Receiver), -amount, description);
             return result;
         }
 
@@ -534,6 +540,7 @@ namespace Gloebit.GloebitMoneyModule
             quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
 
             IClientAPI user = LocateClientObject(agentId);
+            // TODO - only generate a new authorize request if the user haven't been authorized yet.
             m_api.Authorize(user);
             returnval.Value = quoteResponse;
             return returnval;
@@ -912,11 +919,23 @@ namespace Gloebit.GloebitMoneyModule
             }
 
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
+            // TODO - use callback URIs for 2 phase commit
+            // start transaction;
+            // callback from gloebit initiates module.BuyObject;
+            // on success, transaction completes. On failure, Gloebit rolls back
             if (module == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] FAILED to access to IBuySellModule");
                 return;
             }
             bool success = module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice);
+            if(success) {
+                string agentName = resolveAgentName(agentID);
+                string regionname = s.RegionInfo.RegionName;
+                string regionID = s.RegionInfo.RegionID.ToString();
+
+                string description = String.Format("object {0}({1}) on {2}({3})@{4}", part.Name, part.UUID, regionname, regionID, m_gridnick);
+                doMoneyTransfer(agentID, UUID.Zero, salePrice, 2, description);
+            }
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
         }
     }
