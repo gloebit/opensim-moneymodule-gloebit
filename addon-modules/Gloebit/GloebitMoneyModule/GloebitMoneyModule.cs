@@ -250,6 +250,7 @@ namespace Gloebit.GloebitMoneyModule
                         httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
                         httpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func);
 
+                        // Register callback for 2nd stage of OAuth2 Authorization_code_grant
                         httpServer.AddHTTPHandler("/gloebit/auth_complete", authComplete_func);
                        
                     }
@@ -428,20 +429,25 @@ namespace Gloebit.GloebitMoneyModule
             if (client.AgentId == agentID && client.SessionId == SessionID)
             {
                 int returnfunds = 0;
+                double realBal = 0.0;
 
                 try
                 {
-                    returnfunds = GetFundsForAgentID(agentID);
+                    realBal = GetFundsForAgentID(agentID);
                 }
                 catch (Exception e)
                 {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] SendMoneyBalance Failure, Exception:{0}",e.Message);
                     client.SendAlertMessage(e.Message + " ");
                 }
-
+                
+                // Get balance rounded down (may not be int for merchants)
+                returnfunds = (int)realBal;
                 client.SendMoneyBalance(TransactionID, true, new byte[0], returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
             }
             else
             {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] SendMoneyBalance - Unable to send money balance");
                 client.SendAlertMessage("Unable to send your money balance to you!");
             }
         }
@@ -502,12 +508,14 @@ namespace Gloebit.GloebitMoneyModule
             {
                 if (sender != null)
                 {
-                    sender.SendMoneyBalance(UUID.Random(), transactionresult, Utils.StringToBytes(description), GetFundsForAgentID(senderID), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                    int senderReturnFunds = (int)GetFundsForAgentID (senderID);
+                    sender.SendMoneyBalance(UUID.Random(), transactionresult, Utils.StringToBytes(description), senderReturnFunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
                 }
 
                 if (receiver != null)
                 {
-                    receiver.SendMoneyBalance(UUID.Random(), transactionresult, Utils.StringToBytes(description), GetFundsForAgentID(receiverID), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                    int receiverReturnFunds = (int)GetFundsForAgentID (receiverID);
+                    receiver.SendMoneyBalance(UUID.Random(), transactionresult, Utils.StringToBytes(description), receiverReturnFunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
                 }
             }
         }
@@ -626,6 +634,11 @@ namespace Gloebit.GloebitMoneyModule
             return ret;
         }
 
+        /// <summary>
+        /// Registered to the redirectURI from GloebitAPI.Authorize.  Called when a user approves authorization.
+        /// Enacts the GloebitAPI.AccessToken endpoint to exchange the auth_code for the token.
+        /// </summary>
+        /// <param name="requestData">response data from GloebitAPI.Authorize</param>
         private Hashtable authComplete_func(Hashtable requestData) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func");
             foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
@@ -635,7 +648,10 @@ namespace Gloebit.GloebitMoneyModule
 
             string token = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
 
+            // TODO: stop logging token
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
+            
+            // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
 
             Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
@@ -658,13 +674,14 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         /// <summary>
-        /// Gets the amount of Funds for an agent
+        /// Retrieves the gloebit balance of the gloebit account linked to the OpenSim agent defined by the agentID.
         /// </summary>
-        /// <param name="AgentID"></param>
-        /// <returns></returns>
-        private int GetFundsForAgentID(UUID agentID)
+        /// <param name="AgentID">OpenSim AgentID for the user whose balance is being requested</param>
+        /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent.</returns>
+        private double GetFundsForAgentID(UUID agentID)
         {
-            int returnfunds = m_api.GetBalance(agentID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GetFundsForAgentID AgentID:{0}", agentID);
+            double returnfunds = m_api.GetBalance(agentID);
             
             return returnfunds;
         }

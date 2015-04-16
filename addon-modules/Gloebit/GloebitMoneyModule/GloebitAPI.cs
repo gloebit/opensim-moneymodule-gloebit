@@ -58,9 +58,22 @@ namespace Gloebit.GloebitMoneyModule {
             m_secret = secret;
             m_url = url;
             m_tokenMap = new Dictionary<string,string>();
+            // TODO: Populate token map from file
         }
+        
+        /************************************************/
+        /******** OAUTH2 AUTHORIZATION FUNCTIONS ********/
+        /************************************************/
 
+        /// <summary>
+        /// Request Authorization for this grid/region to enact Gloebit functionality on behalf of the specified OpenSim user.
+        /// Sends Authorize URL to user which will launch a Gloebit authorize dialog.  If the user launches the URL and approves authorization from a Gloebit account, an authorization code will be returned to the redirect_uri.
+        /// This is how a user links a Gloebit account to this OpenSim account.
+        /// </summary>
+        /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
         public void Authorize(IClientAPI user) {
+
+            //********* BUILD AUTHORIZE QUERY ARG STRING ***************//
             Dictionary<string, string> auth_params = new Dictionary<string, string>();
 
             auth_params["client_id"] = m_key;
@@ -81,6 +94,8 @@ namespace Gloebit.GloebitMoneyModule {
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize query_string: {0}", query_string);
 
+            //********** BUILD FULL AUTHORIZE REQUEST URI **************//
+
             Uri request_uri = new Uri(m_url, String.Format("oauth2/authorize?{0}", query_string));
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize request_uri: {0}", request_uri);
             //WebRequest request = WebRequest.Create(request_uri);
@@ -92,6 +107,9 @@ namespace Gloebit.GloebitMoneyModule {
             //string response_str = response_stream.ReadToEnd();
             //m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize response: {0}", response_str);
             //response.Close();
+            
+            //*********** SEND AUTHORIZE REQUEST URI TO USER ***********//
+            // currently can not launch browser directly for user, so send in message
 
             string message = String.Format("To use Gloebit currency, please autorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
             // GridInstantMessage im = new GridInstantMessage();
@@ -111,17 +129,27 @@ namespace Gloebit.GloebitMoneyModule {
             // 
             // user.SendInstantMessage(im);
             user.SendBlueBoxMessage(UUID.Zero, "Gloebit", message);
+            // use SendBlueBoxMessage as all others including SendLoadURL truncate to 255 char or below
+
         }
-
+        
+        /// <summary>
+        /// Exchanges an authorization code granted from the Authorize endpoint for an access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.
+        /// This is the second phase of the OAuth2 process.  It is activated by the redirect_uri of the Authorize function.
+        /// This occurs completely behind the scenes for security purposes.
+        /// </summary>
+        /// <returns>The access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.</returns>
+        /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
+        /// <param name="auth_code">Authorization Code returned to the redirect_uri from the Gloebit Authorize endpoint.</param>
         public string ExchangeAccessToken(IClientAPI user, string auth_code) {
+            
+            //TODO stop logging auth_code
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken Name:[{0}] AgentID:{1} auth_code:{1}", user.Name, user.AgentId, auth_code);
+            
+            // ************ BUILD EXCHANGE ACCESS TOKEN POST REQUEST ******** //
 
-            Uri request_uri = new Uri(m_url, "oauth2/access-token");
-            HttpWebRequest request = (HttpWebRequest) WebRequest.Create(request_uri);
-            request.Method = "POST";
-            //request.KeepAlive = false;
-
-            //OSDMap auth_params = new OSDMap();
-            Dictionary<string,string> auth_params = new Dictionary<string,string>();
+            OSDMap auth_params = new OSDMap();
+            ////Dictionary<string,string> auth_params = new Dictionary<string,string>();
 
             auth_params["client_id"] = m_key;
             auth_params["client_secret"] = m_secret;
@@ -129,27 +157,15 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["grant_type"] = "authorization_code";
             auth_params["scope"] = "user balance transact";
             auth_params["redirect_uri"] = REDIRECT_URI;
-
-            //string params_json = OSDParser.SerializeJsonString(auth_params);
-            //byte[] post_data = System.Text.Encoding.UTF8.GetBytes(params_json);
-            //request.ContentType = "application/json";
-
-            StringBuilder params_str = new StringBuilder();
-            foreach(KeyValuePair<string,string> p in auth_params) {
-                if(params_str.Length != 0) {
-                    params_str.Append('&');
-                }
-                params_str.AppendFormat("{0}={1}", p.Key, HttpUtility.UrlEncode(p.Value));
+            
+            HttpWebRequest request = BuildGloebitRequest("oauth2/access-token", "POST", "", "application/x-www-form-urlencoded", auth_params);
+            if (request == null) {
+                // ERROR
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.oauth2/access-token failed to create HttpWebRequest");
+                return null;
             }
-            byte[] post_data = System.Text.Encoding.UTF8.GetBytes(params_str.ToString());
-            request.ContentType = "application/x-www-form-urlencoded";
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken post_data: {0} Length:{1}", System.Text.Encoding.Default.GetString(post_data), post_data.Length);
-
-            request.ContentLength = post_data.Length;
-            using (Stream s = request.GetRequestStream()) {
-                s.Write(post_data, 0, post_data.Length);
-            }
+            // ************ PARSE AND HANDLE EXCHANGE ACCESS TOKEN RESPONSE ********* //
 
             HttpWebResponse response = (HttpWebResponse) request.GetResponse();
             string status = response.StatusDescription;
@@ -168,6 +184,7 @@ namespace Gloebit.GloebitMoneyModule {
                     lock(m_tokenMap) {
                         m_tokenMap[agentId] = token;
                     }
+                    // TODO: Also add token to stored file
                     return token;
                 } else {
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken error: {0}, reason: {1}", responseData["error"], responseData["reason"]);
@@ -176,8 +193,28 @@ namespace Gloebit.GloebitMoneyModule {
             }
 
         }
+        
+        /***********************************************/
+        /********* GLOEBIT FUNCTIONAL ENDPOINS *********/
+        /***********************************************/
+        
+        // ******* GLOEBIT BALANCE ENDPOINTS ********* //
+        // requires "balance" in scope of authorization token
+        
 
-        public int GetBalance(UUID agentID) {
+        /// <summary>
+        /// Requests the Gloebit balance for the OpenSim user with this OpenSim agentID.
+        /// Returns zero if a link between this OpenSim user and a Gloebit account have not been created and the user has not granted authorization to this grid/region.
+        /// Requires "balance" in scope of authorization token.
+        /// </summary>
+        /// <returns>The Gloebit balance for the Gloebit accunt the user has linked to this OpenSim agentID on this grid/region.  Returns zero if a link between this OpenSim user and a Gloebit account has not been created and the user has not granted authorization to this grid/region.</returns>
+        /// <param name="agentID">Agent ID for the OpenSim user for whom the balance request is being made.</param>
+        public double GetBalance(UUID agentID) {
+            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance for agentID:{0}", agentID);
+            
+            //************ FIND AUTHORIZATION TOKEN FOR AGENT ********//
+            
             string token;
             lock(m_tokenMap) {
                 bool found = m_tokenMap.TryGetValue(agentID.ToString(), out token);
@@ -186,34 +223,59 @@ namespace Gloebit.GloebitMoneyModule {
                 return 0;
             }
 
-            Uri request_uri = new Uri(m_url, "balance");
-            HttpWebRequest request = (HttpWebRequest) WebRequest.Create(request_uri);
-            request.Method = "GET";
-            request.Headers.Add("Authorization", String.Format("Bearer {0}", token));
-
+            //************ BUILD GET BALANCE GET REQUEST ********//
+            
+            HttpWebRequest request = BuildGloebitRequest("balance", "GET", token);
+            if (request == null) {
+                // ERROR
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance failed to create HttpWebRequest");
+                return 0;
+            }
+            
+            //************ PARSE AND HANDLE GET BALANCE RESPONSE *********//
+            
             HttpWebResponse response = (HttpWebResponse) request.GetResponse();
             string status = response.StatusDescription;
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance status:{0}", status);
             using(StreamReader response_stream = new StreamReader(response.GetResponseStream())) {
                 string response_str = response_stream.ReadToEnd();
 
                 OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance responseData:{0}", responseData.ToString());
 
-                int balance = int.Parse(responseData["balance"]);
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken balance: {0}", balance);
+                double balance = responseData["balance"].AsReal();
                 return balance;
             }
 
         }
+        
+        // ******* GLOEBIT TRANSACT ENDPOINTS ********* //
+        // requires "transact" in scope of authorization token
 
+        /// <summary>
+        /// Request Gloebit transaction for the gloebit amount specified from the sender to the owner of the Gloebit app this module is connected to.
+        /// </summary>
+        /// <param name="senderID">OpenSim UUID for the user sending the gloebits.</param>
+        /// <param name="senderName">OpenSim Name of the user on this grid sending the gloebits.</param>
+        /// <param name="amount">quantity of gloebits to be transacted.</param>
+        /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
         public void Transact(UUID senderID, string senderName, int amount, string description) {
+            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", senderID, senderName, amount, description);
+            
+            //************ FIND AUTHORIZATION TOKEN FOR SENDER ********//
+            
             string token;
             lock(m_tokenMap) {
                 bool found = m_tokenMap.TryGetValue(senderID.ToString(), out token);
             }
             if(token == null) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact Attempted transaction for user without auth token");
                 return;
             }
-
+            
+            //************ BUILD TRANSACT POST REQUEST ********//
+            
             UUID transactionId = UUID.Random();
 
             OSDMap transact_params = new OSDMap();
@@ -227,23 +289,17 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["gloebit-balance-change"] = amount;
             transact_params["asset-code"] = description;
             transact_params["asset-quantity"] = 1;
-
-            string params_json = OSDParser.SerializeJsonString(transact_params);
-            byte[] post_data = System.Text.Encoding.UTF8.GetBytes(params_json);
-
-            Uri request_uri = new Uri(m_url, "transact");
-            HttpWebRequest request = (HttpWebRequest) WebRequest.Create(request_uri);
-            request.Method = "POST";
-            request.ContentType = "application/json";
-            request.Headers.Add("Authorization", String.Format("Bearer {0}", token));
-
-            request.ContentLength = post_data.Length;
-            using (Stream s = request.GetRequestStream()) {
-                s.Write(post_data, 0, post_data.Length);
+            
+            HttpWebRequest request = BuildGloebitRequest("transact", "POST", token, "application/json", transact_params);
+            if (request == null) {
+                // ERROR
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact failed to create HttpWebRequest");
+                return;
+                // TODO once we return, return error value
             }
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact sending request");
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact post_data: {0} Length:{1}", System.Text.Encoding.Default.GetString(post_data), post_data.Length);
+            //************ PARSE AND HANDLE TRANSACT RESPONSE *********//
+            
             HttpWebResponse response = (HttpWebResponse) request.GetResponse();
             string status = response.StatusDescription;
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response status: {0}", status);
@@ -254,12 +310,161 @@ namespace Gloebit.GloebitMoneyModule {
                 OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
 
                 bool success = (bool)responseData["success"];
-                int balance = int.Parse(responseData["balance"]);
+                // TODO: if success=false: id, balance, product-count are invalid.  Do not set balance.
+                double balance = responseData["balance"].AsReal();
                 string reason = responseData["reason"];
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact success: {0} balance: {1} reason: {2}", success, balance, reason);
                 // TODO - update the user's balance
             }
         }
+        
+        // TODO: create U2U endpoint in Gloebit system
+        // TODO: does recipient have to authorize app?  Do they need to become a merchant on that platform or opt in to agreeing to receive gloebits?  How do they currently authorize sale on a grid?
+        // TODO: can funds be sent to email address if recipient has not yet linked an account on this system?
+        // TODO: Should we pass a bool for charging a fee or the actual fee % -- to the module owner --- could always charge a fee.  could be % set in app for when charged.  could be % set for each transaction type in app.
+        // TODO: Should we always charge our fee, or have a bool or transaction type for occasions when we may not charge?
+        // TODO: Do we need an endpoint for reversals/refunds, or just an admin interface from Gloebit?
+        
+        /// <summary>
+        /// Request Gloebit transaction for the gloebit amount specified from the sender to the recipient.
+        /// </summary>
+        /// <param name="senderID">OpenSim UUID for the user sending the gloebits.</param>
+        /// <param name="senderName">OpenSim Name of the user on this grid sending the gloebits.</param>
+        /// <param name="recipientID">OpenSim UUID for the user receiving the gloebits.</param>
+        /// <param name="recipientName">OpenSim Name of the user on this grid receiving the gloebits.</param>
+        /// <param name="amount">quantity of gloebits to be transacted.</param>
+        /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
+        
+        public void TransactU2U(UUID senderID, string senderName, UUID recipientID, string recipientName, int amount, string description) {
+            
+            // ************ FIND AUTHORIZATION TOKEN FOR SENDER ******** //
+            
+            string token;
+            lock(m_tokenMap) {
+                bool found = m_tokenMap.TryGetValue(senderID.ToString(), out token);
+            }
+            if(token == null) {
+                return;
+            }
+            
+            // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
+            // TODO: How do we identify recipient?  Get email from profile from OpenSim UUID?
+            // TODO: If we use emails, we may need to make sure account merging works for email/3rd party providers.
+            // TODO: If we allow anyone to receive, need to ensure that gloebits received are locked down until user authenticates as merchant.
+            
+            // ************ BUILD AND SEND TRANSACT U2U POST REQUEST ******** //
+            
+            UUID transactionId = UUID.Random();
+            
+            OSDMap transact_params = new OSDMap();
+            
+            transact_params["version"] = 1;
+            transact_params["application-key"] = m_key;
+            transact_params["request-created"] = (int)(DateTime.UtcNow.Ticks / 10000000);  // TODO - figure out if this is in the right units
+            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, senderID.ToString());
+            
+            transact_params["transaction-id"] = transactionId.ToString();
+            transact_params["gloebit-balance-change"] = amount;
+            transact_params["asset-code"] = description;
+            transact_params["asset-quantity"] = 1;
+            
+            // TODO - add params describing recipient, transaction type, fees
+            
+            HttpWebRequest request = BuildGloebitRequest("transact-U2U", "POST", token, "application/json", transact_params);
+            if (request == null) {
+                // ERROR
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact-U2U failed to create HttpWebRequest");
+                return;
+                // TODO once we return, return error value
+            }
+            
+            //************ PARSE AND HANDLE TRANSACT U2U RESPONSE *********//
+            
+            // TODO - implement
+            
+            
+        }
+    
+        /***********************************************/
+        /********* GLOEBIT API HELPER FUNCTIONS ********/
+        /***********************************************/
+    
+        // TODO: OSDMap or Dictionary for params
+    
+        /// <summary>
+        /// Build an HTTPWebRequest for a Gloebit endpoint.
+        /// </summary>
+        /// <param name="relative_url">endpoint & query args.</param>
+        /// <param name="method">HTTP method for request -- eg: "GET", "POST".</param>
+        /// <param name="AuthToken">Authorization token for this user if one exists.</param>
+        /// <param name="content_type">content type of post/put request  -- eg: "application/json", "application/x-www-form-urlencoded".</param>
+        /// <param name="paramMap">parameter map for body of request.</param>
+        private HttpWebRequest BuildGloebitRequest(string relativeURL, string method, string authToken = "", string contentType = "", OSDMap paramMap = null) {
+            
+            // TODO: stop logging paramMap which can include client_secret
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, method:{1}, contentType:{2}, paramMap:{3}", relativeURL, method, contentType, paramMap);
+        
+            // combine Gloebit base url with endpoint and query args in relative url.
+            Uri requestURI = new Uri(m_url, relativeURL);
+        
+            // Create http web request from URL
+            HttpWebRequest request = (HttpWebRequest) WebRequest.Create(requestURI);
+        
+            // Add authorization header
+            if (authToken != "") {
+                request.Headers.Add("Authorization", String.Format("Bearer {0}", authToken));
+            }
+        
+            // Set request method and body
+            request.Method = method;
+            switch (method) {
+                case "GET":
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest GET relativeURL:{0}", relativeURL);
+                    break;
+                case "POST":
+                case "PUT":
+                    string paramString = "";
+                    byte[] postData = null;
+                    request.ContentType = contentType;
+                
+                    // Build paramString in proper format
+                    if (paramMap != null) {
+                        if (contentType == "application/x-www-form-urlencoded") {
+                            StringBuilder paramBuilder = new StringBuilder();
+                            foreach (KeyValuePair<string, OSD> p in (OSDMap)paramMap) {
+                                if(paramBuilder.Length != 0) {
+                                    paramBuilder.Append('&');
+                                }
+                                paramBuilder.AppendFormat("{0}={1}", HttpUtility.UrlEncode(p.Key), HttpUtility.UrlEncode(p.Value.ToString()));
+                            }
+                            paramString = paramBuilder.ToString();
+                        } else if (contentType == "application/json") {
+                            paramString = OSDParser.SerializeJsonString(paramMap);
+                        } else {
+                            // ERROR - we are not handling this content type properly
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, unrecognized content type:{1}", relativeURL, contentType);
+                            return null;
+                        }
+                
+                        // Byte encode paramString and write to requestStream
+                        postData = System.Text.Encoding.UTF8.GetBytes(paramString);
+                        request.ContentLength = postData.Length;
+                        using (Stream s = request.GetRequestStream()) {
+                            s.Write(postData, 0, postData.Length);
+                        }
+                    } else {
+                        // Probably should be a GET request if it has no paramMap
+                        m_log.WarnFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, Empty paramMap on {1} request", relativeURL, method);
+                    }
+                    // TODO: stop logging postData which can include client_secret
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest {0} relativeURL:{1}, postData:{2}, Length:{3}", method, relativeURL, System.Text.Encoding.Default.GetString(postData), postData.Length);
+                    break;
+                default:
+                    // ERROR - we are not handling this request type properly
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, unrecognized web request method:{1}", relativeURL, method);
+                    return null;
+            }
+            return request;
+        }
     }
-
 }
