@@ -143,36 +143,11 @@ namespace Gloebit.GloebitMoneyModule {
 
             Uri request_uri = new Uri(m_url, String.Format("oauth2/authorize?{0}", query_string));
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize request_uri: {0}", request_uri);
-            //WebRequest request = WebRequest.Create(request_uri);
-            //request.Method = "GET";
-
-            //HttpWebResponse response = (HttpWebResponse) request.GetResponse();
-            //string status = response.StatusDescription;
-            //StreamReader response_stream = new StreamReader(response.GetResponseStream());
-            //string response_str = response_stream.ReadToEnd();
-            //m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize response: {0}", response_str);
-            //response.Close();
             
             //*********** SEND AUTHORIZE REQUEST URI TO USER ***********//
             // currently can not launch browser directly for user, so send in message
 
             string message = String.Format("To use Gloebit currency, please autorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
-            // GridInstantMessage im = new GridInstantMessage();
-            // im.fromAgentID = Guid.Empty;
-            // im.fromAgentName = "Gloebit";
-            // im.toAgentID = user.AgentId.Guid;
-            // im.dialog = (byte)19;  // Object message
-            // im.fromGroup = false;
-            // im.message = message;
-            // im.imSessionID = UUID.Random().Guid;
-            // im.offline = 0;
-            // im.Position = Vector3.Zero;
-            // im.binaryBucket = new byte[0];
-            // im.ParentEstateID = 0;
-            // im.RegionID = Guid.Empty;
-            // im.timestamp = (uint)Util.UnixTimeSinceEpoch();
-            // 
-            // user.SendInstantMessage(im);
             user.SendBlueBoxMessage(UUID.Zero, "Gloebit", message);
             // use SendBlueBoxMessage as all others including SendLoadURL truncate to 255 char or below
 
