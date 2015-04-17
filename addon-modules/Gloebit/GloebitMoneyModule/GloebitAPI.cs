@@ -74,7 +74,8 @@ namespace Gloebit.GloebitMoneyModule {
         public void Authorize(IClientAPI user) {
 
             //********* BUILD AUTHORIZE QUERY ARG STRING ***************//
-            Dictionary<string, string> auth_params = new Dictionary<string, string>();
+            ////Dictionary<string, string> auth_params = new Dictionary<string, string>();
+            OSDMap auth_params = new OSDMap();
 
             auth_params["client_id"] = m_key;
             auth_params["r"] = m_keyAlias;
@@ -85,12 +86,7 @@ namespace Gloebit.GloebitMoneyModule {
             // TODO - make use of 'state' param for XSRF protection
             // auth_params["state"] = ???;
 
-            ArrayList query_args = new ArrayList();
-            foreach(KeyValuePair<string, string> p in auth_params) {
-                query_args.Add(String.Format("{0}={1}", p.Key, HttpUtility.UrlEncode(p.Value)));
-            }
-
-            string query_string = String.Join("&", (string[])query_args.ToArray(typeof(string)));
+            string query_string = BuildURLEncodedParamString(auth_params);
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize query_string: {0}", query_string);
 
@@ -430,14 +426,7 @@ namespace Gloebit.GloebitMoneyModule {
                     // Build paramString in proper format
                     if (paramMap != null) {
                         if (contentType == "application/x-www-form-urlencoded") {
-                            StringBuilder paramBuilder = new StringBuilder();
-                            foreach (KeyValuePair<string, OSD> p in (OSDMap)paramMap) {
-                                if(paramBuilder.Length != 0) {
-                                    paramBuilder.Append('&');
-                                }
-                                paramBuilder.AppendFormat("{0}={1}", HttpUtility.UrlEncode(p.Key), HttpUtility.UrlEncode(p.Value.ToString()));
-                            }
-                            paramString = paramBuilder.ToString();
+                            paramString = BuildURLEncodedParamString(paramMap);
                         } else if (contentType == "application/json") {
                             paramString = OSDParser.SerializeJsonString(paramMap);
                         } else {
@@ -465,6 +454,22 @@ namespace Gloebit.GloebitMoneyModule {
                     return null;
             }
             return request;
+        }
+        
+        /// <summary>
+        /// Build an application/x-www-form-urlencoded string from the paramMap.
+        /// </summary>
+        /// <param name="ParamMap">Parameters to be encoded.</param>
+        private string BuildURLEncodedParamString(OSDMap paramMap) {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildURLEncodedParamString building from paramMap:{0}:", paramMap);
+            StringBuilder paramBuilder = new StringBuilder();
+            foreach (KeyValuePair<string, OSD> p in (OSDMap)paramMap) {
+                if(paramBuilder.Length != 0) {
+                    paramBuilder.Append('&');
+                }
+                paramBuilder.AppendFormat("{0}={1}", HttpUtility.UrlEncode(p.Key), HttpUtility.UrlEncode(p.Value.ToString()));
+            }
+            return( paramBuilder.ToString() );
         }
     }
 }
