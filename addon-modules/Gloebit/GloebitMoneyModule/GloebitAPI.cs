@@ -77,7 +77,9 @@ namespace Gloebit.GloebitMoneyModule {
             Dictionary<string, string> auth_params = new Dictionary<string, string>();
 
             auth_params["client_id"] = m_key;
-            auth_params["r"] = m_keyAlias;
+            if(m_keyAlias != null && m_keyAlias != "") {
+                auth_params["r"] = m_keyAlias;
+            }
             auth_params["scope"] = "user balance transact";
             auth_params["redirect_uri"] = String.Format("{0}?agentId={1}", REDIRECT_URI, user.AgentId);
             auth_params["response_type"] = "code";
