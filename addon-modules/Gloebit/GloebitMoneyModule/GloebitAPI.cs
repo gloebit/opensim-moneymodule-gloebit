@@ -37,6 +37,7 @@ using OpenMetaverse;
 using OpenMetaverse.StructuredData;
 
 using OpenSim.Framework;
+using OpenSim.Services.Interfaces;
 
 namespace Gloebit.GloebitMoneyModule {
 
@@ -71,11 +72,12 @@ namespace Gloebit.GloebitMoneyModule {
                     s_tokenMap.TryGetValue(agentIdStr, out token);
                 }
 
-                // TODO - enable AvatarService persistence of tokens
-                //Scene s = LocateSceneClientIn(agentID);
-                //AvatarData ad = s.AvatarService.GetAvatar(agentID);
-                //Dictionary<string,string> data = ad.Data;
-                //string token = data["GLBAvatarToken"];
+                if(token == null) {
+                    AvatarData ad = GloebitMoneyModule.Instance.GetAvatarData(agentID);
+                    Dictionary<string,string> data = ad.Data;
+                    data.TryGetValue("GLBAvatarToken", out token);
+                }
+
                 // TODO - use the Gloebit identity service for userId
 
                 return new User(agentIdStr, null, token);
@@ -86,6 +88,9 @@ namespace Gloebit.GloebitMoneyModule {
                 lock(s_tokenMap) {
                     s_tokenMap[agentIdStr] = token;
                 }
+                string[] names =  {"GLBAvatarToken"};
+                string[] values = {token};
+                GloebitMoneyModule.Instance.GetAvatarService().SetItems(agentId, names, values);
                 return new User(agentIdStr, null, token);
             }
 

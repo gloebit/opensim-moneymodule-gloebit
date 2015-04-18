@@ -119,6 +119,8 @@ namespace Gloebit.GloebitMoneyModule
 
         private GloebitAPI m_api;
 
+        private static GloebitMoneyModule s_instance;
+
         /// <summary>
         /// Called on startup so the module can be configured.
         /// </summary>
@@ -150,6 +152,8 @@ namespace Gloebit.GloebitMoneyModule
             if(m_enabled) {
                 //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
                 m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl));
+
+                s_instance = this;
             }
         }
 
@@ -294,6 +298,7 @@ namespace Gloebit.GloebitMoneyModule
         public void Close()
         {
             m_enabled = false;
+            s_instance = null;
         }
 
         public Type ReplaceableInterface {
@@ -956,6 +961,18 @@ namespace Gloebit.GloebitMoneyModule
                 doMoneyTransfer(agentID, UUID.Zero, salePrice, 2, description);
             }
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
+        }
+
+        public static GloebitMoneyModule Instance {
+            get { return s_instance; }
+        }
+
+        public AvatarData GetAvatarData(UUID agentID) {
+            return GetAnyScene().AvatarService.GetAvatar(agentID);
+        }
+
+        public IAvatarService GetAvatarService() {
+            return GetAnyScene().AvatarService;
         }
     }
 }
