@@ -409,7 +409,7 @@ namespace Gloebit.GloebitMoneyModule
             bool result = true;
             
             // TODO - implement real money transfer transactions
-            m_api.Transact(Sender, resolveAgentName(Sender), amount, description);
+            m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
             //m_api.Transact(Receiver, resolveAgentName(Receiver), -amount, description);
             return result;
         }
@@ -549,6 +549,7 @@ namespace Gloebit.GloebitMoneyModule
 
             IClientAPI user = LocateClientObject(agentId);
             // TODO - only generate a new authorize request if the user haven't been authorized yet.
+            GloebitAPI.User u = GloebitAPI.User.Get(agentId);
             m_api.Authorize(user);
             returnval.Value = quoteResponse;
             return returnval;
@@ -646,11 +647,8 @@ namespace Gloebit.GloebitMoneyModule
             string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
 
-            string token = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+            GloebitAPI.User user = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
 
-            // TODO: stop logging token
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
-            
             // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
 
             Hashtable response = new Hashtable();
@@ -670,7 +668,10 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="agentID"></param>
         private void CheckExistAndRefreshFunds(UUID agentID)
         {
-            
+            GloebitAPI.User user = GloebitAPI.User.Get(agentID);
+            if(user != null) {
+                m_api.GetBalance(user);
+            }
         }
 
         /// <summary>
@@ -681,7 +682,8 @@ namespace Gloebit.GloebitMoneyModule
         private double GetFundsForAgentID(UUID agentID)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GetFundsForAgentID AgentID:{0}", agentID);
-            double returnfunds = m_api.GetBalance(agentID);
+            GloebitAPI.User user = GloebitAPI.User.Get(agentID);
+            double returnfunds = m_api.GetBalance(user);
             
             return returnfunds;
         }
