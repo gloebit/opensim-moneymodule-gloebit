@@ -213,14 +213,14 @@ namespace Gloebit.GloebitMoneyModule {
         }
         
         /// <summary>
-        /// Exchanges an authorization code granted from the Authorize endpoint for an access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.
-        /// This is the second phase of the OAuth2 process.  It is activated by the redirect_uri of the Authorize function.
+        /// Begins reqeust to exchange an authorization code granted from the Authorize endpoint for an access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.
+        /// This begins the second phase of the OAuth2 process.  It is activated by the redirect_uri of the Authorize function.
         /// This occurs completely behind the scenes for security purposes.
         /// </summary>
         /// <returns>The authenticated User object containing the access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.</returns>
         /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
         /// <param name="auth_code">Authorization Code returned to the redirect_uri from the Gloebit Authorize endpoint.</param>
-        public /* string */ void ExchangeAccessToken(IClientAPI user, string auth_code) {
+        public void ExchangeAccessToken(IClientAPI user, string auth_code) {
             
             //TODO stop logging auth_code
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken Name:[{0}] AgentID:{1} auth_code:{1}", user.Name, user.AgentId, auth_code);
@@ -253,13 +253,23 @@ namespace Gloebit.GloebitMoneyModule {
             IAsyncResult r = (IAsyncResult) request.BeginGetResponse(new AsyncCallback(GloebitWebResponseCallback), myRequestState);
             ////return null;
             return;
+            
         }
         
-        // ************ PARSE AND HANDLE EXCHANGE ACCESS TOKEN RESPONSE ********* //
+        
+        /// <summary>
+        /// Completes ExchangeAccessToken request, either saving the resulting access token or handling errors/access denials.
+        /// This completes the second phase of the OAuth2 process.  It is activated by the WebRequestCallbackFlow initiated by ExchangeAccessToken().
+        /// This occurs completely behind the scenes for security purposes.
+        /// </summary>
+        /// <param name="requestState">State details compiled as this web request processed.</param>
+        /// <param name="responseDataMap">Response data returned from Gloebit for this web request.</param>
         private void CompleteExchangeAccessToken(GloebitRequestState requestState, OSDMap responseDataMap) {
             
             // TODO - do not actually log the token
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken responseDataMap:{0}", responseDataMap);
+            
+            // ************ PARSE AND HANDLE EXCHANGE ACCESS TOKEN RESPONSE ********* //
                              
             string token = responseDataMap["access_token"];
             // TODO - do something to handle the "refresh_token" field properly
@@ -528,6 +538,11 @@ namespace Gloebit.GloebitMoneyModule {
             return( paramBuilder.ToString() );
         }
         
+        /// <summary>
+        /// Handles asynchronous return from web request BeginGetResponse.
+        /// Retrieves response stream and asynchronously begins reading response stream.
+        /// </summary>
+        /// <param name="ar">State details compiled as this web request is processed.</param>
         public void GloebitWebResponseCallback(IAsyncResult ar) {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitWebResponseCallback");
@@ -548,10 +563,15 @@ namespace Gloebit.GloebitMoneyModule {
             // TODO: Do I need to check the CanRead property before reading?
             
             //  Begin reading response into myRequestState.BufferRead
-            // TODO: Why is iarRead set??? Why do we need this?
+            // TODO: May want to make use of iarRead for calls by syncronous functions
             IAsyncResult iarRead = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, new AsyncCallback(GloebitReadCallBack), myRequestState);
         }
         
+        /// <summary>
+        /// Handles asynchronous return from web request response stream BeginRead().
+        /// Retrieves and stores buffered read, or closes stream and passes requestState to CompleteGloebitWebRequest().
+        /// </summary>
+        /// <param name="ar">State details compiled as this web request is processed.</param>
         private void GloebitReadCallBack(IAsyncResult asyncResult)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitReadCallback");
@@ -593,6 +613,10 @@ namespace Gloebit.GloebitMoneyModule {
             }
         }
         
+        /// <summary>
+        /// Compiles a map from the web request response and passes it to the proper endpoint completion function.
+        /// </summary>
+        /// <param name="requestState">State details compiled as this web request is processed.</param>
         private void CompleteGloebitWebRequest(GloebitRequestState requestState) {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteGloebitWebRequest responseData:{0}", requestState.responseData.ToString());

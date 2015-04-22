@@ -413,6 +413,7 @@ namespace Gloebit.GloebitMoneyModule
             // TODO - implement real money transfer transactions
             m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
             //m_api.Transact(Receiver, resolveAgentName(Receiver), -amount, description);
+            // TODO: Should we be returning true before Transact completes successfully now that this is async???
             return result;
         }
 
@@ -656,10 +657,13 @@ namespace Gloebit.GloebitMoneyModule
 
             // TODO: stop logging token
             //m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token");
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func started ExchangeAccessToken");
 
             // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
 
+            // TODO: How do we wait until complete to send this response and update balance?
+
+            // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
             Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
             response["str_response_string"] = "<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window.</body></html>";
