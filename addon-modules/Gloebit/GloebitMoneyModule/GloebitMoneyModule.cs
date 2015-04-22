@@ -968,6 +968,7 @@ namespace Gloebit.GloebitMoneyModule
                 string description = String.Format("object {0}({1}) on {2}({3})@{4}", part.Name, part.UUID, regionname, regionID, m_gridnick);
                 doMoneyTransfer(agentID, UUID.Zero, salePrice, 2, description);
             }
+            // TODO: deal with fact that Transact is now async.  The location of this log message is misleading, but left here as reminder.
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
         }
     }

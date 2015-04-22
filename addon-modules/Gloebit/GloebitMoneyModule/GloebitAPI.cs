@@ -213,7 +213,7 @@ namespace Gloebit.GloebitMoneyModule {
         }
         
         /// <summary>
-        /// Begins reqeust to exchange an authorization code granted from the Authorize endpoint for an access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.
+        /// Begins request to exchange an authorization code granted from the Authorize endpoint for an access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.
         /// This begins the second phase of the OAuth2 process.  It is activated by the redirect_uri of the Authorize function.
         /// This occurs completely behind the scenes for security purposes.
         /// </summary>
@@ -228,7 +228,6 @@ namespace Gloebit.GloebitMoneyModule {
             // ************ BUILD EXCHANGE ACCESS TOKEN POST REQUEST ******** //
 
             OSDMap auth_params = new OSDMap();
-            ////Dictionary<string,string> auth_params = new Dictionary<string,string>();
 
             auth_params["client_id"] = m_key;
             auth_params["client_secret"] = m_secret;
@@ -241,7 +240,7 @@ namespace Gloebit.GloebitMoneyModule {
             if (request == null) {
                 // ERROR
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.oauth2/access-token failed to create HttpWebRequest");
-                ////return null;
+                // TODO: signal error
                 return;
             }
             
@@ -251,8 +250,6 @@ namespace Gloebit.GloebitMoneyModule {
             
             // Issue the async request.
             IAsyncResult r = (IAsyncResult) request.BeginGetResponse(new AsyncCallback(GloebitWebResponseCallback), myRequestState);
-            ////return null;
-            return;
             
         }
         
@@ -337,7 +334,7 @@ namespace Gloebit.GloebitMoneyModule {
         // requires "transact" in scope of authorization token
 
         /// <summary>
-        /// Request Gloebit transaction for the gloebit amount specified from the sender to the owner of the Gloebit app this module is connected to.
+        /// Begins Gloebit transaction request for the gloebit amount specified from the sender to the owner of the Gloebit app this module is connected to.
         /// </summary>
         /// <param name="sender">User object for the user sending the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
         /// <param name="senderName">OpenSim Name of the user on this grid sending the gloebits.</param>
@@ -368,25 +365,33 @@ namespace Gloebit.GloebitMoneyModule {
                 return;
                 // TODO once we return, return error value
             }
-
-            //************ PARSE AND HANDLE TRANSACT RESPONSE *********//
             
-            HttpWebResponse response = (HttpWebResponse) request.GetResponse();
-            string status = response.StatusDescription;
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response status: {0}", status);
-            using(StreamReader response_stream = new StreamReader(response.GetResponseStream())) {
-                string response_str = response_stream.ReadToEnd();
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", response_str);
+            // **** Asynchronously make web request **** //
+            GloebitRequestState myRequestState = new GloebitRequestState(GloebitEndpoint.Transact, UUID.Parse(sender.AgentID));
+            myRequestState.request = request;
+            
+            // Issue the async request.
+            IAsyncResult r = (IAsyncResult) request.BeginGetResponse(new AsyncCallback(GloebitWebResponseCallback), myRequestState);
+        }
+        
+        /// <summary>
+        /// Completes Transact request.
+        /// This  is activated by the WebRequestCallbackFlow initiated by Transact().
+        /// </summary>
+        /// <param name="requestState">State details compiled as this web request processed.</param>
+        /// <param name="responseDataMap">Response data returned from Gloebit for this web request.</param>
+        private void CompleteTransact(GloebitRequestState requestState, OSDMap responseDataMap) {
 
-                OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", responseDataMap);
+            
+            //************ PARSE AND HANDLE TRANSACT RESPONSE *********//
 
-                bool success = (bool)responseData["success"];
-                // TODO: if success=false: id, balance, product-count are invalid.  Do not set balance.
-                double balance = responseData["balance"].AsReal();
-                string reason = responseData["reason"];
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact success: {0} balance: {1} reason: {2}", success, balance, reason);
-                // TODO - update the user's balance
-            }
+            bool success = (bool)responseDataMap["success"];
+            // TODO: if success=false: id, balance, product-count are invalid.  Do not set balance.
+            double balance = responseDataMap["balance"].AsReal();
+            string reason = responseDataMap["reason"];
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact success: {0} balance: {1} reason: {2}", success, balance, reason);
+            // TODO - update the user's balance
         }
         
         // TODO: create U2U endpoint in Gloebit system
@@ -405,7 +410,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="recipientName">OpenSim Name of the user on this grid receiving the gloebits.</param>
         /// <param name="amount">quantity of gloebits to be transacted.</param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
-        
+/*
         public void TransactU2U(User sender, string senderName, User recipient, string recipientName, int amount, string description) {
             
             // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
@@ -439,13 +444,13 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO once we return, return error value
             }
             
-            //************ PARSE AND HANDLE TRANSACT U2U RESPONSE *********//
+            // ************ PARSE AND HANDLE TRANSACT U2U RESPONSE ********* //
             
             // TODO - implement
             
             
         }
-    
+ */
         /***********************************************/
         /********* GLOEBIT API HELPER FUNCTIONS ********/
         /***********************************************/
@@ -538,6 +543,10 @@ namespace Gloebit.GloebitMoneyModule {
             return( paramBuilder.ToString() );
         }
         
+        /***********************************************/
+        /** GLOEBIT ASYNCHRONOUS API HELPER FUNCTIONS **/
+        /***********************************************/
+        
         /// <summary>
         /// Handles asynchronous return from web request BeginGetResponse.
         /// Retrieves response stream and asynchronously begins reading response stream.
@@ -626,6 +635,9 @@ namespace Gloebit.GloebitMoneyModule {
             switch (requestState.endpoint) {
                 case GloebitEndpoint.ExchangeAccessToken:
                     CompleteExchangeAccessToken(requestState, responseDataMap);
+                    break;
+                case GloebitEndpoint.Transact:
+                    CompleteTransact(requestState, responseDataMap);
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteGloebitWebRequest bad-endpoint:{0}", requestState.endpoint.ToString());
