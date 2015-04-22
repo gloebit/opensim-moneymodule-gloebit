@@ -1,0 +1,14 @@
+:VERSION 1
+
+BEGIN TRANSACTION;
+
+-- gloebitusers table
+CREATE TABLE GloebitUsers (
+    PrincipalID CHAR(36)  primary key,
+    GloebitID CHAR(36) NOT NULL,
+    GloebitToken CHAR(36) NOT NULL,
+    Status INT(11)
+);
+
+COMMIT;
+

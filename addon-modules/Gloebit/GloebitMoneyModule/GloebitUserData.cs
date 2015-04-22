@@ -24,15 +24,53 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+using System;
 using Nini.Config;
 using OpenSim.Data.MySQL;
+using OpenSim.Data.PGSQL;
+using OpenSim.Data.SQLite;
 
 namespace Gloebit.GloebitMoneyModule
 {
-    class GloebitUserData : MySQLGenericTableHandler<GloebitAPI.User> {
-        public GloebitUserData(IConfig config)
-            : base(config.GetString("ConnectionString"), "GloebitUsers", "GloebitUsersMySQL")
-        {
+    class GloebitUserData {
+
+        Object m_impl;
+
+        public GloebitUserData(IConfig config) {
+            switch(config.GetString("StorageProvider")) {
+                case "OpenSim.Data.SQLite.dll":
+                    m_impl = new SQLiteImpl(config);
+                    break;
+                case "OpenSim.Data.MySQL.dll":
+                    m_impl = new MySQLImpl(config);
+                    break;
+                case "OpenSim.Data.PGSQL.dll":
+                    m_impl = new PGSQLImpl(config);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.User> {
+            public SQLiteImpl(IConfig config)
+                : base(config.GetString("ConnectionString"), "GloebitUsers", "GloebitUsersSQLite")
+            {
+            }
+        }
+
+        private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.User> {
+            public MySQLImpl(IConfig config)
+                : base(config.GetString("ConnectionString"), "GloebitUsers", "GloebitUsersMySQL")
+            {
+            }
+        }
+
+        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.User> {
+            public PGSQLImpl(IConfig config)
+                : base(config.GetString("ConnectionString"), "GloebitUsers", "GloebitUsersPGSQL")
+            {
+            }
         }
     }
 }
