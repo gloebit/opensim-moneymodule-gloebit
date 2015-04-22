@@ -649,7 +649,14 @@ namespace Gloebit.GloebitMoneyModule
             string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
 
-            GloebitAPI.User user = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+            // GloebitAPI.User user = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+
+            // string token = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+
+            // TODO: stop logging token
+            //m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token");
 
             // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
 
