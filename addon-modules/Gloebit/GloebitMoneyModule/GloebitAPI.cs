@@ -59,6 +59,9 @@ namespace Gloebit.GloebitMoneyModule {
             // TODO - update tokenMap to be a proper LRU Cache and hold User objects
             private static Dictionary<string,string> s_tokenMap = new Dictionary<string, string>();
 
+            public User() {
+            }
+
             private User(string agentId, string userId, string token) {
                 this.agentId = agentId;
                 this.userId = userId;
@@ -74,6 +77,7 @@ namespace Gloebit.GloebitMoneyModule {
 
                 if(token == null) {
                     // TODO - lookup token in db using GloebitUserData
+
                     // TODO - use the Gloebit identity service for userId
                 }
 

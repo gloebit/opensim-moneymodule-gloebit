@@ -19,6 +19,8 @@
   <Reference name="OpenMetaverse.StructuredData" path="../../../bin/"/>
   <Reference name="Nini" path="../../../bin/"/>
   <Reference name="log4net" path="../../../bin/"/>
+  <Reference name="OpenSim.Data"/>
+  <Reference name="OpenSim.Data.MySQL"/>
   <Reference name="OpenSim.Framework"/>
   <Reference name="OpenSim.Framework.Servers"/>
   <Reference name="OpenSim.Framework.Servers.HttpServer"/>
@@ -34,6 +36,8 @@
  
   <Files>
     <Match pattern="*.cs" recurse="true"/>
+    <Match buildAction="EmbeddedResource" path="Resources" pattern="*.sql"/>
+    <Match buildAction="EmbeddedResource" path="Resources" pattern="*.migrations"/>
   </Files>
  
 </Project>

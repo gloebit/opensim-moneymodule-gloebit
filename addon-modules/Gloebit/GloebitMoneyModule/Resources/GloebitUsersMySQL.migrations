@@ -1,0 +1,15 @@
+﻿:VERSION 1		# -------------------------
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS `GloebitUsers` (
+    `PrincipalID` CHAR(36) NOT NULL,
+    `GloebitID` CHAR(36) NOT NULL,
+    `GloebitToken` CHAR(36) NOT NULL,
+    `Status` INT(11),
+    PRIMARY KEY (`PrincipalID`),
+    UNIQUE KEY `GloebitID` (`GloebitID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+COMMIT;
+
