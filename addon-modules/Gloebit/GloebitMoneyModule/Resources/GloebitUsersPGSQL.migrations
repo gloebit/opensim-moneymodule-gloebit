@@ -1,0 +1,14 @@
+:VERSION 1         # -------------------------------
+
+begin;
+
+CREATE TABLE GloebitUsers (
+  "PrincipalID" char(36) NOT NULL,
+  "GloebitID" char(36) NOT NULL,
+  "GloebitToken" char(36) NOT NULL,
+  "Status" integer NOT NULL,
+  PRIMARY KEY ("PrincipalID")
+);
+
+commit;
+

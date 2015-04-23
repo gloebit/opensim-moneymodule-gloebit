@@ -56,7 +56,11 @@ namespace Gloebit.GloebitMoneyModule {
             private readonly string userId;
             private readonly string token;
 
+            // TODO - update tokenMap to be a proper LRU Cache and hold User objects
             private static Dictionary<string,string> s_tokenMap = new Dictionary<string, string>();
+
+            public User() {
+            }
 
             private User(string agentId, string userId, string token) {
                 this.agentId = agentId;
@@ -71,12 +75,11 @@ namespace Gloebit.GloebitMoneyModule {
                     s_tokenMap.TryGetValue(agentIdStr, out token);
                 }
 
-                // TODO - enable AvatarService persistence of tokens
-                //Scene s = LocateSceneClientIn(agentID);
-                //AvatarData ad = s.AvatarService.GetAvatar(agentID);
-                //Dictionary<string,string> data = ad.Data;
-                //string token = data["GLBAvatarToken"];
-                // TODO - use the Gloebit identity service for userId
+                if(token == null) {
+                    // TODO - lookup token in db using GloebitUserData
+
+                    // TODO - use the Gloebit identity service for userId
+                }
 
                 return new User(agentIdStr, null, token);
             }
@@ -86,6 +89,8 @@ namespace Gloebit.GloebitMoneyModule {
                 lock(s_tokenMap) {
                     s_tokenMap[agentIdStr] = token;
                 }
+
+                // TODO - save token to GloebitUserData here
                 return new User(agentIdStr, null, token);
             }
 

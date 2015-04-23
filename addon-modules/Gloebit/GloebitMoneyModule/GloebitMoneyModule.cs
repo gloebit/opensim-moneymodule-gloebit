@@ -118,6 +118,7 @@ namespace Gloebit.GloebitMoneyModule
 
 
         private GloebitAPI m_api;
+        private GloebitUserData m_userData;
 
         /// <summary>
         /// Called on startup so the module can be configured.
@@ -150,6 +151,7 @@ namespace Gloebit.GloebitMoneyModule
             if(m_enabled) {
                 //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
                 m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl));
+                m_userData = new GloebitUserData(m_gConfig.Configs["DatabaseService"]);
             }
         }
 
