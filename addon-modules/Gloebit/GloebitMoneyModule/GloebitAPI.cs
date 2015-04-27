@@ -101,14 +101,6 @@ namespace Gloebit.GloebitMoneyModule {
                 GloebitUserData.Instance.Store(u);
                 return u;
             }
-
-            public string AgentID {
-                get { return PrincipalID; }
-            }
-
-            public string Token {
-                get { return GloebitToken; }
-            }
         }
 
         public GloebitAPI(string key, string keyAlias, string secret, Uri url) {
@@ -236,7 +228,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="user">User object for the OpenSim user for whom the balance request is being made. <see cref="GloebitAPI.User.Get(UUID)"/></param>
         public double GetBalance(User user) {
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance for agentID:{0}", user.AgentID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance for agentID:{0}", user.PrincipalID);
             
             //************ BUILD GET BALANCE GET REQUEST ********//
             
@@ -276,7 +268,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
         public void Transact(User sender, string senderName, int amount, string description) {
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", sender.AgentID, senderName, amount, description);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", sender.PrincipalID, senderName, amount, description);
             
             UUID transactionId = UUID.Random();
 
@@ -285,7 +277,7 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["version"] = 1;
             transact_params["application-key"] = m_key;
             transact_params["request-created"] = (int)(DateTime.UtcNow.Ticks / 10000000);  // TODO - figure out if this is in the right units
-            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.AgentID);
+            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
 
             transact_params["transaction-id"] = transactionId.ToString();
             transact_params["gloebit-balance-change"] = amount;
@@ -353,7 +345,7 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["version"] = 1;
             transact_params["application-key"] = m_key;
             transact_params["request-created"] = (int)(DateTime.UtcNow.Ticks / 10000000);  // TODO - figure out if this is in the right units
-            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.AgentID);
+            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
             
             transact_params["transaction-id"] = transactionId.ToString();
             transact_params["gloebit-balance-change"] = amount;
@@ -403,8 +395,8 @@ namespace Gloebit.GloebitMoneyModule {
             HttpWebRequest request = (HttpWebRequest) WebRequest.Create(requestURI);
         
             // Add authorization header
-            if (user != null && user.Token != "") {
-                request.Headers.Add("Authorization", String.Format("Bearer {0}", user.Token));
+            if (user != null && user.GloebitToken != "") {
+                request.Headers.Add("Authorization", String.Format("Bearer {0}", user.GloebitToken));
             }
         
             // Set request method and body
