@@ -34,9 +34,9 @@ namespace Gloebit.GloebitMoneyModule
 {
     class GloebitUserData {
 
-        Object m_impl;
+        private static IGloebitUserData m_impl;
 
-        public GloebitUserData(IConfig config) {
+        public static void Initialise(IConfig config) {
             switch(config.GetString("StorageProvider")) {
                 case "OpenSim.Data.SQLite.dll":
                     m_impl = new SQLiteImpl(config);
@@ -52,21 +52,33 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
 
-        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.User> {
+        public static IGloebitUserData Instance {
+            get { return m_impl; }
+        }
+
+        public interface IGloebitUserData {
+            GloebitAPI.User[] Get(string field, string key);
+
+            GloebitAPI.User[] Get(string[] fields, string[] keys);
+
+            bool Store(GloebitAPI.User user);
+        }
+
+        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.User>, IGloebitUserData {
             public SQLiteImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitUsers", "GloebitUsersSQLite")
             {
             }
         }
 
-        private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.User> {
+        private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.User>, IGloebitUserData {
             public MySQLImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitUsers", "GloebitUsersMySQL")
             {
             }
         }
 
-        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.User> {
+        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.User>, IGloebitUserData {
             public PGSQLImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitUsers", "GloebitUsersPGSQL")
             {

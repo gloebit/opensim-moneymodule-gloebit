@@ -52,9 +52,9 @@ namespace Gloebit.GloebitMoneyModule {
 
 
         public class User {
-            private readonly string agentId;
-            private readonly string userId;
-            private readonly string token;
+            public string PrincipalID;
+            public string GloebitID;
+            public string GloebitToken;
 
             // TODO - update tokenMap to be a proper LRU Cache and hold User objects
             private static Dictionary<string,string> s_tokenMap = new Dictionary<string, string>();
@@ -62,10 +62,10 @@ namespace Gloebit.GloebitMoneyModule {
             public User() {
             }
 
-            private User(string agentId, string userId, string token) {
-                this.agentId = agentId;
-                this.userId = userId;
-                this.token = token;
+            private User(string principalID, string gloebitID, string token) {
+                this.PrincipalID = principalID;
+                this.GloebitID = gloebitID;
+                this.GloebitToken = token;
             }
 
             public static User Get(UUID agentID) {
@@ -77,7 +77,13 @@ namespace Gloebit.GloebitMoneyModule {
 
                 if(token == null) {
                     // TODO - lookup token in db using GloebitUserData
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior token for {0}", agentIdStr);
+                    User[] users = GloebitUserData.Instance.Get("PrincipalID", agentIdStr);
 
+                    foreach(User u in users) {
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} {1}", u.PrincipalID, u.GloebitToken);
+                        return u;
+                    }
                     // TODO - use the Gloebit identity service for userId
                 }
 
@@ -91,15 +97,17 @@ namespace Gloebit.GloebitMoneyModule {
                 }
 
                 // TODO - save token to GloebitUserData here
-                return new User(agentIdStr, null, token);
+                User u = new User(agentIdStr, UUID.Zero.ToString(), token);
+                GloebitUserData.Instance.Store(u);
+                return u;
             }
 
             public string AgentID {
-                get { return agentId; }
+                get { return PrincipalID; }
             }
 
             public string Token {
-                get { return token; }
+                get { return GloebitToken; }
             }
         }
 
