@@ -53,9 +53,9 @@ namespace Gloebit.GloebitMoneyModule {
 
 
         public class User {
-            private readonly string agentId;
-            private readonly string userId;
-            private readonly string token;
+            public string PrincipalID;
+            public string GloebitID;
+            public string GloebitToken;
 
             // TODO - update tokenMap to be a proper LRU Cache and hold User objects
             private static Dictionary<string,string> s_tokenMap = new Dictionary<string, string>();
@@ -63,10 +63,10 @@ namespace Gloebit.GloebitMoneyModule {
             public User() {
             }
 
-            private User(string agentId, string userId, string token) {
-                this.agentId = agentId;
-                this.userId = userId;
-                this.token = token;
+            private User(string principalID, string gloebitID, string token) {
+                this.PrincipalID = principalID;
+                this.GloebitID = gloebitID;
+                this.GloebitToken = token;
             }
 
             public static User Get(UUID agentID) {
@@ -78,7 +78,13 @@ namespace Gloebit.GloebitMoneyModule {
 
                 if(token == null) {
                     // TODO - lookup token in db using GloebitUserData
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior token for {0}", agentIdStr);
+                    User[] users = GloebitUserData.Instance.Get("PrincipalID", agentIdStr);
 
+                    foreach(User u in users) {
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} {1}", u.PrincipalID, u.GloebitToken);
+                        return u;
+                    }
                     // TODO - use the Gloebit identity service for userId
                 }
 
@@ -92,15 +98,9 @@ namespace Gloebit.GloebitMoneyModule {
                 }
 
                 // TODO - save token to GloebitUserData here
-                return new User(agentIdStr, null, token);
-            }
-
-            public string AgentID {
-                get { return agentId; }
-            }
-
-            public string Token {
-                get { return token; }
+                User u = new User(agentIdStr, UUID.Zero.ToString(), token);
+                GloebitUserData.Instance.Store(u);
+                return u;
             }
         }
         
@@ -295,7 +295,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="user">User object for the OpenSim user for whom the balance request is being made. <see cref="GloebitAPI.User.Get(UUID)"/></param>
         public double GetBalance(User user) {
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance for agentID:{0}", user.AgentID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance for agentID:{0}", user.PrincipalID);
             
             //************ BUILD GET BALANCE GET REQUEST ********//
             
@@ -335,7 +335,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
         public void Transact(User sender, string senderName, int amount, string description) {
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", sender.AgentID, senderName, amount, description);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", sender.PrincipalID, senderName, amount, description);
             
             UUID transactionId = UUID.Random();
 
@@ -344,7 +344,7 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["version"] = 1;
             transact_params["application-key"] = m_key;
             transact_params["request-created"] = (int)(DateTime.UtcNow.Ticks / 10000000);  // TODO - figure out if this is in the right units
-            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.AgentID);
+            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
 
             transact_params["transaction-id"] = transactionId.ToString();
             transact_params["gloebit-balance-change"] = amount;
@@ -360,7 +360,7 @@ namespace Gloebit.GloebitMoneyModule {
             }
             
             // **** Asynchronously make web request **** //
-            GloebitRequestState myRequestState = new GloebitRequestState(GloebitEndpoint.Transact, UUID.Parse(sender.AgentID));
+            GloebitRequestState myRequestState = new GloebitRequestState(GloebitEndpoint.Transact, UUID.Parse(sender.PrincipalID));
             myRequestState.request = request;
             
             // Issue the async request.
@@ -420,7 +420,7 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["version"] = 1;
             transact_params["application-key"] = m_key;
             transact_params["request-created"] = (int)(DateTime.UtcNow.Ticks / 10000000);  // TODO - figure out if this is in the right units
-            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.AgentID);
+            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
             
             transact_params["transaction-id"] = transactionId.ToString();
             transact_params["gloebit-balance-change"] = amount;
@@ -470,8 +470,8 @@ namespace Gloebit.GloebitMoneyModule {
             HttpWebRequest request = (HttpWebRequest) WebRequest.Create(requestURI);
         
             // Add authorization header
-            if (user != null && user.Token != "") {
-                request.Headers.Add("Authorization", String.Format("Bearer {0}", user.Token));
+            if (user != null && user.GloebitToken != "") {
+                request.Headers.Add("Authorization", String.Format("Bearer {0}", user.GloebitToken));
             }
         
             // Set request method and body
