@@ -40,61 +40,6 @@ using OpenMetaverse.StructuredData;
 using OpenSim.Framework;
 
 namespace Gloebit.GloebitMoneyModule {
-    
-    public enum GloebitEndpoint {
-        None = 0,
-        Authorize = 1,
-        ExchangeAccessToken = 2,
-        GetBalance = 3,
-        Transact = 4,
-        TransactU2U = 5
-    };
-    
-    // TODO: how do I define this so that I can make it all private?
-    public class GloebitRequestState {
-        
-        // Variables Identifying Request
-        public UUID opensimAgentId;             // agentID of the user API calls are on behalf of
-        public GloebitEndpoint endpoint;        // Gloebit endpoint we are requesting
-        
-        // Web request variables
-        public HttpWebRequest request;
-        public Stream responseStream;
-        
-        // Variables for storing Gloebit response stream data asynchronously
-        public const int BUFFER_SIZE = 1024;    // size of buffer for max individual stream read events
-        public byte[] bufferRead;               // buffer read to by stream read events
-        public Decoder streamDecoder;           // Decoder for converting buffer to string in parts
-        public StringBuilder responseData;          // individual buffer reads compiled/appended to full data
-        
-        // TODO: What to do when error states are reached since there is no longer a return?  Should we store an error state in a member variable?
-        
-        public GloebitRequestState()
-        {
-            opensimAgentId = UUID.Zero;
-            endpoint = GloebitEndpoint.None;
-            
-            request = null;
-            responseStream = null;
-
-            bufferRead = new byte[BUFFER_SIZE];
-            streamDecoder = Encoding.UTF8.GetDecoder();     // Create Decoder for appropriate enconding type.
-            responseData = new StringBuilder(String.Empty);
-        }
-        
-        public GloebitRequestState(GloebitEndpoint endpt, UUID agentId)
-        {
-            opensimAgentId = agentId;
-            endpoint = endpt;
-            
-            request = null;
-            responseStream = null;
-            
-            bufferRead = new byte[BUFFER_SIZE];
-            streamDecoder = Encoding.UTF8.GetDecoder();     // Create Decoder for appropriate enconding type.
-            responseData = new StringBuilder(String.Empty);
-        }
-    }
 
     public class GloebitAPI {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
@@ -157,6 +102,54 @@ namespace Gloebit.GloebitMoneyModule {
             public string Token {
                 get { return token; }
             }
+        }
+        
+        private enum GloebitEndpoint {
+            None = 0,
+            Authorize = 1,
+            ExchangeAccessToken = 2,
+            GetBalance = 3,
+            Transact = 4,
+            TransactU2U = 5
+        }
+        
+        private class GloebitRequestState {
+            
+            // Variables Identifying Request
+            public UUID opensimAgentId;             // agentID of the user API calls are on behalf of
+            public GloebitEndpoint endpoint;        // Gloebit endpoint we are requesting
+            
+            // Web request variables
+            public HttpWebRequest request;
+            public Stream responseStream;
+            
+            // Variables for storing Gloebit response stream data asynchronously
+            public const int BUFFER_SIZE = 1024;    // size of buffer for max individual stream read events
+            public byte[] bufferRead;               // buffer read to by stream read events
+            public Decoder streamDecoder;           // Decoder for converting buffer to string in parts
+            public StringBuilder responseData;      // individual buffer reads compiled/appended to full data
+            
+            // TODO: What to do when error states are reached since there is no longer a return?  Should we store an error state in a member variable?
+            
+            // Default constructor used if we do not yet know the AgentID & endpoint when creating.
+            public GloebitRequestState() : this(GloebitEndpoint.None, UUID.Zero)
+            {
+            }
+            
+            // Preferred constructor - use if we know the endpoint and agentID at creation time.
+            public GloebitRequestState(GloebitEndpoint endpt, UUID agentId)
+            {
+                opensimAgentId = agentId;
+                endpoint = endpt;
+                
+                request = null;
+                responseStream = null;
+                
+                bufferRead = new byte[BUFFER_SIZE];
+                streamDecoder = Encoding.UTF8.GetDecoder();     // Create Decoder for appropriate enconding type.
+                responseData = new StringBuilder(String.Empty);
+            }
+            
         }
 
         public GloebitAPI(string key, string keyAlias, string secret, Uri url) {
@@ -581,16 +574,16 @@ namespace Gloebit.GloebitMoneyModule {
         /// Retrieves and stores buffered read, or closes stream and passes requestState to CompleteGloebitWebRequest().
         /// </summary>
         /// <param name="ar">State details compiled as this web request is processed.</param>
-        private void GloebitReadCallBack(IAsyncResult asyncResult)
+        private void GloebitReadCallBack(IAsyncResult ar)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitReadCallback");
             
             // Get the RequestState object from AsyncResult.
-            GloebitRequestState myRequestState = (GloebitRequestState)asyncResult.AsyncState;
+            GloebitRequestState myRequestState = (GloebitRequestState)ar.AsyncState;
             Stream responseStream = myRequestState.responseStream;
             
             // Handle data read.
-            int bytesRead = responseStream.EndRead( asyncResult );
+            int bytesRead = responseStream.EndRead( ar );
             if (bytesRead > 0)
             {
                 // Decode and store the bytesRead in responseData
@@ -601,8 +594,8 @@ namespace Gloebit.GloebitMoneyModule {
                 
                 // Continue reading data until
                 // responseStream.EndRead returns 0 for end of stream.
-                // TODO: should we be doing anything with ar???
-                IAsyncResult ar = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, new AsyncCallback(GloebitReadCallBack), myRequestState);
+                // TODO: should we be doing anything with result???
+                IAsyncResult result = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, new AsyncCallback(GloebitReadCallBack), myRequestState);
             }
             else
             {
