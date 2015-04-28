@@ -413,6 +413,7 @@ namespace Gloebit.GloebitMoneyModule
             // TODO - implement real money transfer transactions
             m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
             //m_api.Transact(Receiver, resolveAgentName(Receiver), -amount, description);
+            // TODO: Should we be returning true before Transact completes successfully now that this is async???
             return result;
         }
 
@@ -649,10 +650,20 @@ namespace Gloebit.GloebitMoneyModule
             string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
 
-            GloebitAPI.User user = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+            // GloebitAPI.User user = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+
+            // string token = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+
+            // TODO: stop logging token
+            //m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func started ExchangeAccessToken");
 
             // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
 
+            // TODO: How do we wait until complete to send this response and update balance?
+
+            // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
             Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
             response["str_response_string"] = "<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window.</body></html>";
@@ -957,6 +968,7 @@ namespace Gloebit.GloebitMoneyModule
                 string description = String.Format("object {0}({1}) on {2}({3})@{4}", part.Name, part.UUID, regionname, regionID, m_gridnick);
                 doMoneyTransfer(agentID, UUID.Zero, salePrice, 2, description);
             }
+            // TODO: deal with fact that Transact is now async.  The location of this log message is misleading, but left here as reminder.
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
         }
     }
