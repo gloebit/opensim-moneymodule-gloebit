@@ -242,7 +242,7 @@ namespace Gloebit.GloebitMoneyModule {
             myRequestState.request = request;
             
             // Issue the async request.
-            IAsyncResult r = (IAsyncResult) request.BeginGetResponse(new AsyncCallback(GloebitWebResponseCallback), myRequestState);
+            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback, myRequestState);
             
         }
         
@@ -364,7 +364,7 @@ namespace Gloebit.GloebitMoneyModule {
             myRequestState.request = request;
             
             // Issue the async request.
-            IAsyncResult r = (IAsyncResult) request.BeginGetResponse(new AsyncCallback(GloebitWebResponseCallback), myRequestState);
+            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback, myRequestState);
         }
         
         /// <summary>
@@ -566,7 +566,7 @@ namespace Gloebit.GloebitMoneyModule {
             
             //  Begin reading response into myRequestState.BufferRead
             // TODO: May want to make use of iarRead for calls by syncronous functions
-            IAsyncResult iarRead = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, new AsyncCallback(GloebitReadCallBack), myRequestState);
+            IAsyncResult iarRead = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, GloebitReadCallBack, myRequestState);
         }
         
         /// <summary>
@@ -595,7 +595,7 @@ namespace Gloebit.GloebitMoneyModule {
                 // Continue reading data until
                 // responseStream.EndRead returns 0 for end of stream.
                 // TODO: should we be doing anything with result???
-                IAsyncResult result = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, new AsyncCallback(GloebitReadCallBack), myRequestState);
+                IAsyncResult result = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, GloebitReadCallBack, myRequestState);
             }
             else
             {
