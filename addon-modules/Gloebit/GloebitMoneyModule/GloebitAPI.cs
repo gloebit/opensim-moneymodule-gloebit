@@ -360,7 +360,7 @@ namespace Gloebit.GloebitMoneyModule {
             }
             
             // **** Asynchronously make web request **** //
-            GloebitRequestState myRequestState = new GloebitRequestState(GloebitEndpoint.Transact, UUID.Parse(sender.AgentID));
+            GloebitRequestState myRequestState = new GloebitRequestState(GloebitEndpoint.Transact, UUID.Parse(sender.PrincipalID));
             myRequestState.request = request;
             
             // Issue the async request.
