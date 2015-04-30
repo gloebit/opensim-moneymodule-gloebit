@@ -77,18 +77,23 @@ namespace Gloebit.GloebitMoneyModule {
                 }
 
                 if(token == null) {
-                    // TODO - lookup token in db using GloebitUserData
                     m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior token for {0}", agentIdStr);
                     User[] users = GloebitUserData.Instance.Get("PrincipalID", agentIdStr);
 
-                    foreach(User u in users) {
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} {1}", u.PrincipalID, u.GloebitToken);
-                        return u;
+                    switch(users.Length) {
+                        case 1:
+                            User u = users[0];
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} {1}", u.PrincipalID, u.GloebitToken);
+                            return u;
+                        case 0:
+                            return new User(agentIdStr, null, token);
+                        default:
+                           throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one prior token for {0}", agentIdStr));
                     }
                     // TODO - use the Gloebit identity service for userId
                 }
 
-                return new User(agentIdStr, null, token);
+                return null;
             }
 
             public static User Init(UUID agentId, string token) {
@@ -97,7 +102,6 @@ namespace Gloebit.GloebitMoneyModule {
                     s_tokenMap[agentIdStr] = token;
                 }
 
-                // TODO - save token to GloebitUserData here
                 User u = new User(agentIdStr, UUID.Zero.ToString(), token);
                 GloebitUserData.Instance.Store(u);
                 return u;
@@ -157,7 +161,6 @@ namespace Gloebit.GloebitMoneyModule {
             m_keyAlias = keyAlias;
             m_secret = secret;
             m_url = url;
-            // TODO: Populate token map from file
         }
         
         /************************************************/
