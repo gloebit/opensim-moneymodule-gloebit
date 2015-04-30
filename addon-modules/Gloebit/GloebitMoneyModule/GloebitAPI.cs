@@ -259,9 +259,6 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="responseDataMap">Response data returned from Gloebit for this web request.</param>
         private void CompleteExchangeAccessToken(GloebitRequestState requestState, OSDMap responseDataMap) {
             
-            // TODO - do not actually log the token
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken responseDataMap:{0}", responseDataMap);
-            
             // ************ PARSE AND HANDLE EXCHANGE ACCESS TOKEN RESPONSE ********* //
                              
             string token = responseDataMap["access_token"];
@@ -269,10 +266,6 @@ namespace Gloebit.GloebitMoneyModule {
             if(token != String.Empty) {
                 User u = User.Init(requestState.opensimAgentId, token);
 
-                // TODO - do not actually log the token
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken saving token for agent: {0} as token: {1}", requestState.opensimAgentId.ToString(), token);
-                
-                // TODO: Also add token to stored file
                 // TODO: If we need to alert any process that this is complete, now is the time.
             } else {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken error: {0}, reason: {1}", responseDataMap["error"], responseDataMap["reason"]);
@@ -463,9 +456,6 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="paramMap">parameter map for body of request.</param>
         private HttpWebRequest BuildGloebitRequest(string relativeURL, string method, User user, string contentType = "", OSDMap paramMap = null) {
             
-            // TODO: stop logging paramMap which can include client_secret
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, method:{1}, contentType:{2}, paramMap:{3}", relativeURL, method, contentType, paramMap);
-        
             // combine Gloebit base url with endpoint and query args in relative url.
             Uri requestURI = new Uri(m_url, relativeURL);
         
@@ -512,8 +502,6 @@ namespace Gloebit.GloebitMoneyModule {
                         // Probably should be a GET request if it has no paramMap
                         m_log.WarnFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, Empty paramMap on {1} request", relativeURL, method);
                     }
-                    // TODO: stop logging postData which can include client_secret
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest {0} relativeURL:{1}, postData:{2}, Length:{3}", method, relativeURL, System.Text.Encoding.Default.GetString(postData), postData.Length);
                     break;
                 default:
                     // ERROR - we are not handling this request type properly
