@@ -108,20 +108,12 @@ namespace Gloebit.GloebitMoneyModule {
             }
         }
         
-        private enum GloebitEndpoint {
-            None = 0,
-            Authorize = 1,
-            ExchangeAccessToken = 2,
-            GetBalance = 3,
-            Transact = 4,
-            TransactU2U = 5
-        }
-        
+        private delegate void CompletionCallback(GloebitRequestState requestState, OSDMap responseDataMap);
+
         private class GloebitRequestState {
             
             // Variables Identifying Request
             public UUID opensimAgentId;             // agentID of the user API calls are on behalf of
-            public GloebitEndpoint endpoint;        // Gloebit endpoint we are requesting
             
             // Web request variables
             public HttpWebRequest request;
@@ -132,26 +124,24 @@ namespace Gloebit.GloebitMoneyModule {
             public byte[] bufferRead;               // buffer read to by stream read events
             public Decoder streamDecoder;           // Decoder for converting buffer to string in parts
             public StringBuilder responseData;      // individual buffer reads compiled/appended to full data
+
+            public CompletionCallback continuation;
             
             // TODO: What to do when error states are reached since there is no longer a return?  Should we store an error state in a member variable?
             
-            // Default constructor used if we do not yet know the AgentID & endpoint when creating.
-            public GloebitRequestState() : this(GloebitEndpoint.None, UUID.Zero)
-            {
-            }
-            
             // Preferred constructor - use if we know the endpoint and agentID at creation time.
-            public GloebitRequestState(GloebitEndpoint endpt, UUID agentId)
+            public GloebitRequestState(UUID agentId, HttpWebRequest req, CompletionCallback continuation)
             {
                 opensimAgentId = agentId;
-                endpoint = endpt;
                 
-                request = null;
+                request = req;
                 responseStream = null;
                 
                 bufferRead = new byte[BUFFER_SIZE];
                 streamDecoder = Encoding.UTF8.GetDecoder();     // Create Decoder for appropriate enconding type.
                 responseData = new StringBuilder(String.Empty);
+
+                this.continuation = continuation;
             }
             
         }
@@ -241,11 +231,7 @@ namespace Gloebit.GloebitMoneyModule {
             }
             
             // **** Asynchronously make web request **** //
-            GloebitRequestState myRequestState = new GloebitRequestState(GloebitEndpoint.ExchangeAccessToken, user.AgentId);
-            myRequestState.request = request;
-            
-            // Issue the async request.
-            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback, myRequestState);
+            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback, new GloebitRequestState(user.AgentId, request, CompleteExchangeAccessToken));
             
         }
         
@@ -356,11 +342,7 @@ namespace Gloebit.GloebitMoneyModule {
             }
             
             // **** Asynchronously make web request **** //
-            GloebitRequestState myRequestState = new GloebitRequestState(GloebitEndpoint.Transact, UUID.Parse(sender.PrincipalID));
-            myRequestState.request = request;
-            
-            // Issue the async request.
-            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback, myRequestState);
+            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback, new GloebitRequestState(UUID.Parse(sender.PrincipalID), request, CompleteTransact));
         }
         
         /// <summary>
@@ -614,19 +596,9 @@ namespace Gloebit.GloebitMoneyModule {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteGloebitWebRequest responseData:{0}", requestState.responseData.ToString());
             
-            OSDMap responseDataMap = (OSDMap)OSDParser.DeserializeJson(requestState.responseData.ToString());
-            
-            switch (requestState.endpoint) {
-                case GloebitEndpoint.ExchangeAccessToken:
-                    CompleteExchangeAccessToken(requestState, responseDataMap);
-                    break;
-                case GloebitEndpoint.Transact:
-                    CompleteTransact(requestState, responseDataMap);
-                    break;
-                default:
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteGloebitWebRequest bad-endpoint:{0}", requestState.endpoint.ToString());
-                    // TODO: create a FailedGloebitWebRequest(GloebitRequestState requestState) function to handle cleanup.
-                    break;
+            if (requestState.continuation != null) {
+                OSDMap responseDataMap = (OSDMap)OSDParser.DeserializeJson(requestState.responseData.ToString());
+                requestState.continuation(requestState, responseDataMap);
             }
         }
     }
