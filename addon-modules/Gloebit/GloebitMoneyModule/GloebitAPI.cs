@@ -231,32 +231,22 @@ namespace Gloebit.GloebitMoneyModule {
             }
             
             // **** Asynchronously make web request **** //
-            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback, new GloebitRequestState(user.AgentId, request, CompleteExchangeAccessToken));
-            
-        }
-        
-        
-        /// <summary>
-        /// Completes ExchangeAccessToken request, either saving the resulting access token or handling errors/access denials.
-        /// This completes the second phase of the OAuth2 process.  It is activated by the WebRequestCallbackFlow initiated by ExchangeAccessToken().
-        /// This occurs completely behind the scenes for security purposes.
-        /// </summary>
-        /// <param name="requestState">State details compiled as this web request processed.</param>
-        /// <param name="responseDataMap">Response data returned from Gloebit for this web request.</param>
-        private void CompleteExchangeAccessToken(GloebitRequestState requestState, OSDMap responseDataMap) {
-            
-            // ************ PARSE AND HANDLE EXCHANGE ACCESS TOKEN RESPONSE ********* //
-                             
-            string token = responseDataMap["access_token"];
-            // TODO - do something to handle the "refresh_token" field properly
-            if(token != String.Empty) {
-                User u = User.Init(requestState.opensimAgentId, token);
+            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
+                new GloebitRequestState(user.AgentId, request,
+                    delegate(GloebitRequestState requestState, OSDMap responseDataMap) {
+                        // ************ PARSE AND HANDLE EXCHANGE ACCESS TOKEN RESPONSE ********* //
 
-                // TODO: If we need to alert any process that this is complete, now is the time.
-            } else {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken error: {0}, reason: {1}", responseDataMap["error"], responseDataMap["reason"]);
-                // TODO: signal error;
-            }
+                        string token = responseDataMap["access_token"];
+                        // TODO - do something to handle the "refresh_token" field properly
+                        if(token != String.Empty) {
+                            User u = User.Init(requestState.opensimAgentId, token);
+
+                            // TODO: If we need to alert any process that this is complete, now is the time.
+                        } else {
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken error: {0}, reason: {1}", responseDataMap["error"], responseDataMap["reason"]);
+                            // TODO: signal error;
+                        }
+                    }));
         }
         
         
@@ -342,27 +332,20 @@ namespace Gloebit.GloebitMoneyModule {
             }
             
             // **** Asynchronously make web request **** //
-            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback, new GloebitRequestState(UUID.Parse(sender.PrincipalID), request, CompleteTransact));
-        }
-        
-        /// <summary>
-        /// Completes Transact request.
-        /// This  is activated by the WebRequestCallbackFlow initiated by Transact().
-        /// </summary>
-        /// <param name="requestState">State details compiled as this web request processed.</param>
-        /// <param name="responseDataMap">Response data returned from Gloebit for this web request.</param>
-        private void CompleteTransact(GloebitRequestState requestState, OSDMap responseDataMap) {
+            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
+                new GloebitRequestState(UUID.Parse(sender.PrincipalID), request, 
+                    delegate(GloebitRequestState requestState, OSDMap responseDataMap) {
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", responseDataMap);
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", responseDataMap);
-            
-            //************ PARSE AND HANDLE TRANSACT RESPONSE *********//
+                        //************ PARSE AND HANDLE TRANSACT RESPONSE *********//
 
-            bool success = (bool)responseDataMap["success"];
-            // TODO: if success=false: id, balance, product-count are invalid.  Do not set balance.
-            double balance = responseDataMap["balance"].AsReal();
-            string reason = responseDataMap["reason"];
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact success: {0} balance: {1} reason: {2}", success, balance, reason);
-            // TODO - update the user's balance
+                        bool success = (bool)responseDataMap["success"];
+                        // TODO: if success=false: id, balance, product-count are invalid.  Do not set balance.
+                        double balance = responseDataMap["balance"].AsReal();
+                        string reason = responseDataMap["reason"];
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact success: {0} balance: {1} reason: {2}", success, balance, reason);
+                        // TODO - update the user's balance
+                    }));
         }
         
         // TODO: create U2U endpoint in Gloebit system
@@ -544,7 +527,7 @@ namespace Gloebit.GloebitMoneyModule {
         
         /// <summary>
         /// Handles asynchronous return from web request response stream BeginRead().
-        /// Retrieves and stores buffered read, or closes stream and passes requestState to CompleteGloebitWebRequest().
+        /// Retrieves and stores buffered read, or closes stream and passes requestState to requestState.continuation().
         /// </summary>
         /// <param name="ar">State details compiled as this web request is processed.</param>
         private void GloebitReadCallBack(IAsyncResult ar)
@@ -583,22 +566,10 @@ namespace Gloebit.GloebitMoneyModule {
                     // TODO: signal error
                 }
                 
-                // Manage response data and call proper endpoint completion
-                CompleteGloebitWebRequest(myRequestState);
-            }
-        }
-        
-        /// <summary>
-        /// Compiles a map from the web request response and passes it to the proper endpoint completion function.
-        /// </summary>
-        /// <param name="requestState">State details compiled as this web request is processed.</param>
-        private void CompleteGloebitWebRequest(GloebitRequestState requestState) {
-            
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteGloebitWebRequest responseData:{0}", requestState.responseData.ToString());
-            
-            if (requestState.continuation != null) {
-                OSDMap responseDataMap = (OSDMap)OSDParser.DeserializeJson(requestState.responseData.ToString());
-                requestState.continuation(requestState, responseDataMap);
+                if (myRequestState.continuation != null) {
+                    OSDMap responseDataMap = (OSDMap)OSDParser.DeserializeJson(myRequestState.responseData.ToString());
+                    myRequestState.continuation(myRequestState, responseDataMap);
+                }
             }
         }
     }
