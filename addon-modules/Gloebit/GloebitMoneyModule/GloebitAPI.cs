@@ -108,12 +108,9 @@ namespace Gloebit.GloebitMoneyModule {
             }
         }
         
-        private delegate void CompletionCallback(GloebitRequestState requestState, OSDMap responseDataMap);
+        private delegate void CompletionCallback(OSDMap responseDataMap);
 
         private class GloebitRequestState {
-            
-            // Variables Identifying Request
-            public UUID opensimAgentId;             // agentID of the user API calls are on behalf of
             
             // Web request variables
             public HttpWebRequest request;
@@ -130,10 +127,8 @@ namespace Gloebit.GloebitMoneyModule {
             // TODO: What to do when error states are reached since there is no longer a return?  Should we store an error state in a member variable?
             
             // Preferred constructor - use if we know the endpoint and agentID at creation time.
-            public GloebitRequestState(UUID agentId, HttpWebRequest req, CompletionCallback continuation)
+            public GloebitRequestState(HttpWebRequest req, CompletionCallback continuation)
             {
-                opensimAgentId = agentId;
-                
                 request = req;
                 responseStream = null;
                 
@@ -232,14 +227,14 @@ namespace Gloebit.GloebitMoneyModule {
             
             // **** Asynchronously make web request **** //
             IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
-                new GloebitRequestState(user.AgentId, request,
-                    delegate(GloebitRequestState requestState, OSDMap responseDataMap) {
+                new GloebitRequestState(request,
+                    delegate(OSDMap responseDataMap) {
                         // ************ PARSE AND HANDLE EXCHANGE ACCESS TOKEN RESPONSE ********* //
 
                         string token = responseDataMap["access_token"];
                         // TODO - do something to handle the "refresh_token" field properly
                         if(token != String.Empty) {
-                            User u = User.Init(requestState.opensimAgentId, token);
+                            User u = User.Init(user.AgentId, token);
 
                             // TODO: If we need to alert any process that this is complete, now is the time.
                         } else {
@@ -333,8 +328,8 @@ namespace Gloebit.GloebitMoneyModule {
             
             // **** Asynchronously make web request **** //
             IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
-                new GloebitRequestState(UUID.Parse(sender.PrincipalID), request, 
-                    delegate(GloebitRequestState requestState, OSDMap responseDataMap) {
+                new GloebitRequestState(request, 
+                    delegate(OSDMap responseDataMap) {
                         m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", responseDataMap);
 
                         //************ PARSE AND HANDLE TRANSACT RESPONSE *********//
@@ -568,7 +563,7 @@ namespace Gloebit.GloebitMoneyModule {
                 
                 if (myRequestState.continuation != null) {
                     OSDMap responseDataMap = (OSDMap)OSDParser.DeserializeJson(myRequestState.responseData.ToString());
-                    myRequestState.continuation(myRequestState, responseDataMap);
+                    myRequestState.continuation(responseDataMap);
                 }
             }
         }
