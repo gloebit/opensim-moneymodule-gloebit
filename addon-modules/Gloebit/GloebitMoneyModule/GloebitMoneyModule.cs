@@ -139,10 +139,11 @@ namespace Gloebit.GloebitMoneyModule
                 ReadConfigAndPopulate(sec_config, section);
             }
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}, GLBEnvironment: {1}, GLBKeyAlias {2}, GLBKey: {3}, GLBSecret {4}",
-                m_enabled, m_environment, m_keyAlias, m_key, (m_secret == null ? "null" : "configured"));
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}, GLBEnvironment: {1}, GLBApiUrl: {2} GLBKeyAlias {3}, GLBKey: {4}, GLBSecret {5}",
+                m_enabled, m_environment, m_apiUrl, m_keyAlias, m_key, (m_secret == null ? "null" : "configured"));
 
-            if(m_environment != GLBEnv.Sandbox && m_environment != GLBEnv.Production) {
+            // TODO: I've added GLBEnv.Custom for testing.  Remove before we ship
+            if(m_environment != GLBEnv.Sandbox && m_environment != GLBEnv.Production && m_environment != GLBEnv.Custom) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] Unsupported environment selected: {0}, disabling GloebitMoneyModule", m_environment);
                 m_enabled = false;
             }
@@ -410,9 +411,11 @@ namespace Gloebit.GloebitMoneyModule
             bool result = true;
             
             // TODO - implement real money transfer transactions
-            m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
-            //m_api.Transact(Receiver, resolveAgentName(Receiver), -amount, description);
+            ////m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
+            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description);
+
             // TODO: Should we be returning true before Transact completes successfully now that this is async???
+            // TODO: use transactiontype
             return result;
         }
 
@@ -497,6 +500,25 @@ namespace Gloebit.GloebitMoneyModule
                     agentID);
             }
             
+            return String.Empty;
+        }
+
+        private string resolveAgentEmail(UUID agentID)
+        {
+            // try avatar username surname
+            Scene scene = GetAnyScene();
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
+            if (account != null)
+            {
+                string email = account.Email;
+                return email;
+
+            }
+            else
+            {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE]: Could not resolve user {0}", agentID);
+            }
+
             return String.Empty;
         }
 
@@ -695,6 +717,7 @@ namespace Gloebit.GloebitMoneyModule
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GetFundsForAgentID AgentID:{0}", agentID);
             GloebitAPI.User user = GloebitAPI.User.Get(agentID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GetFundsForAgentID User:{0}", user);
             double returnfunds = m_api.GetBalance(user);
             
             return returnfunds;
@@ -960,12 +983,22 @@ namespace Gloebit.GloebitMoneyModule
             }
             bool success = module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice);
             if(success) {
+                // TODO: perhaps use a dictionary like this one and pass it through to our api
+                //Dictionary<string, string> buyObject = new Dictionary<string, string>();
+                //buyObject.Add("categoryID", categoryID.ToString());
+                //buyObject.Add("localID", Convert.ToString(localID));
+                //buyObject.Add("saleType", saleType.ToString());
+                //buyObject.Add("objectUUID", part.UUID.ToString());
+                //buyObject.Add("objectName", part.Name);
+                //buyObject.Add("objectDescription", part.Description);
+                //buyObject.Add("objectLocation", m_sceneHandler.GetObjectLocation(part));
+
                 string agentName = resolveAgentName(agentID);
                 string regionname = s.RegionInfo.RegionName;
                 string regionID = s.RegionInfo.RegionID.ToString();
 
                 string description = String.Format("object {0}({1}) on {2}({3})@{4}", part.Name, part.UUID, regionname, regionID, m_gridnick);
-                doMoneyTransfer(agentID, UUID.Zero, salePrice, 2, description);
+                doMoneyTransfer(agentID, part.OwnerID, salePrice, 2, description);
             }
             // TODO: deal with fact that Transact is now async.  The location of this log message is misleading, but left here as reminder.
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
