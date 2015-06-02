@@ -70,6 +70,7 @@ namespace Gloebit.GloebitMoneyModule {
             }
 
             public static User Get(UUID agentID) {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] in User.Get");
                 string agentIdStr = agentID.ToString();
                 string token;
                 lock(s_tokenMap) {
@@ -93,7 +94,8 @@ namespace Gloebit.GloebitMoneyModule {
                     // TODO - use the Gloebit identity service for userId
                 }
 
-                return null;
+                //return null;
+                return new User (agentIdStr, null, token);
             }
 
             public static User Init(UUID agentId, string token) {
@@ -235,6 +237,7 @@ namespace Gloebit.GloebitMoneyModule {
                         // TODO - do something to handle the "refresh_token" field properly
                         if(token != String.Empty) {
                             User u = User.Init(user.AgentId, token);
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", u);
 
                             // TODO: If we need to alert any process that this is complete, now is the time.
                         } else {
@@ -343,9 +346,8 @@ namespace Gloebit.GloebitMoneyModule {
                     }));
         }
         
-        // TODO: create U2U endpoint in Gloebit system
+
         // TODO: does recipient have to authorize app?  Do they need to become a merchant on that platform or opt in to agreeing to receive gloebits?  How do they currently authorize sale on a grid?
-        // TODO: can funds be sent to email address if recipient has not yet linked an account on this system?
         // TODO: Should we pass a bool for charging a fee or the actual fee % -- to the module owner --- could always charge a fee.  could be % set in app for when charged.  could be % set for each transaction type in app.
         // TODO: Should we always charge our fee, or have a bool or transaction type for occasions when we may not charge?
         // TODO: Do we need an endpoint for reversals/refunds, or just an admin interface from Gloebit?
@@ -357,10 +359,13 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="senderName">OpenSim Name of the user on this grid sending the gloebits.</param>
         /// <param name="recipient">User object for the user receiving the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
         /// <param name="recipientName">OpenSim Name of the user on this grid receiving the gloebits.</param>
+        /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
         /// <param name="amount">quantity of gloebits to be transacted.</param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
-/*
-        public void TransactU2U(User sender, string senderName, User recipient, string recipientName, int amount, string description) {
+
+        public void TransactU2U(User sender, string senderName, User recipient, string recipientName, string recipientEmail, int amount, string description) {
+
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6}", sender.PrincipalID, senderName, recipient.PrincipalID, recipientName, recipientEmail, amount, description);
             
             // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
             // TODO: How do we identify recipient?  Get email from profile from OpenSim UUID?
@@ -384,22 +389,45 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["asset-quantity"] = 1;
             
             // TODO - add params describing recipient, transaction type, fees
+            // U2U specific transact params
+            transact_params["seller-name-on-application"] = String.Format("{0} - {1}", recipientName, recipient.PrincipalID);
+            transact_params["seller-id-on-application"] = recipient.PrincipalID;
+            if (recipient.GloebitID != null) {
+                transact_params["seller-id-from-gloebit"] = recipient.GloebitID;
+            }
+            if (recipientEmail != String.Empty) {
+                transact_params["seller-email-address"] = recipientEmail;
+            }
             
-            HttpWebRequest request = BuildGloebitRequest("transact-U2U", "POST", sender, "application/json", transact_params);
+            HttpWebRequest request = BuildGloebitRequest("transact-u2u", "POST", sender, "application/json", transact_params);
             if (request == null) {
                 // ERROR
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact-U2U failed to create HttpWebRequest");
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U failed to create HttpWebRequest");
                 return;
                 // TODO once we return, return error value
             }
-            
-            // ************ PARSE AND HANDLE TRANSACT U2U RESPONSE ********* //
-            
-            // TODO - implement
-            
+
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U about to BeginGetResponse");
+            // **** Asynchronously make web request **** //
+            IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
+			                                          new GloebitRequestState(request, 
+			                        delegate(OSDMap responseDataMap) {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U async response");
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U response: {0}", responseDataMap);
+
+                //************ PARSE AND HANDLE TRANSACT-U2U RESPONSE *********//
+
+                bool success = (bool)responseDataMap["success"];
+                // TODO: if success=false: id, balance, product-count are invalid.  Do not set balance.
+                double balance = responseDataMap["balance"].AsReal();
+                string reason = responseDataMap["reason"];
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U success: {0} balance: {1} reason: {2}", success, balance, reason);
+                // TODO - update the user's balance
+                // TODO - consider updating recipient's balance (do we need to check if logged in?)
+            }));
             
         }
- */
+ 
         /***********************************************/
         /********* GLOEBIT API HELPER FUNCTIONS ********/
         /***********************************************/
@@ -506,18 +534,43 @@ namespace Gloebit.GloebitMoneyModule {
             
             // Call EndGetResponse, which produces the WebResponse object
             //  that came from the request issued above.
-            HttpWebResponse resp = (HttpWebResponse)req.EndGetResponse(ar);
-            
-            //  Start reading data from the response stream.
-            // TODO: look into BeginGetResponseStream();
-            Stream responseStream = resp.GetResponseStream();
-            myRequestState.responseStream = responseStream;
-            
-            // TODO: Do I need to check the CanRead property before reading?
-            
-            //  Begin reading response into myRequestState.BufferRead
-            // TODO: May want to make use of iarRead for calls by syncronous functions
-            IAsyncResult iarRead = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, GloebitReadCallBack, myRequestState);
+            try
+            {
+                HttpWebResponse resp = (HttpWebResponse)req.EndGetResponse(ar);
+
+                //  Start reading data from the response stream.
+                // TODO: look into BeginGetResponseStream();
+                Stream responseStream = resp.GetResponseStream();
+                myRequestState.responseStream = responseStream;
+
+                // TODO: Do I need to check the CanRead property before reading?
+
+                //  Begin reading response into myRequestState.BufferRead
+                // TODO: May want to make use of iarRead for calls by syncronous functions
+                IAsyncResult iarRead = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, GloebitReadCallBack, myRequestState);
+
+                // TODO: on any failure/exception, propagate error up and provide to user in friendly error message.
+            }
+            catch (ArgumentNullException e) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitWebResponseCallback ArgumentNullException e:{0}", e.Message);
+            }
+            catch (WebException e) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitWebResponseCallback WebException e:{0} URI:{1}", e.Message, req.RequestUri);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] response:{0}", e.Response);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] e:{0}", e.ToString ());
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] source:{0}", e.Source);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] stack_trace:{0}", e.StackTrace);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] status:{0}", e.Status);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] target_site:{0}", e.TargetSite);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] data_count:{0}", e.Data.Count);
+            }
+            catch (InvalidOperationException e) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitWebResponseCallback InvalidOperationException e:{0}", e.Message);
+            }
+            catch (ArgumentException e) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitWebResponseCallback ArgumentException e:{0}", e.Message);
+            }
+
         }
         
         /// <summary>
