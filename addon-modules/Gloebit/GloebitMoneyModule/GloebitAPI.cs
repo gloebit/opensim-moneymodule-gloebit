@@ -549,6 +549,7 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO: May want to make use of iarRead for calls by syncronous functions
                 IAsyncResult iarRead = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, GloebitReadCallBack, myRequestState);
 
+                // TODO: on any failure/exception, propagate error up and provide to user in friendly error message.
             }
             catch (ArgumentNullException e) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitWebResponseCallback ArgumentNullException e:{0}", e.Message);

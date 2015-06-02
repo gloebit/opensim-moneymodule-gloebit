@@ -409,8 +409,7 @@ namespace Gloebit.GloebitMoneyModule
             m_log.InfoFormat("[GLOEBITMONEYMODULE] doMoneyTransfer from {0} to {1}, for amount {2}, transactiontype: {3}, description: {4}",
                 Sender, Receiver, amount, transactiontype, description);
             bool result = true;
-            
-            // TODO - implement real money transfer transactions
+
             ////m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
             m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description);
 
@@ -510,9 +509,7 @@ namespace Gloebit.GloebitMoneyModule
             UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
             if (account != null)
             {
-                string email = account.Email;
-                return email;
-
+                return account.Email;
             }
             else
             {
