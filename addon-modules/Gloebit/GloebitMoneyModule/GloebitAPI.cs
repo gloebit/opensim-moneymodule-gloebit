@@ -152,13 +152,26 @@ namespace Gloebit.GloebitMoneyModule {
         /******** OAUTH2 AUTHORIZATION FUNCTIONS ********/
         /************************************************/
 
+
+        /// <summary>
+        /// Helper function to build the auth redirect callback url consistently everywhere.
+        /// <param name="baseURL">The base url where this server's http services can be accessed.</param>
+        /// <param name="baseURL">The uuid of the agent being authorized.</param>
+        /// </summary>
+        private static Uri BuildAuthCallbackURL(Uri baseURL, UUID agentId) {
+            UriBuilder redirect_uri = new UriBuilder(baseURL);
+            redirect_uri.Path = "gloebit/auth_complete";
+            redirect_uri.Query = String.Format("agentId={0}", agentId);
+            return redirect_uri.Uri;
+        }
+
         /// <summary>
         /// Request Authorization for this grid/region to enact Gloebit functionality on behalf of the specified OpenSim user.
         /// Sends Authorize URL to user which will launch a Gloebit authorize dialog.  If the user launches the URL and approves authorization from a Gloebit account, an authorization code will be returned to the redirect_uri.
         /// This is how a user links a Gloebit account to this OpenSim account.
         /// </summary>
         /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
-        public void Authorize(IClientAPI user, Uri callbackURL) {
+        public void Authorize(IClientAPI user, Uri baseURL) {
 
             //********* BUILD AUTHORIZE QUERY ARG STRING ***************//
             ////Dictionary<string, string> auth_params = new Dictionary<string, string>();
@@ -169,12 +182,8 @@ namespace Gloebit.GloebitMoneyModule {
                 auth_params["r"] = m_keyAlias;
             }
 
-            UriBuilder redirect_uri = new UriBuilder(callbackURL);
-            redirect_uri.Path = "gloebit/auth_complete";
-            redirect_uri.Query = String.Format("agentId={0}", user.AgentId);
-
             auth_params["scope"] = "user balance transact";
-            auth_params["redirect_uri"] = redirect_uri.ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURL, user.AgentId).ToString();
             auth_params["response_type"] = "code";
             auth_params["user"] = user.AgentId.ToString();
             // TODO - make use of 'state' param for XSRF protection
@@ -206,13 +215,12 @@ namespace Gloebit.GloebitMoneyModule {
         /// <returns>The authenticated User object containing the access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.</returns>
         /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
         /// <param name="auth_code">Authorization Code returned to the redirect_uri from the Gloebit Authorize endpoint.</param>
-        public void ExchangeAccessToken(IClientAPI user, string auth_code, Uri callbackURL) {
+        public void ExchangeAccessToken(IClientAPI user, string auth_code, Uri baseURL) {
             
             //TODO stop logging auth_code
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken Name:[{0}] AgentID:{1} auth_code:{1}", user.Name, user.AgentId, auth_code);
             
             // ************ BUILD EXCHANGE ACCESS TOKEN POST REQUEST ******** //
-
             OSDMap auth_params = new OSDMap();
 
             auth_params["client_id"] = m_key;
@@ -220,7 +228,7 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["code"] = auth_code;
             auth_params["grant_type"] = "authorization_code";
             auth_params["scope"] = "user balance transact";
-            auth_params["redirect_uri"] = callbackURL.ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURL, user.AgentId).ToString();
             
             HttpWebRequest request = BuildGloebitRequest("oauth2/access-token", "POST", null, "application/x-www-form-urlencoded", auth_params);
             if (request == null) {
