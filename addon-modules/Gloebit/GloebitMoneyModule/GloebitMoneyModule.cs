@@ -91,6 +91,7 @@ namespace Gloebit.GloebitMoneyModule
         private string m_secret;
         private string m_apiUrl;
         private string m_gridnick = "unknown_grid";
+        private Uri m_economyURL;
 
         private IConfigSource m_gConfig;
 
@@ -223,6 +224,7 @@ namespace Gloebit.GloebitMoneyModule
 
             if (section == "GridInfoService") {
                 m_gridnick = config.GetString("gridnick", m_gridnick);
+                m_economyURL = new Uri(config.GetString("economy"));
             }
         }
 
@@ -571,7 +573,7 @@ namespace Gloebit.GloebitMoneyModule
             IClientAPI user = LocateClientObject(agentId);
             // TODO - only generate a new authorize request if the user haven't been authorized yet.
             GloebitAPI.User u = GloebitAPI.User.Get(agentId);
-            m_api.Authorize(user);
+            m_api.Authorize(user, m_economyURL);
             returnval.Value = quoteResponse;
             return returnval;
         }
@@ -671,7 +673,7 @@ namespace Gloebit.GloebitMoneyModule
             // GloebitAPI.User user = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
 
             // string token = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
-            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code, m_economyURL);
 
             // TODO: stop logging token
             //m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
@@ -994,7 +996,7 @@ namespace Gloebit.GloebitMoneyModule
                 string regionname = s.RegionInfo.RegionName;
                 string regionID = s.RegionInfo.RegionID.ToString();
 
-                string description = String.Format("object {0}({1}) on {2}({3})@{4}", part.Name, part.UUID, regionname, regionID, m_gridnick);
+                string description = String.Format("{0} bought object {1}({2}) on {3}({4})@{5}", agentName, part.Name, part.UUID, regionname, regionID, m_gridnick);
                 doMoneyTransfer(agentID, part.OwnerID, salePrice, 2, description);
             }
             // TODO: deal with fact that Transact is now async.  The location of this log message is misleading, but left here as reminder.
