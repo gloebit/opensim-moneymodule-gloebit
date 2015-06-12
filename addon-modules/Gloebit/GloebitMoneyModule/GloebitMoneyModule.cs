@@ -890,8 +890,33 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="e"></param>
         private void OnMoneyTransfer(Object osender, EventManager.MoneyTransferArgs e)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnMoneyTransfer");
-            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnMoneyTransfer sender {0} receiver {1} amount {2} transactiontype {3} description '{4}'", e.sender, e.receiver, e.amount, e.transactiontype, e.description);
+            Scene s = (Scene) osender;
+
+            bool give_result = false;
+            switch(e.transactiontype) {
+                case 5001:
+                    // Pay User Gift
+                    give_result = doMoneyTransfer(e.sender, e.receiver, e.amount, e.transactiontype, e.description);
+                    break;
+                case 5008:
+                    // Pay Object
+                    SceneObjectPart part = s.GetSceneObjectPart(e.receiver);
+                    UUID receiverOwner = part.OwnerID;
+                    give_result = doMoneyTransfer(e.sender, receiverOwner, e.amount, e.transactiontype, e.description);
+                    break;
+                case 5009:
+                    // Object Pays User
+                    m_log.ErrorFormat("Unimplemented transactiontype {0}", e.transactiontype);
+                    return;
+                    break;
+                default:
+                    m_log.ErrorFormat("UNKNOWN Unimplemented transactiontype {0}", e.transactiontype);
+                    return;
+                    break;
+            }
+
+            BalanceUpdate(e.sender, e.receiver, give_result, e.description);
         }
 
         /// <summary>
