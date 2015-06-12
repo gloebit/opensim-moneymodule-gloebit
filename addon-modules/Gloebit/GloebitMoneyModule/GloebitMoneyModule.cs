@@ -915,8 +915,7 @@ namespace Gloebit.GloebitMoneyModule
                     return;
                     break;
             }
-
-            BalanceUpdate(e.sender, e.receiver, give_result, e.description);
+            // TODO - do we need to send any error message to the user if things failed above?`
         }
 
         /// <summary>
