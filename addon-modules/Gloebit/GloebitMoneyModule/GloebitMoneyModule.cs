@@ -154,6 +154,7 @@ namespace Gloebit.GloebitMoneyModule
                 //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
                 m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
                 GloebitUserData.Initialise(m_gConfig.Configs["DatabaseService"]);
+                GloebitAssetData.Initialise(m_gConfig.Configs["DatabaseService"]);
             }
         }
 
@@ -744,8 +745,9 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: check that these exist in requestData.  If not, signal error and send response with false.
             string transactionIDstr = requestData["id"] as string;
             string stateRequested = requestData["state"] as string;
+            string returnMsg = "";
             
-            bool success = GloebitAPI.Asset.ProcessStateRequest(transactionIDstr, stateRequested);
+            bool success = GloebitAPI.Asset.ProcessStateRequest(transactionIDstr, stateRequested, out returnMsg);
             // bool success = m_api.Asset.ProcessStateRequest(transactionIDstr, stateRequested);
             
             //JsonValue[] result;
@@ -758,7 +760,9 @@ namespace Gloebit.GloebitMoneyModule
             
             OSDArray paramArray = new OSDArray();
             paramArray.Add(success);
-            paramArray.Add("blah");
+            if (!success) {
+                paramArray.Add(returnMsg);
+            }
             
             // TODO: build proper response with json
             Hashtable response = new Hashtable();
@@ -774,7 +778,7 @@ namespace Gloebit.GloebitMoneyModule
         /**** IAsyncEndpointCallback Interface ****/
         /******************************************/
         
-        public void transactU2UCompleted(OSDMap responseDataMap, GloebitAPI.User sender, GloebitAPI.User recipient) {
+        public void transactU2UCompleted(OSDMap responseDataMap, GloebitAPI.User sender, GloebitAPI.User recipient, GloebitAPI.Asset asset) {
             
             bool success = (bool)responseDataMap["success"];
             string reason = responseDataMap["reason"];
@@ -789,6 +793,7 @@ namespace Gloebit.GloebitMoneyModule
             
             UUID buyerID = UUID.Parse(sender.PrincipalID);
             UUID sellerID = UUID.Parse(recipient.PrincipalID);
+            UUID transactionID = UUID.Parse(tID);
             IClientAPI buyerClient = LocateClientObject(buyerID);
             IClientAPI sellerClient = LocateClientObject(sellerID);
             
@@ -796,7 +801,11 @@ namespace Gloebit.GloebitMoneyModule
                 m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted with SUCCESS reason:{0} id:{1}", reason, tID);
                 if (reason == "success") {                                  /* successfully queued, early enacted all non-asset transaction parts */
                     if (buyerClient != null) {
-                        buyerClient.SendAlertMessage("Gloebit: Transaction successfully queued and Gloebit components enacted.");
+                        if (asset == null) {
+                            buyerClient.SendAgentAlertMessage("Gloebit: Transaction successfully completed.", false);
+                        } else {
+                            buyerClient.SendAlertMessage("Gloebit: Transaction successfully queued and gloebits transfered.");
+                        }
                     }
                 } else if (reason == "resubmitted") {                       /* transaction had already been created.  resubmitted to queue */
                     m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted resubmitted transaction  id:{0}", tID);
@@ -807,14 +816,22 @@ namespace Gloebit.GloebitMoneyModule
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted unhandled response reason:{0}  id:{1}", reason, tID);
                 }
                 
-                // TODO: Should we update buyer balance here?  Transaction has been queued successfully and all but asset enacted.  Not yet consumed.
-                //       Perhaps if asset is null, here, else in enact or consume.
+                // If no asset, consider complete and update balances; else update in consume callback.
                 double balance = responseDataMap["balance"].AsReal();
+                int intBal = (int)balance;
+                if (asset == null) {
+                    buyerClient.SendMoneyBalance(transactionID, true, new byte[0], intBal, 0, buyerID, false, sellerID, false, 0, String.Empty);
+                    if (sellerClient != null) {
+                        sellerClient.SendMoneyBalance(transactionID, true, new byte[0], intBal, 0, buyerID, false, sellerID, false, 0, String.Empty);
+                    }
+                }
                 
             } else if (status == "queued") {                                /* successfully queued.  an early enact failed */
                 m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction successfully queued for processing.  id:{0}", tID);
                 if (buyerClient != null) {
-                    buyerClient.SendAlertMessage("Gloebit: Transaction successfully queued for processing.");
+                    if (asset != null) {
+                        buyerClient.SendAlertMessage("Gloebit: Transaction successfully queued for processing.");
+                    }
                 }
                 // TODO: possible we should only handle queued errors here if asset is null
                 if (reason == "insufficient balance") {                     /* permanent failure - actionable by buyer */
@@ -871,68 +888,100 @@ namespace Gloebit.GloebitMoneyModule
         /**** IAssetCallback Interface *********/
         /***************************************/
         
-        public bool processAssetEnactHold(GloebitAPI.Asset asset) {
+        public bool processAssetEnactHold(GloebitAPI.Asset asset, out string returnMsg) {
             
             // Retrieve buyer agent
-            // TODO: this will fail if user logs off.  Is this what we want?
-            IClientAPI remoteClient = LocateClientObject(UUID.Parse(asset.BuyerID));
-            if (remoteClient == null) {
+            IClientAPI buyerClient = LocateClientObject(asset.BuyerID);
+            
+            if (asset.GhostAsset) {
+                // no object to deliver.  enact just for informational purposes.
+                if (buyerClient != null) {
+                    buyerClient.SendAlertMessage("Gloebit: Funds transferred successfully.");
+                }
+                returnMsg = "Asset enact succeeded";
+                return true;
+            }
+            
+            // TODO: this could fail if user logs off right after submission.  Is this what we want?
+            // TODO: This basically always fails when you crash opensim and recover during a transaction.  Is this what we want?
+            if (buyerClient == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold FAILED to locate buyer agent");
+                returnMsg = "Can't locate buyer";
                 return false;
             }
             
             // Retrieve BuySellModule used for dilivering this asset
-            Scene s = LocateSceneClientIn(remoteClient.AgentId);    // TODO: should we be locating the scene the part is in instead of the agent in case the agent moved?
+            Scene s = LocateSceneClientIn(buyerClient.AgentId);    // TODO: should we be locating the scene the part is in instead of the agent in case the agent moved?
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
             if (module == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold FAILED to access to IBuySellModule");
-                remoteClient.SendAgentAlertMessage("Gloebit: OpenSim Asset delivery failed.  Could not access region IBuySellModule.", false);
+                buyerClient.SendAgentAlertMessage("Gloebit: OpenSim Asset delivery failed.  Could not access region IBuySellModule.", false);
+                returnMsg = "Can't access IBuySellModule";
                 return false;
             }
             
             // Rebuild delivery params from Asset
-            UUID categoryID = asset.AssetData["categoryID"];
-            uint localID = asset.AssetData["localID"];
-            byte saleType = (byte) (int)asset.AssetData["saleType"];
-            int salePrice = asset.AssetData["salePrice"];
+            //UUID categoryID = asset.AssetData["categoryID"];
+            //uint localID = asset.AssetData["localID"];
+            //byte saleType = (byte) (int)asset.AssetData["saleType"];
+            //int salePrice = asset.AssetData["salePrice"];
             
             // attempt delivery of object
-            bool success = module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice);
+            bool success = module.BuyObject(buyerClient, asset.CategoryID, asset.LocalID, (byte)asset.SaleType, asset.SalePrice);
             if (!success) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold FAILED to deliver asset");
-                remoteClient.SendAgentAlertMessage("Gloebit: OpenSim Asset delivery failed.  IBuySellModule.BuyObject failed.  Please retry your purchase.", false);
+                buyerClient.SendAgentAlertMessage("Gloebit: OpenSim Asset delivery failed.  IBuySellModule.BuyObject failed.  Please retry your purchase.", false);
+                returnMsg = "Asset enact failed";
             } else {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetEnactHold SUCCESS - delivered asset");
-                remoteClient.SendAlertMessage("Gloebit: OpenSim Asset delivered to inventory successfully.");
+                buyerClient.SendAlertMessage("Gloebit: OpenSim Asset delivered to inventory successfully.");
+                returnMsg = "Asset enact succeeded";
             }
             return success;
         }
         
-        public bool processAssetConsumeHold(GloebitAPI.Asset asset) {
+        public bool processAssetConsumeHold(GloebitAPI.Asset asset, out string returnMsg) {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetConsumeHold SUCCESS - transaction complete");
             
-            // Retrieve buyer agent
-            IClientAPI remoteClient = LocateClientObject(UUID.Parse(asset.BuyerID));
-            if (remoteClient == null) {
+            // Retrieve buyer & seller agents
+            UUID buyerID = asset.BuyerID;
+            UUID sellerID = asset.SellerID;
+            UUID transactionID = asset.TransactionID;
+            IClientAPI buyerClient = LocateClientObject(buyerID);
+            IClientAPI sellerClient = LocateClientObject(sellerID);
+            
+            if (buyerClient == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetConsumeHold FAILED to locate buyer agent");
             } else {
-                remoteClient.SendAgentAlertMessage("Gloebit: Transaction complete.", false);
+                if (asset.BuyerEndingBalance >= 0) {
+                    buyerClient.SendMoneyBalance(transactionID, true, new byte[0], asset.BuyerEndingBalance, asset.SaleType, buyerID, false, sellerID, false, asset.SalePrice, String.Empty);
+                } else {
+                    // TODO: make gloebit get balance request for user asynchronously.
+                }
+                buyerClient.SendAgentAlertMessage("Gloebit: Transaction complete.", false);
             }
-            // TODO: update buyer and seller's balances
+
+            if (sellerClient != null) {
+                // TODO: Need to send a reqeust to get sender's balance from Gloebit asynchronously since this is not returned here.
+                //sellerClient.SendMoneyBalance(transactionID, true, new byte[0], balance, asset.SaleType, buyerID, false, sellerID, false, asset.SalePrice, String.Empty);
+            }
+            
+            returnMsg = "Asset consume succeeded";
             return true;
         }
         
-        public bool processAssetCancelHold(GloebitAPI.Asset asset) {
+        public bool processAssetCancelHold(GloebitAPI.Asset asset, out string returnMsg) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetCancelHold SUCCESS - transaction rolled back");
             
             // Retrieve buyer agent
-            IClientAPI remoteClient = LocateClientObject(UUID.Parse(asset.BuyerID));
+            IClientAPI remoteClient = LocateClientObject(asset.BuyerID);
             if (remoteClient == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetCancelHold FAILED to locate buyer agent");
             } else {
                 remoteClient.SendAgentAlertMessage("Gloebit: Transaction canceled and rolled back.", false);
             }
+            returnMsg = "Asset cancel succeeded";
             return true;
         }
 
@@ -1244,13 +1293,13 @@ namespace Gloebit.GloebitMoneyModule
             UUID transactionID = UUID.Random();
                 
             // TODO: build an asset.  pass asset to doMoneyTransfer
-            OSDMap assetData = new OSDMap();
-            assetData["categoryID"] = categoryID;
-            assetData["localID"] = localID;
-            assetData["saleType"] = (int)saleType;
-            assetData["salePrice"] = salePrice;
+            //// OSDMap assetData = new OSDMap();
+            //// assetData["categoryID"] = categoryID;
+            //// assetData["localID"] = localID;
+            //// assetData["saleType"] = (int)saleType;
+            //// assetData["salePrice"] = salePrice;
                 
-            GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, agentID, part.OwnerID, assetData);
+            GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, agentID, part.OwnerID, false, part.UUID, part.Name, categoryID, localID, saleType, salePrice);
                 
             doMoneyTransferWithAsset(agentID, part.OwnerID, salePrice, 2, description, asset, transactionID, remoteClient);
             
