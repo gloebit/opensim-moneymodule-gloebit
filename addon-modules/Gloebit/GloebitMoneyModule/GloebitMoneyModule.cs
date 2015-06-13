@@ -82,7 +82,7 @@ namespace Gloebit.GloebitMoneyModule
         // private UUID EconomyBaseAccount = UUID.Zero;
 
         private float EnergyEfficiency = 0f;
-        // private ObjectPaid handerOnObjectPaid;
+
         private bool m_enabled = true;
         private bool m_sellEnabled = false;
         private GLBEnv m_environment = GLBEnv.None;
@@ -318,7 +318,7 @@ namespace Gloebit.GloebitMoneyModule
 
             bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description);
 
-            
+            // TODO - move this to a proper execute callback
             BalanceUpdate(fromID, toID, give_result, description);
 
             return give_result;
@@ -904,6 +904,11 @@ namespace Gloebit.GloebitMoneyModule
                     SceneObjectPart part = s.GetSceneObjectPart(e.receiver);
                     UUID receiverOwner = part.OwnerID;
                     give_result = doMoneyTransfer(e.sender, receiverOwner, e.amount, e.transactiontype, e.description);
+                    ObjectPaid handleObjectPaid = OnObjectPaid;
+                    if(handleObjectPaid != null) {
+                        // TODO - move this to a proper execute callback.
+                        handleObjectPaid(e.receiver, e.sender, e.amount);
+                    }
                     break;
                 case 5009:
                     // Object Pays User
