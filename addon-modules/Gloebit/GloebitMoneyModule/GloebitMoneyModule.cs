@@ -82,7 +82,7 @@ namespace Gloebit.GloebitMoneyModule
         // private UUID EconomyBaseAccount = UUID.Zero;
 
         private float EnergyEfficiency = 0f;
-        // private ObjectPaid handerOnObjectPaid;
+
         private bool m_enabled = true;
         private bool m_sellEnabled = false;
         private GLBEnv m_environment = GLBEnv.None;
@@ -318,7 +318,7 @@ namespace Gloebit.GloebitMoneyModule
 
             bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description);
 
-            
+            // TODO - move this to a proper execute callback
             BalanceUpdate(fromID, toID, give_result, description);
 
             return give_result;
@@ -890,8 +890,37 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="e"></param>
         private void OnMoneyTransfer(Object osender, EventManager.MoneyTransferArgs e)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnMoneyTransfer");
-            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnMoneyTransfer sender {0} receiver {1} amount {2} transactiontype {3} description '{4}'", e.sender, e.receiver, e.amount, e.transactiontype, e.description);
+            Scene s = (Scene) osender;
+
+            bool give_result = false;
+            switch(e.transactiontype) {
+                case 5001:
+                    // Pay User Gift
+                    give_result = doMoneyTransfer(e.sender, e.receiver, e.amount, e.transactiontype, e.description);
+                    break;
+                case 5008:
+                    // Pay Object
+                    SceneObjectPart part = s.GetSceneObjectPart(e.receiver);
+                    UUID receiverOwner = part.OwnerID;
+                    give_result = doMoneyTransfer(e.sender, receiverOwner, e.amount, e.transactiontype, e.description);
+                    ObjectPaid handleObjectPaid = OnObjectPaid;
+                    if(handleObjectPaid != null) {
+                        // TODO - move this to a proper execute callback.
+                        handleObjectPaid(e.receiver, e.sender, e.amount);
+                    }
+                    break;
+                case 5009:
+                    // Object Pays User
+                    m_log.ErrorFormat("Unimplemented transactiontype {0}", e.transactiontype);
+                    return;
+                    break;
+                default:
+                    m_log.ErrorFormat("UNKNOWN Unimplemented transactiontype {0}", e.transactiontype);
+                    return;
+                    break;
+            }
+            // TODO - do we need to send any error message to the user if things failed above?`
         }
 
         /// <summary>
