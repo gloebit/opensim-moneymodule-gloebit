@@ -73,6 +73,8 @@ namespace Gloebit.GloebitMoneyModule
             public SQLiteImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitAssets", "GloebitAssetsSQLite")
             {
+                /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
+                /// Start with SQLiteGenericTableHandler impl and see MySql override below
             }
         }
 
@@ -138,6 +140,8 @@ namespace Gloebit.GloebitMoneyModule
             public PGSQLImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitAssets", "GloebitAssetsPGSQL")
             {
+                /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
+                /// Start with PGSQLGenericTableHandler impl and see MySql override above
             }
         }
     }

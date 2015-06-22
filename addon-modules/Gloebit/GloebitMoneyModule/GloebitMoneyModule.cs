@@ -425,13 +425,21 @@ namespace Gloebit.GloebitMoneyModule
             return result;
         }
         
+        // TODO: May want to merge these separate doMoneyTransfer functions into one.
+        
         /// <summary>
-        /// Transfer money
+        /// Transfer money from one OpenSim agent to another.  Utilize asset to receive transact enact/consume/cancel callbacks, deliver
+        /// any OpenSim assets being purchased, and handle any other OpenSim components of the transaction.
         /// </summary>
-        /// <param name="Sender"></param>
-        /// <param name="Receiver"></param>
-        /// <param name="amount"></param>
-        /// <returns></returns>
+        /// <param name="Sender">OpenSim UUID of agent sending gloebits.</param>
+        /// <param name="Receiver">OpenSim UUID of agent receiving gloebits</param>
+        /// <param name="amount">Amount of gloebits being transferred.</param>
+        /// <param name="transactiontype">int from OpenSim describing type of transaction (buy original, buy copy, buy contents, pay object, pay user, gift from object to user, etc)</param>
+        /// <param name="description">Description of transaction for transaction history reporting.</param>
+        /// <param name="asset">Object which will handle reception of enact/consume/cancel callbacks and delivery of any OpenSim assets or handling of any other OpenSim components of the transaction.</param>
+        /// <param name="transactionID">Unique ID for transaciton provided by OpenSim.  This will be provided back in any callbacks allows for Idempotence.</param>
+        /// <param name="remoteClient">Used solely for sending transaction status messages to OpenSim user requesting transaction.</param>
+        /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
         private bool doMoneyTransferWithAsset(UUID Sender, UUID Receiver, int amount, int transactiontype, string description, GloebitAPI.Asset asset, UUID transactionID, IClientAPI remoteClient)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] doMoneyTransfer with asset from {0} to {1}, for amount {2}, transactiontype: {3}, description: {4}",
@@ -738,6 +746,7 @@ namespace Gloebit.GloebitMoneyModule
         /// Additional data can be returned about failures, specifically whether or not to retry.
         /// </summary>
         /// <param name="requestData">GloebitAPI.Asset enactHoldURI, consumeHoldURI or cancelHoldURI query arguments tying this callback to a specific Asset.</param>
+        /// <returns>Web respsponse including JSON array of one or two elements.  First element is bool representing success state of call.  If first element is false, the second element is a string providing the reason for failure.  If the second element is "pending", then the transaction processor will retry.  All other reasons are considered permanent failure.</returns>
         private Hashtable assetState_func(Hashtable requestData) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] assetState_func **************** Got Callback");
             foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }

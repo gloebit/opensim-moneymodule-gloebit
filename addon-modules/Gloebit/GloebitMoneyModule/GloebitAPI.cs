@@ -693,7 +693,9 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="amount">quantity of gloebits to be transacted.</param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
         /// <param name="asset">Asset representing local transaction part requiring processing via callbacks.</param>
+        /// <param name="transactionId">UUID provided by calling application.  This ID will be provided back to the application in any callbacks and allows for Idempotence.</param>
         /// <param name="baseURL">Asset representing local transaction part requiring processing via callbacks.</param>
+        /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
 
         public bool TransactU2U(User sender, string senderName, User recipient, string recipientName, string recipientEmail, int amount, string description, Asset asset, UUID transactionId, Uri baseURL) {
 
