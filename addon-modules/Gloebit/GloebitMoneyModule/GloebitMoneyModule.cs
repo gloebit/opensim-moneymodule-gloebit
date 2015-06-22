@@ -44,6 +44,7 @@ using OpenSim.Framework.Servers.HttpServer;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Services.Interfaces;
+using OpenMetaverse.StructuredData;     // TODO: turn assetData into a dictionary of <string, object> and remove this.
 
 [assembly: Addin("Gloebit", "0.1")]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
@@ -69,7 +70,7 @@ namespace Gloebit.GloebitMoneyModule
     /// </summary>
 
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "GloebitMoneyModule")]
-    public class GloebitMoneyModule : IMoneyModule, ISharedRegionModule
+    public class GloebitMoneyModule : IMoneyModule, ISharedRegionModule, GloebitAPI.IAsyncEndpointCallback, GloebitAPI.IAssetCallback
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -151,8 +152,9 @@ namespace Gloebit.GloebitMoneyModule
 
             if(m_enabled) {
                 //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
-                m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl));
+                m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
                 GloebitUserData.Initialise(m_gConfig.Configs["DatabaseService"]);
+                GloebitAssetData.Initialise(m_gConfig.Configs["DatabaseService"]);
             }
         }
 
@@ -256,6 +258,9 @@ namespace Gloebit.GloebitMoneyModule
 
                         // Register callback for 2nd stage of OAuth2 Authorization_code_grant
                         httpServer.AddHTTPHandler("/gloebit/auth_complete", authComplete_func);
+                        
+                        // Register callback for asset enact, consume, & cancel holds transaction parts
+                        httpServer.AddHTTPHandler("/gloebit/asset", assetState_func);
                        
                     }
 
@@ -413,8 +418,45 @@ namespace Gloebit.GloebitMoneyModule
             bool result = true;
 
             ////m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
-            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description);
+            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, null, UUID.Zero, m_economyURL);
 
+            // TODO: Should we be returning true before Transact completes successfully now that this is async???
+            // TODO: use transactiontype
+            return result;
+        }
+        
+        // TODO: May want to merge these separate doMoneyTransfer functions into one.
+        
+        /// <summary>
+        /// Transfer money from one OpenSim agent to another.  Utilize asset to receive transact enact/consume/cancel callbacks, deliver
+        /// any OpenSim assets being purchased, and handle any other OpenSim components of the transaction.
+        /// </summary>
+        /// <param name="Sender">OpenSim UUID of agent sending gloebits.</param>
+        /// <param name="Receiver">OpenSim UUID of agent receiving gloebits</param>
+        /// <param name="amount">Amount of gloebits being transferred.</param>
+        /// <param name="transactiontype">int from OpenSim describing type of transaction (buy original, buy copy, buy contents, pay object, pay user, gift from object to user, etc)</param>
+        /// <param name="description">Description of transaction for transaction history reporting.</param>
+        /// <param name="asset">Object which will handle reception of enact/consume/cancel callbacks and delivery of any OpenSim assets or handling of any other OpenSim components of the transaction.</param>
+        /// <param name="transactionID">Unique ID for transaciton provided by OpenSim.  This will be provided back in any callbacks allows for Idempotence.</param>
+        /// <param name="remoteClient">Used solely for sending transaction status messages to OpenSim user requesting transaction.</param>
+        /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
+        private bool doMoneyTransferWithAsset(UUID Sender, UUID Receiver, int amount, int transactiontype, string description, GloebitAPI.Asset asset, UUID transactionID, IClientAPI remoteClient)
+        {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] doMoneyTransfer with asset from {0} to {1}, for amount {2}, transactiontype: {3}, description: {4}",
+                             Sender, Receiver, amount, transactiontype, description);
+            
+            // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
+            // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
+            //       but could make it easier for app to force synchronicity if desired.
+            bool result = m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, asset, transactionID, m_economyURL);
+            
+            if (!result) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] doMoneyTransferWithAsset failed to create HttpWebRequest in GloebitAPI.TransactU2U");
+                remoteClient.SendAlertMessage("Transaction Failed.  Region Failed to properly create and send request to Gloebit.  Please try again.");
+            } else {
+                remoteClient.SendAlertMessage("Gloebit: Transaction Successfully submitted to Gloebit Service.");
+            }
+            
             // TODO: Should we be returning true before Transact completes successfully now that this is async???
             // TODO: use transactiontype
             return result;
@@ -657,6 +699,10 @@ namespace Gloebit.GloebitMoneyModule
 
             return ret;
         }
+        
+        /*********************************************************/
+        /*** GloebitAPI Required HTTP Callback Entrance Points ***/
+        /*********************************************************/
 
         /// <summary>
         /// Registered to the redirectURI from GloebitAPI.Authorize.  Called when a user approves authorization.
@@ -689,6 +735,263 @@ namespace Gloebit.GloebitMoneyModule
             response["str_response_string"] = "<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window.</body></html>";
             response["content_type"] = "text/html";
             return response;
+        }
+        
+        /// <summary>
+        /// Registered to the enactHoldURI, consumeHoldURI and cancelHoldURI from GloebitAPI.Asset.
+        /// Called by the Gloebit transaction processor.
+        /// Enacts, cancels, or consumes the GloebitAPI.Asset.
+        /// Response of true certifies that the Asset transaction part has been processed as requested.
+        /// Response of false alerts transaction processor that asset failed to process as requested.
+        /// Additional data can be returned about failures, specifically whether or not to retry.
+        /// </summary>
+        /// <param name="requestData">GloebitAPI.Asset enactHoldURI, consumeHoldURI or cancelHoldURI query arguments tying this callback to a specific Asset.</param>
+        /// <returns>Web respsponse including JSON array of one or two elements.  First element is bool representing success state of call.  If first element is false, the second element is a string providing the reason for failure.  If the second element is "pending", then the transaction processor will retry.  All other reasons are considered permanent failure.</returns>
+        private Hashtable assetState_func(Hashtable requestData) {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] assetState_func **************** Got Callback");
+            foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
+            
+            // TODO: check that these exist in requestData.  If not, signal error and send response with false.
+            string transactionIDstr = requestData["id"] as string;
+            string stateRequested = requestData["state"] as string;
+            string returnMsg = "";
+            
+            bool success = GloebitAPI.Asset.ProcessStateRequest(transactionIDstr, stateRequested, out returnMsg);
+            // bool success = m_api.Asset.ProcessStateRequest(transactionIDstr, stateRequested);
+            
+            //JsonValue[] result;
+            //JsonValue[0] = JsonValue.CreateBooleanValue(success);
+            //JsonValue[1] = JsonValue.CreateStringValue("blah");
+            // JsonValue jv = JsonValue.Parse("[true, \"blah\"]")
+            //JsonArray ja = new JsonArray();
+            //ja.Add(JsonValue.CreateBooleanValue(success));
+            //ja.Add(JsonValue.CreateStringValue("blah"));
+            
+            OSDArray paramArray = new OSDArray();
+            paramArray.Add(success);
+            if (!success) {
+                paramArray.Add(returnMsg);
+            }
+            
+            // TODO: build proper response with json
+            Hashtable response = new Hashtable();
+            response["int_response_code"] = 200;
+            //response["str_response_string"] = ja.ToString();
+            response["str_response_string"] = OSDParser.SerializeJsonString(paramArray);
+            response["content_type"] = "application/json";
+            m_log.InfoFormat("[GLOEBITMONEYMODULE].assetState_func response:{0}", OSDParser.SerializeJsonString(paramArray));
+            return response;
+        }
+        
+        /******************************************/
+        /**** IAsyncEndpointCallback Interface ****/
+        /******************************************/
+        
+        public void transactU2UCompleted(OSDMap responseDataMap, GloebitAPI.User sender, GloebitAPI.User recipient, GloebitAPI.Asset asset) {
+            
+            bool success = (bool)responseDataMap["success"];
+            string reason = responseDataMap["reason"];
+            string status = "";
+            if (responseDataMap.ContainsKey("status")) {
+                status = responseDataMap["status"];
+            }
+            string tID = "";
+            if (responseDataMap.ContainsKey("id")) {
+                tID = responseDataMap["id"];
+            }
+            
+            UUID buyerID = UUID.Parse(sender.PrincipalID);
+            UUID sellerID = UUID.Parse(recipient.PrincipalID);
+            UUID transactionID = UUID.Parse(tID);
+            IClientAPI buyerClient = LocateClientObject(buyerID);
+            IClientAPI sellerClient = LocateClientObject(sellerID);
+            
+            if (success) {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted with SUCCESS reason:{0} id:{1}", reason, tID);
+                if (reason == "success") {                                  /* successfully queued, early enacted all non-asset transaction parts */
+                    if (buyerClient != null) {
+                        if (asset == null) {
+                            buyerClient.SendAgentAlertMessage("Gloebit: Transaction successfully completed.", false);
+                        } else {
+                            buyerClient.SendAlertMessage("Gloebit: Transaction successfully queued and gloebits transfered.");
+                        }
+                    }
+                } else if (reason == "resubmitted") {                       /* transaction had already been created.  resubmitted to queue */
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted resubmitted transaction  id:{0}", tID);
+                    if (buyerClient != null) {
+                        buyerClient.SendAlertMessage("Gloebit: Transaction resubmitted to queue.");
+                    }
+                } else {                                                    /* Unhandled success reason */
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted unhandled response reason:{0}  id:{1}", reason, tID);
+                }
+                
+                // If no asset, consider complete and update balances; else update in consume callback.
+                double balance = responseDataMap["balance"].AsReal();
+                int intBal = (int)balance;
+                if (asset == null) {
+                    buyerClient.SendMoneyBalance(transactionID, true, new byte[0], intBal, 0, buyerID, false, sellerID, false, 0, String.Empty);
+                    if (sellerClient != null) {
+                        sellerClient.SendMoneyBalance(transactionID, true, new byte[0], intBal, 0, buyerID, false, sellerID, false, 0, String.Empty);
+                    }
+                }
+                
+            } else if (status == "queued") {                                /* successfully queued.  an early enact failed */
+                m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction successfully queued for processing.  id:{0}", tID);
+                if (buyerClient != null) {
+                    if (asset != null) {
+                        buyerClient.SendAlertMessage("Gloebit: Transaction successfully queued for processing.");
+                    }
+                }
+                // TODO: possible we should only handle queued errors here if asset is null
+                if (reason == "insufficient balance") {                     /* permanent failure - actionable by buyer */
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction failed.  Buyer has insufficent funds.  id:{0}", tID);
+                    if (buyerClient != null) {
+                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction failed.  Insufficient funds.  Go to https://www.gloebit.com/purchase to get more gloebits.", false);
+                    }
+                } else if (reason == "pending") {                           /* queue will retry enacts */
+                    // may not be possible.  May only be "pending" if includes a charge part which these will not.
+                } else {                                                    /* perm failure - assumes tp will get same response form part.enact */
+                    // Shouldn't ever get here.
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction failed during processing.  reason:{0} id:{1}", reason, tID);
+                    if (buyerClient != null) {
+                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction failed during processing.  Please retry.  Contact Regoin/Grid owner if failure persists.", false);
+                    }
+                }
+            } else {                                                        /* failure prior to queing.  Something requires fixing */
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted with FAILURE reason:{0} status:{1} id:{2}", reason, status, tID);
+                if (status == "queuing-failed") {                           /* failed to queue.  net or processor error */
+                    if (buyerClient != null) {
+                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed. Queuing error.  Please try again.  If problem persists, contact Gloebit.", false);
+                    }
+                } else if (status == "failed") {                            /* race condition - already queued */
+                    // nothing to tell user.  buyer doesn't need to know it was double submitted
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted race condition.  You double submitted transaction:{0}", tID);
+                } else if (status == "cannot-spend") {                      /* Buyer's gloebit account is locked and not allowed to spend gloebits */
+                    if (buyerClient != null) {
+                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Your Gloebit account is locked.  Please contact Gloebit to resolve any account status issues.", false);
+                    }
+                } else if (status == "cannot-receive") {                    /* Seller's gloebit account can not receive gloebits */
+                    // TODO: should we try to message seller if online?
+                    // TODO: Is it a privacy issue to alert buyer here?
+                    // TODO: research if/when account is in this state.  Only by admin?  All accounts until merchants?
+                    if (buyerClient != null) {
+                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Seller's Gloebit account is unable to receive gloebits.  Please alert seller to this issue if possible and have seller contact Gloebit.", false);
+                    }
+                } else if (status == "unknown-merchant") {                  /* can not identify merchant from params supplied by app */
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit could not identify merchant from params.  transactionID:{0} merchantID:{1}", tID, sender.PrincipalID);
+                    if (buyerClient != null) {
+                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Gloebit can not identify seller from OpenSim account.  Please alert seller to this issue if possible and have seller contact Gloebit.", false);
+                    }
+                } else {                                                    /* App issue --- Something needs fixing by app */
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Transaction failed.  App needs to fix something.");
+                    if (buyerClient != null) {
+                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Application provided malformed transaction to Gloebit.  Please retry.  Contact Regoin/Grid owner if failure persists.", false);
+                    }
+                }
+            }
+            return;
+        }
+        
+        
+        /***************************************/
+        /**** IAssetCallback Interface *********/
+        /***************************************/
+        
+        public bool processAssetEnactHold(GloebitAPI.Asset asset, out string returnMsg) {
+            
+            // Retrieve buyer agent
+            IClientAPI buyerClient = LocateClientObject(asset.BuyerID);
+            
+            if (asset.GhostAsset) {
+                // no object to deliver.  enact just for informational purposes.
+                if (buyerClient != null) {
+                    buyerClient.SendAlertMessage("Gloebit: Funds transferred successfully.");
+                }
+                returnMsg = "Asset enact succeeded";
+                return true;
+            }
+            
+            // TODO: this could fail if user logs off right after submission.  Is this what we want?
+            // TODO: This basically always fails when you crash opensim and recover during a transaction.  Is this what we want?
+            if (buyerClient == null) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold FAILED to locate buyer agent");
+                returnMsg = "Can't locate buyer";
+                return false;
+            }
+            
+            // Retrieve BuySellModule used for dilivering this asset
+            Scene s = LocateSceneClientIn(buyerClient.AgentId);    // TODO: should we be locating the scene the part is in instead of the agent in case the agent moved?
+            IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
+            if (module == null) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold FAILED to access to IBuySellModule");
+                buyerClient.SendAgentAlertMessage("Gloebit: OpenSim Asset delivery failed.  Could not access region IBuySellModule.", false);
+                returnMsg = "Can't access IBuySellModule";
+                return false;
+            }
+            
+            // Rebuild delivery params from Asset
+            //UUID categoryID = asset.AssetData["categoryID"];
+            //uint localID = asset.AssetData["localID"];
+            //byte saleType = (byte) (int)asset.AssetData["saleType"];
+            //int salePrice = asset.AssetData["salePrice"];
+            
+            // attempt delivery of object
+            bool success = module.BuyObject(buyerClient, asset.CategoryID, asset.LocalID, (byte)asset.SaleType, asset.SalePrice);
+            if (!success) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold FAILED to deliver asset");
+                buyerClient.SendAgentAlertMessage("Gloebit: OpenSim Asset delivery failed.  IBuySellModule.BuyObject failed.  Please retry your purchase.", false);
+                returnMsg = "Asset enact failed";
+            } else {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetEnactHold SUCCESS - delivered asset");
+                buyerClient.SendAlertMessage("Gloebit: OpenSim Asset delivered to inventory successfully.");
+                returnMsg = "Asset enact succeeded";
+            }
+            return success;
+        }
+        
+        public bool processAssetConsumeHold(GloebitAPI.Asset asset, out string returnMsg) {
+            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetConsumeHold SUCCESS - transaction complete");
+            
+            // Retrieve buyer & seller agents
+            UUID buyerID = asset.BuyerID;
+            UUID sellerID = asset.SellerID;
+            UUID transactionID = asset.TransactionID;
+            IClientAPI buyerClient = LocateClientObject(buyerID);
+            IClientAPI sellerClient = LocateClientObject(sellerID);
+            
+            if (buyerClient == null) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetConsumeHold FAILED to locate buyer agent");
+            } else {
+                if (asset.BuyerEndingBalance >= 0) {
+                    buyerClient.SendMoneyBalance(transactionID, true, new byte[0], asset.BuyerEndingBalance, asset.SaleType, buyerID, false, sellerID, false, asset.SalePrice, String.Empty);
+                } else {
+                    // TODO: make gloebit get balance request for user asynchronously.
+                }
+                buyerClient.SendAgentAlertMessage("Gloebit: Transaction complete.", false);
+            }
+
+            if (sellerClient != null) {
+                // TODO: Need to send a reqeust to get sender's balance from Gloebit asynchronously since this is not returned here.
+                //sellerClient.SendMoneyBalance(transactionID, true, new byte[0], balance, asset.SaleType, buyerID, false, sellerID, false, asset.SalePrice, String.Empty);
+            }
+            
+            returnMsg = "Asset consume succeeded";
+            return true;
+        }
+        
+        public bool processAssetCancelHold(GloebitAPI.Asset asset, out string returnMsg) {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetCancelHold SUCCESS - transaction rolled back");
+            
+            // Retrieve buyer agent
+            IClientAPI remoteClient = LocateClientObject(asset.BuyerID);
+            if (remoteClient == null) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetCancelHold FAILED to locate buyer agent");
+            } else {
+                remoteClient.SendAgentAlertMessage("Gloebit: Transaction canceled and rolled back.", false);
+            }
+            returnMsg = "Asset cancel succeeded";
+            return true;
         }
 
         #endregion
@@ -1000,36 +1303,46 @@ namespace Gloebit.GloebitMoneyModule
                 return;
             }
 
+            // Check that the IBuySellModule is accesible before submitting the transaction to Gloebit
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
-            // TODO - use callback URIs for 2 phase commit
-            // start transaction;
-            // callback from gloebit initiates module.BuyObject;
-            // on success, transaction completes. On failure, Gloebit rolls back
             if (module == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] FAILED to access to IBuySellModule");
+                remoteClient.SendAlertMessage("Transaction Failed.  Unable to access IBuySellModule");
                 return;
             }
-            bool success = module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice);
-            if(success) {
-                // TODO: perhaps use a dictionary like this one and pass it through to our api
-                //Dictionary<string, string> buyObject = new Dictionary<string, string>();
-                //buyObject.Add("categoryID", categoryID.ToString());
-                //buyObject.Add("localID", Convert.ToString(localID));
-                //buyObject.Add("saleType", saleType.ToString());
-                //buyObject.Add("objectUUID", part.UUID.ToString());
-                //buyObject.Add("objectName", part.Name);
-                //buyObject.Add("objectDescription", part.Description);
-                //buyObject.Add("objectLocation", m_sceneHandler.GetObjectLocation(part));
+            
+            // TODO: perhaps use a dictionary like this one and pass it through to our api
+            //Dictionary<string, string> buyObject = new Dictionary<string, string>();
+            //buyObject.Add("categoryID", categoryID.ToString());
+            //buyObject.Add("localID", Convert.ToString(localID));
+            //buyObject.Add("saleType", saleType.ToString());
+            //buyObject.Add("objectUUID", part.UUID.ToString());
+            //buyObject.Add("objectName", part.Name);
+            //buyObject.Add("objectDescription", part.Description);
+            //buyObject.Add("objectLocation", m_sceneHandler.GetObjectLocation(part));
 
-                string agentName = resolveAgentName(agentID);
-                string regionname = s.RegionInfo.RegionName;
-                string regionID = s.RegionInfo.RegionID.ToString();
+            string agentName = resolveAgentName(agentID);
+            string regionname = s.RegionInfo.RegionName;
+            string regionID = s.RegionInfo.RegionID.ToString();
 
-                string description = String.Format("{0} bought object {1}({2}) on {3}({4})@{5}", agentName, part.Name, part.UUID, regionname, regionID, m_gridnick);
-                doMoneyTransfer(agentID, part.OwnerID, salePrice, 2, description);
-            }
-            // TODO: deal with fact that Transact is now async.  The location of this log message is misleading, but left here as reminder.
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
+            string description = String.Format("{0} bought object {1}({2}) on {3}({4})@{5}", agentName, part.Name, part.UUID, regionname, regionID, m_gridnick);
+                
+            // Create a transaction ID
+            UUID transactionID = UUID.Random();
+                
+            // TODO: build an asset.  pass asset to doMoneyTransfer
+            //// OSDMap assetData = new OSDMap();
+            //// assetData["categoryID"] = categoryID;
+            //// assetData["localID"] = localID;
+            //// assetData["saleType"] = (int)saleType;
+            //// assetData["salePrice"] = salePrice;
+                
+            GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, agentID, part.OwnerID, false, part.UUID, part.Name, categoryID, localID, saleType, salePrice);
+                
+            doMoneyTransferWithAsset(agentID, part.OwnerID, salePrice, 2, description, asset, transactionID, remoteClient);
+            
+            //m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy Transaction queued {0}", transactionID.ToString());
         }
     }
 }

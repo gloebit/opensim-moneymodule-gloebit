@@ -1,0 +1,32 @@
+:VERSION 1         # -------------------------------
+
+BEGIN TRANSACTION;
+
+CREATE TABLE IF NOT EXISTS GloebitAssets (
+    "TransactionID" UUID NOT NULL,
+    "BuyerID" CHAR(36) NOT NULL,
+    "SellerID" CHAR(36) NOT NULL,
+    "GhostAsset" BOOLEAN NOT NULL,
+    "PartID" UUID,
+    "PartName" VARCHAR(64),
+    "CategoryID" CHAR(36),
+    "LocalID" BIGINT,
+    "SaleType" INT,
+    "SalePrice" INT NOT NULL,
+    "BuyerEndingBalance" INT NOT NULL,
+    "enacted" BOOLEAN NOT NULL,
+    "consumed" BOOLEAN NOT NULL,
+    "canceled" BOOLEAN NOT NULL,
+    "cTime" TIMESTAMP NOT NULL,
+    "enactedTime" TIMESTAMP NULL,
+    "finishedTime" TIMESTAMP NULL,
+    PRIMARY KEY ("TransactionID")
+);
+
+CREATE INDEX ix_bid ON GloebitAssets ("BuyerID");
+CREATE INDEX ix_sid ON GloebitAssets ("SellerID");
+CREATE INDEX ix_pid ON GloebitAssets ("PartID");
+CREATE INDEX ix_cts ON GloebitAssets ("cTime");
+
+COMMIT;
+

@@ -48,7 +48,20 @@ namespace Gloebit.GloebitMoneyModule {
         private string m_keyAlias;
         private string m_secret;
         private Uri m_url;
+        
+        public interface IAsyncEndpointCallback {
+            void transactU2UCompleted (OSDMap responseDataMap, User sender, User recipient, Asset asset);
+        }
+        
+        public static IAsyncEndpointCallback m_asyncEndpointCallbacks;
 
+        public interface IAssetCallback {
+            bool processAssetEnactHold(Asset asset, out string returnMsg);
+            bool processAssetConsumeHold(Asset asset, out string returnMsg);
+            bool processAssetCancelHold(Asset asset, out string returnMsg);
+        }
+        
+        public static IAssetCallback m_assetCallbacks;
 
         public class User {
             public string PrincipalID;
@@ -101,10 +114,314 @@ namespace Gloebit.GloebitMoneyModule {
                 lock(s_tokenMap) {
                     s_tokenMap[agentIdStr] = token;
                 }
-
-                User u = new User(agentIdStr, UUID.Zero.ToString(), token);
+                // TODO: properly store GloebitID when we get it.
+                //User u = new User(agentIdStr, UUID.Zero.ToString(), token);
+                User u = new User(agentIdStr, null, token);
                 GloebitUserData.Instance.Store(u);
                 return u;
+            }
+        }
+        
+        public class Asset {
+            // Primary Key value
+            public UUID TransactionID;
+            
+            // Data required when enacting/consume/canceling this asset or for additional info
+            public UUID BuyerID;
+            public UUID SellerID;
+            
+            public bool GhostAsset;     // Set to true when asset is used for callback notification, but has no object to deliver
+            public UUID PartID;         // UUID of object
+            public string PartName;     // object name
+            //public OSDMap AssetData;
+            public UUID CategoryID;     // Appears to be a folder id used when saleType is copy
+            public uint LocalID;        // Region specific ID of object.  Unclear why this is passed instead of UUID
+            public int SaleType;        // object, copy, or contents
+            public int SalePrice;
+            public int BuyerEndingBalance;  // balance returned by transact when fully successful.
+            
+            // State variables used internally in GloebitAPI
+            public bool enacted;
+            public bool consumed;
+            public bool canceled;
+            
+            // Timestamps for reporting
+            public DateTime cTime;
+            public DateTime? enactedTime;
+            public DateTime? finishedTime;
+            
+            // TODO - update assetMap to be a proper LRU Cache and hold User objects
+            private static Dictionary<string, Asset> s_assetMap = new Dictionary<string, Asset>();
+            private static Dictionary<string, Asset> s_pendingAssetMap = new Dictionary<string, Asset>(); // tracks assets currently being worked on so that two state functions are not enacted at the same time.
+            
+            // Necessary for use with standard db serialization system
+            public Asset() {
+            }
+            
+            private Asset(UUID transactionID, UUID buyerID, UUID sellerID, bool ghostAsset, UUID partID, string partName, UUID categoryID, uint localID, int saleType, int salePrice) {
+                // Primary Key value
+                this.TransactionID = transactionID;
+                
+                // Data required when enacting/consume/canceling this asset or for additional info
+                this.GhostAsset = ghostAsset;
+                this.BuyerID = buyerID;
+                this.SellerID = sellerID;
+                this.PartID = partID;
+                this.PartName = partName;
+                this.CategoryID = categoryID;
+                this.LocalID = localID;
+                this.SaleType = saleType;
+                this.SalePrice = salePrice;
+                this.BuyerEndingBalance = -1;
+            
+                
+                //this.AssetData = assetData; // TODO: should I be making a copy here instead?
+                
+                // State variables used internally in GloebitAPI
+                this.enacted = false;
+                this.consumed = false;
+                this.canceled = false;
+                
+                // Timestamps for reporting
+                this.cTime = DateTime.UtcNow;
+                this.enactedTime = null; // set to null instead of DateTime.MinValue to avoid crash on reading 0 timestamp
+                this.finishedTime = null; // set to null instead of DateTime.MinValue to avoid crash on reading 0 timestamp
+                // TODO: We have made these nullable and initialize to null.  We could alternatively choose a time that is not zero
+                // and avoid any potential conficts from allowing null.
+                // On MySql, I had to set the columns to allow NULL, otherwise, inserting null defaulted to the current local time.
+                // On PGSql, I set the columns to allow NULL, but haven't tested.
+                // On SQLite, I don't think that you can set them to allow NULL explicitely, and haven't checked defaults.
+            }
+            
+            public static Asset Get(UUID transactionID) {
+                return Get(transactionID.ToString());
+            }
+            
+            public static Asset Get(string transactionIDStr) {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] in Asset.Get");
+                Asset asset = null;
+                lock(s_assetMap) {
+                    s_assetMap.TryGetValue(transactionIDStr, out asset);
+                }
+                
+                if(asset == null) {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior asset for {0}", transactionIDStr);
+                    Asset[] assets = GloebitAssetData.Instance.Get("TransactionID", transactionIDStr);
+                    
+                    switch(assets.Length) {
+                        case 1:
+                            asset = assets[0];
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND ASSET! {0} {1} {2}", asset.TransactionID, asset.BuyerID, asset.SellerID);
+                            lock(s_assetMap) {
+                                s_assetMap[transactionIDStr] = asset;
+                            }
+                            return asset;
+                        case 0:
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] Could not find asset matching tID:{0}", asset.TransactionID);
+                            return null;
+                        default:
+                            throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one asset for {0}", transactionIDStr));
+                            return null;
+                    }
+                }
+                
+                return asset;
+            }
+            
+            public static Asset Init(UUID transactionID, UUID buyerID, UUID sellerID, bool ghostAsset, UUID partID, string partName, UUID categoryID, uint localID, int saleType, int salePrice) {
+                string transactionIDstr = transactionID.ToString();
+                // string buyerIDstr = buyerID.ToString();
+                // string sellerIDstr = sellerID.ToString();
+                
+                Asset a = new Asset(transactionID, buyerID, sellerID, ghostAsset, partID, partName, categoryID, localID, saleType, salePrice);
+                lock(s_assetMap) {
+                    s_assetMap[transactionIDstr] = a;
+                }
+                
+                GloebitAssetData.Instance.Store(a);
+                return a;
+            }
+            
+            public Uri BuildEnactURI(Uri baseURL) {
+                UriBuilder enact_uri = new UriBuilder(baseURL);
+                enact_uri.Path = "gloebit/asset";
+                enact_uri.Query = String.Format("id={0}&state={1}", this.TransactionID, "enact");
+                return enact_uri.Uri;
+            }
+            public Uri BuildConsumeURI(Uri baseURL) {
+                UriBuilder consume_uri = new UriBuilder(baseURL);
+                consume_uri.Path = "gloebit/asset";
+                consume_uri.Query = String.Format("id={0}&state={1}", this.TransactionID, "consume");
+                return consume_uri.Uri;
+            }
+            public Uri BuildCancelURI(Uri baseURL) {
+                UriBuilder cancel_uri = new UriBuilder(baseURL);
+                cancel_uri.Path = "gloebit/asset";
+                cancel_uri.Query = String.Format("id={0}&state={1}", this.TransactionID, "cancel");
+                return cancel_uri.Uri;
+            }
+            
+            /**************************************************/
+            /******* ASSET STATE MACHINE **********************/
+            /**************************************************/
+            
+            public static bool ProcessStateRequest(string transactionIDstr, string stateRequested, out string returnMsg) {
+                bool result = false;
+                
+                // Retrieve asset
+                Asset myAsset = Asset.Get(UUID.Parse(transactionIDstr));
+                
+                // If no matching asset, return false
+                // TODO: is this what we want to return?
+                if (myAsset == null) {
+                    returnMsg = "No matching asset found.";
+                    return false;
+                }
+                
+                // Attempt to avoid race conditions (not sure if even possible)
+                bool alreadyProcessing = false;
+                lock(s_pendingAssetMap) {
+                    alreadyProcessing = s_pendingAssetMap.ContainsKey(transactionIDstr);
+                    if (!alreadyProcessing) {
+                        // add to race condition protection
+                        s_pendingAssetMap[transactionIDstr] = myAsset;
+                    }
+                }
+                if (alreadyProcessing) {
+                    returnMsg = "pending";  // DO NOT CHANGE --- this message needs to be returned to Gloebit to know it is a retryable error
+                    return false;
+                }
+                
+                // Call proper state processor
+                switch (stateRequested) {
+                    case "enact":
+                        result = myAsset.enactHold(out returnMsg);
+                        break;
+                    case "consume":
+                        result = myAsset.consumeHold(out returnMsg);
+                        if (result) {
+                            lock(s_assetMap) {
+                                s_assetMap.Remove(transactionIDstr);
+                            }
+                        }
+                        break;
+                    case "cancel":
+                        result = myAsset.cancelHold(out returnMsg);
+                        if (result) {
+                            lock(s_assetMap) {
+                                s_assetMap.Remove(transactionIDstr);
+                            }
+                        }
+                        break;
+                    default:
+                        // no recognized state request
+                        returnMsg = "Unrecognized state request";
+                        result = false;
+                        break;
+                }
+                
+                // remove from race condition protection
+                lock(s_pendingAssetMap) {
+                    s_pendingAssetMap.Remove(transactionIDstr);
+                }
+                return result;
+            }
+            
+            private bool enactHold(out string returnMsg) {
+                if (this.canceled) {
+                    // getting a delayed enact sent before cancel.  return false.
+                    returnMsg = "Enact: already canceled";
+                    return false;
+                }
+                if (this.consumed) {
+                    // getting a delayed enact sent before consume.  return true.
+                    returnMsg = "Enact: already consumed";
+                    return true;
+                }
+                if (this.enacted) {
+                    // already enacted. return true.
+                    returnMsg = "Enact: already enacted";
+                    return true;
+                }
+                // First reception of enact for asset.  Do specific enact functionality
+                this.enacted = m_assetCallbacks.processAssetEnactHold(this, out returnMsg); // Do I need to grab the money module for this?
+                
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.enactHold: {0}", this.enacted);
+                if (this.enacted) {
+                    m_log.InfoFormat("TransactionID: {0}", this.TransactionID);
+                    m_log.InfoFormat("GhostAsset: {0}", this.GhostAsset);
+                    m_log.InfoFormat("BuyerID: {0}", this.BuyerID);
+                    m_log.InfoFormat("SellerID: {0}", this.SellerID);
+                    m_log.InfoFormat("PartID: {0}", this.PartID);
+                    m_log.InfoFormat("PartName: {0}", this.PartName);
+                    m_log.InfoFormat("CategoryID: {0}", this.CategoryID);
+                    m_log.InfoFormat("LocalID: {0}", this.LocalID);
+                    m_log.InfoFormat("SaleType: {0}", this.SaleType);
+                    m_log.InfoFormat("SalePrice: {0}", this.SalePrice);
+                    m_log.InfoFormat("BuyerEndingBalance: {0}", this.BuyerEndingBalance);
+                    m_log.InfoFormat("enacted: {0}", this.enacted);
+                    m_log.InfoFormat("consumed: {0}", this.consumed);
+                    m_log.InfoFormat("canceled: {0}", this.canceled);
+                    m_log.InfoFormat("cTime: {0}", this.cTime);
+                    m_log.InfoFormat("enactedTime: {0}", this.enactedTime);
+                    m_log.InfoFormat("finishedTime: {0}", this.finishedTime);
+
+                    // TODO: Should we store and update the time even if it fails to track time enact attempted/failed?
+                    this.enactedTime = DateTime.UtcNow;
+                    GloebitAssetData.Instance.Store(this);
+                }
+                return this.enacted;
+            }
+            
+            private bool consumeHold(out string returnMsg) {
+                if (this.canceled) {
+                    // Should never get a delayed consume after a cancel.  return false.
+                    returnMsg = "Consume: already canceled";
+                    return false;
+                }
+                if (!this.enacted) {
+                    // Should never get a consume before we've enacted.  return false.
+                    returnMsg = "Consume: Not yet enacted";
+                    return false;
+                }
+                if (this.consumed) {
+                    // already consumed. return true.
+                    returnMsg = "Cosume: Already consumed";
+                    return true;
+                }
+                // First reception of consume for asset.  Do specific consume functionality
+                this.consumed = m_assetCallbacks.processAssetConsumeHold(this, out returnMsg); // Do I need to grab the money module for this?
+                if (this.consumed) {
+                    this.finishedTime = DateTime.UtcNow;
+                    GloebitAssetData.Instance.Store(this);
+                }
+                return this.consumed;
+            }
+            
+            private bool cancelHold(out string returnMsg) {
+                if (this.consumed) {
+                    // Should never get a delayed cancel after a consume.  return false.
+                    returnMsg = "Cancel: already consumed";
+                    return false;
+                }
+                if (!this.enacted) {
+                    // Hasn't enacted.  No work to undo.  return true.
+                    returnMsg = "Cancel: not yet enacted";
+                    // don't return here.  Still want to process cancel which will need to assess if enacted.
+                    //return true;
+                }
+                if (this.canceled) {
+                    // already canceled. return true.
+                    returnMsg = "Cancel: already canceled";
+                    return true;
+                }
+                // First reception of cancel for asset.  Do specific cancel functionality
+                this.canceled = m_assetCallbacks.processAssetCancelHold(this, out returnMsg); // Do I need to grab the money module for this?
+                if (this.canceled) {
+                    this.finishedTime = DateTime.UtcNow;
+                    GloebitAssetData.Instance.Store(this);
+                }
+                return this.canceled;
             }
         }
         
@@ -141,11 +458,13 @@ namespace Gloebit.GloebitMoneyModule {
             
         }
 
-        public GloebitAPI(string key, string keyAlias, string secret, Uri url) {
+        public GloebitAPI(string key, string keyAlias, string secret, Uri url, IAsyncEndpointCallback asyncEndpointCallbacks, IAssetCallback assetCallbacks) {
             m_key = key;
             m_keyAlias = keyAlias;
             m_secret = secret;
             m_url = url;
+            m_asyncEndpointCallbacks = asyncEndpointCallbacks;
+            m_assetCallbacks = assetCallbacks;
         }
         
         /************************************************/
@@ -373,10 +692,14 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
         /// <param name="amount">quantity of gloebits to be transacted.</param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
+        /// <param name="asset">Asset representing local transaction part requiring processing via callbacks.</param>
+        /// <param name="transactionId">UUID provided by calling application.  This ID will be provided back to the application in any callbacks and allows for Idempotence.</param>
+        /// <param name="baseURL">Asset representing local transaction part requiring processing via callbacks.</param>
+        /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
 
-        public void TransactU2U(User sender, string senderName, User recipient, string recipientName, string recipientEmail, int amount, string description) {
+        public bool TransactU2U(User sender, string senderName, User recipient, string recipientName, string recipientEmail, int amount, string description, Asset asset, UUID transactionId, Uri baseURL) {
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6}", sender.PrincipalID, senderName, recipient.PrincipalID, recipientName, recipientEmail, amount, description);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURL:{7}", sender.PrincipalID, senderName, recipient.PrincipalID, recipientName, recipientEmail, amount, description, baseURL);
             
             // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
             // TODO: How do we identify recipient?  Get email from profile from OpenSim UUID?
@@ -385,7 +708,10 @@ namespace Gloebit.GloebitMoneyModule {
             
             // ************ BUILD AND SEND TRANSACT U2U POST REQUEST ******** //
             
-            UUID transactionId = UUID.Random();
+            // TODO: remove and always pass in UUID
+            if (transactionId == UUID.Zero) {
+                transactionId = UUID.Random();
+            }
             
             OSDMap transact_params = new OSDMap();
             
@@ -399,10 +725,20 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["asset-code"] = description;
             transact_params["asset-quantity"] = 1;
             
-            // TODO - add params describing recipient, transaction type, fees
+            // If asset, add callback params
+            if (asset != null) {
+                transact_params["asset-enact-hold-url"] = asset.BuildEnactURI(baseURL);
+                transact_params["asset-consume-hold-url"] = asset.BuildConsumeURI(baseURL);
+                transact_params["asset-cancel-hold-url"] = asset.BuildCancelURI(baseURL);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] asset-enact-hold-url:{0}", transact_params["asset-enact-hold-url"]);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] asset-consume-hold-url:{0}", transact_params["asset-consume-hold-url"]);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] asset-cancel-hold-url:{0}", transact_params["asset-cancel-hold-url"]);
+            }
+            
             // U2U specific transact params
             transact_params["seller-name-on-application"] = String.Format("{0} - {1}", recipientName, recipient.PrincipalID);
             transact_params["seller-id-on-application"] = recipient.PrincipalID;
+            // TODO: check for null or UUID.Zero
             if (recipient.GloebitID != null) {
                 transact_params["seller-id-from-gloebit"] = recipient.GloebitID;
             }
@@ -414,7 +750,7 @@ namespace Gloebit.GloebitMoneyModule {
             if (request == null) {
                 // ERROR
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U failed to create HttpWebRequest");
-                return;
+                return false;
                 // TODO once we return, return error value
             }
 
@@ -423,7 +759,7 @@ namespace Gloebit.GloebitMoneyModule {
             IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
 			                                          new GloebitRequestState(request, 
 			                        delegate(OSDMap responseDataMap) {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U async response");
+                                        
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U response: {0}", responseDataMap);
 
                 //************ PARSE AND HANDLE TRANSACT-U2U RESPONSE *********//
@@ -433,10 +769,13 @@ namespace Gloebit.GloebitMoneyModule {
                 double balance = responseDataMap["balance"].AsReal();
                 string reason = responseDataMap["reason"];
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U success: {0} balance: {1} reason: {2}", success, balance, reason);
-                // TODO - update the user's balance
-                // TODO - consider updating recipient's balance (do we need to check if logged in?)
+                if (success) {
+                    asset.BuyerEndingBalance = (int)balance;
+                }
+                m_asyncEndpointCallbacks.transactU2UCompleted(responseDataMap, sender, recipient, asset);
             }));
             
+            return true;
         }
  
         /***********************************************/
