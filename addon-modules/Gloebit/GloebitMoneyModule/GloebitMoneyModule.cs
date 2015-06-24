@@ -33,7 +33,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Reflection;
-using System.Web;
 using log4net;
 using Nini.Config;
 using Nwc.XmlRpc;
@@ -638,11 +637,8 @@ namespace Gloebit.GloebitMoneyModule
             m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
                 agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
 
-            // TODO - build this into GloebitAPI.Purchase()
-            UriBuilder buyCompleteUrl = new UriBuilder(m_economyURL);
-            buyCompleteUrl.Path = "/gloebit/buy_complete";
-            buyCompleteUrl.Query = String.Format("agentId={0}", agentId.ToString());
-            string url = String.Format("{0}/purchase/?reset&r={1}&return-to={2}", m_apiUrl, m_keyAlias, buyCompleteUrl.Uri);
+            GloebitAPI.User u = GloebitAPI.User.Get(agentId);
+            Uri url = m_api.BuildPurchaseURI(m_economyURL, u);
             string message = String.Format("Unfortunately we cannot yet sell Gloebits directly in the viewer.  Please visit {0} to buy Gloebits.", url);
 
             XmlRpcResponse returnval = new XmlRpcResponse();
