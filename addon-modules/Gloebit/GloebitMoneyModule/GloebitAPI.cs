@@ -95,10 +95,10 @@ namespace Gloebit.GloebitMoneyModule {
                     switch(users.Length) {
                         case 1:
                             User u = users[0];
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} {1}", u.PrincipalID, u.GloebitToken);
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken));
                             return u;
                         case 0:
-                            return new User(agentIdStr, null, token);
+                            return new User(agentIdStr, String.Empty, token);
                         default:
                            throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one prior token for {0}", agentIdStr));
                     }
@@ -106,7 +106,7 @@ namespace Gloebit.GloebitMoneyModule {
                 }
 
                 //return null;
-                return new User (agentIdStr, null, token);
+                return new User (agentIdStr, String.Empty, token);
             }
 
             public static User Init(UUID agentId, string token) {
@@ -114,11 +114,23 @@ namespace Gloebit.GloebitMoneyModule {
                 lock(s_tokenMap) {
                     s_tokenMap[agentIdStr] = token;
                 }
+
                 // TODO: properly store GloebitID when we get it.
                 //User u = new User(agentIdStr, UUID.Zero.ToString(), token);
-                User u = new User(agentIdStr, null, token);
+                User u = new User(agentIdStr, String.Empty, token);
                 GloebitUserData.Instance.Store(u);
                 return u;
+            }
+
+            public void InvalidateToken() {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.InvalidateToken() {0}, valid token? {1}", PrincipalID, !String.IsNullOrEmpty(GloebitToken)); 
+                if(!String.IsNullOrEmpty(sender.GloebitToken)) {
+                    GloebitToken = String.Empty;
+                    lock(s_tokenMap) {
+                        s_tokenMap.Remove(PrincipalID);
+                    }
+                    GloebitUserData.Instance.Store(this);
+                }
             }
         }
         
@@ -565,7 +577,7 @@ namespace Gloebit.GloebitMoneyModule {
 
                         string token = responseDataMap["access_token"];
                         // TODO - do something to handle the "refresh_token" field properly
-                        if(token != String.Empty) {
+                        if(!String.IsNullOrEmpty(token)) {
                             User u = User.Init(user.AgentId, token);
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", u);
 
@@ -617,8 +629,24 @@ namespace Gloebit.GloebitMoneyModule {
                 OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance responseData:{0}", responseData.ToString());
 
-                double balance = responseData["balance"].AsReal();
-                return balance;
+                if (responseData["success"]) {
+                    double balance = responseData["balance"].AsReal();
+                    return balance;
+                } else {
+                    string reason = responseData["reason"];
+                    switch(reason) {
+                        case "unknown token1":
+                        case "unknown token2":
+                            // The token is invalid (probably the user revoked our app through the website)
+                            // so force a reauthorization next time.
+                            user.InvalidateToken();
+                            break;
+                        default:
+                            m_log.ErrorFormat("Unknown error getting balance, reason: '{0}'", reason);
+                            break;
+                    }
+                    return 0.0;
+                }
             }
 
         }
@@ -783,7 +811,20 @@ namespace Gloebit.GloebitMoneyModule {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U success: {0} balance: {1} reason: {2}", success, balance, reason);
                 if (success) {
                     asset.BuyerEndingBalance = (int)balance;
+                } else {
+                    switch(reason) {
+                        case "unknown OAuth2 token":
+                            // The token is invalid (probably the user revoked our app through the website)
+                            // so force a reauthorization next time.
+                            sender.InvalidateToken();
+                            break;
+                        default:
+                            m_log.ErrorFormat("Unknown error posting transaction, reason: '{0}'", reason);
+                            break;
+                    }
                 }
+
+                // TODO - decide if we really want to issue this callback even if the token was invalid
                 m_asyncEndpointCallbacks.transactU2UCompleted(responseDataMap, sender, recipient, asset);
             }));
             

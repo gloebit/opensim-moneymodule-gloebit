@@ -634,10 +634,12 @@ namespace Gloebit.GloebitMoneyModule
             // TODO - generate a unique confirmation token
             quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
 
-            IClientAPI user = LocateClientObject(agentId);
-            // TODO - only generate a new authorize request if the user haven't been authorized yet.
             GloebitAPI.User u = GloebitAPI.User.Get(agentId);
-            m_api.Authorize(user, m_economyURL);
+            if (String.IsNullOrEmpty(u.GloebitToken)) {
+                IClientAPI user = LocateClientObject(agentId);
+                m_api.Authorize(user, m_economyURL);
+            }
+
             returnval.Value = quoteResponse;
             return returnval;
         }
