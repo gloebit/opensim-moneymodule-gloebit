@@ -694,10 +694,11 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
         /// <param name="asset">Asset representing local transaction part requiring processing via callbacks.</param>
         /// <param name="transactionId">UUID provided by calling application.  This ID will be provided back to the application in any callbacks and allows for Idempotence.</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, see buildTransactionDescMap helper function.</param>
         /// <param name="baseURL">Asset representing local transaction part requiring processing via callbacks.</param>
         /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
 
-        public bool TransactU2U(User sender, string senderName, User recipient, string recipientName, string recipientEmail, int amount, string description, Asset asset, UUID transactionId, Uri baseURL) {
+        public bool TransactU2U(User sender, string senderName, User recipient, string recipientName, string recipientEmail, int amount, string description, Asset asset, UUID transactionId, OSDMap descMap, Uri baseURL) {
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURL:{7}", sender.PrincipalID, senderName, recipient.PrincipalID, recipientName, recipientEmail, amount, description, baseURL);
             
@@ -718,7 +719,8 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["version"] = 1;
             transact_params["application-key"] = m_key;
             transact_params["request-created"] = (int)(DateTime.UtcNow.Ticks / 10000000);  // TODO - figure out if this is in the right units
-            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
+            //transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
+            transact_params["username-on-application"] = senderName;
             
             transact_params["transaction-id"] = transactionId.ToString();
             transact_params["gloebit-balance-change"] = amount;
@@ -736,7 +738,8 @@ namespace Gloebit.GloebitMoneyModule {
             }
             
             // U2U specific transact params
-            transact_params["seller-name-on-application"] = String.Format("{0} - {1}", recipientName, recipient.PrincipalID);
+            //transact_params["seller-name-on-application"] = String.Format("{0} - {1}", recipientName, recipient.PrincipalID);
+            transact_params["seller-name-on-application"] = recipientName;
             transact_params["seller-id-on-application"] = recipient.PrincipalID;
             // TODO: check for null or UUID.Zero
             if (recipient.GloebitID != null) {
@@ -744,6 +747,15 @@ namespace Gloebit.GloebitMoneyModule {
             }
             if (recipientEmail != String.Empty) {
                 transact_params["seller-email-address"] = recipientEmail;
+            }
+            transact_params["buyer-id-on-application"] = sender.PrincipalID;
+            if (descMap != null) {
+                transact_params["platform-desc-names"] = descMap["platform-names"];
+                transact_params["platform-desc-values"] = descMap["platform-values"];
+                transact_params["location-desc-names"] = descMap["location-names"];
+                transact_params["location-desc-values"] = descMap["location-values"];
+                transact_params["transaction-desc-names"] = descMap["transaction-names"];
+                transact_params["transaction-desc-values"] = descMap["transaction-values"];
             }
             
             HttpWebRequest request = BuildGloebitRequest("transact-u2u", "POST", sender, "application/json", transact_params);

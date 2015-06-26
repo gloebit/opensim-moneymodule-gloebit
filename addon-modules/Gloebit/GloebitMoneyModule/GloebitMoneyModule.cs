@@ -92,6 +92,7 @@ namespace Gloebit.GloebitMoneyModule
         private string m_secret;
         private string m_apiUrl;
         private string m_gridnick = "unknown_grid";
+        private string m_gridname = "unknown_grid_name";
         private Uri m_economyURL;
 
         private IConfigSource m_gConfig;
@@ -226,6 +227,7 @@ namespace Gloebit.GloebitMoneyModule
 
             if (section == "GridInfoService") {
                 m_gridnick = config.GetString("gridnick", m_gridnick);
+                m_gridname = config.GetString("gridname", m_gridname);
                 m_economyURL = new Uri(config.GetString("economy"));
             }
         }
@@ -418,7 +420,7 @@ namespace Gloebit.GloebitMoneyModule
             bool result = true;
 
             ////m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
-            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, null, UUID.Zero, m_economyURL);
+            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, null, UUID.Zero, null, m_economyURL);
 
             // TODO: Should we be returning true before Transact completes successfully now that this is async???
             // TODO: use transactiontype
@@ -438,9 +440,10 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="description">Description of transaction for transaction history reporting.</param>
         /// <param name="asset">Object which will handle reception of enact/consume/cancel callbacks and delivery of any OpenSim assets or handling of any other OpenSim components of the transaction.</param>
         /// <param name="transactionID">Unique ID for transaciton provided by OpenSim.  This will be provided back in any callbacks allows for Idempotence.</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, see buildTransactionDescMap helper function.</param>
         /// <param name="remoteClient">Used solely for sending transaction status messages to OpenSim user requesting transaction.</param>
         /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
-        private bool doMoneyTransferWithAsset(UUID Sender, UUID Receiver, int amount, int transactiontype, string description, GloebitAPI.Asset asset, UUID transactionID, IClientAPI remoteClient)
+        private bool doMoneyTransferWithAsset(UUID Sender, UUID Receiver, int amount, int transactiontype, string description, GloebitAPI.Asset asset, UUID transactionID, OSDMap descMap, IClientAPI remoteClient)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] doMoneyTransfer with asset from {0} to {1}, for amount {2}, transactiontype: {3}, description: {4}",
                              Sender, Receiver, amount, transactiontype, description);
@@ -448,7 +451,7 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
             // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
             //       but could make it easier for app to force synchronicity if desired.
-            bool result = m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, asset, transactionID, m_economyURL);
+            bool result = m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, asset, transactionID, descMap, m_economyURL);
             
             if (!result) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] doMoneyTransferWithAsset failed to create HttpWebRequest in GloebitAPI.TransactU2U");
@@ -1325,7 +1328,8 @@ namespace Gloebit.GloebitMoneyModule
             string regionname = s.RegionInfo.RegionName;
             string regionID = s.RegionInfo.RegionID.ToString();
 
-            string description = String.Format("{0} bought object {1}({2}) on {3}({4})@{5}", agentName, part.Name, part.UUID, regionname, regionID, m_gridnick);
+            // string description = String.Format("{0} bought object {1}({2}) on {3}({4})@{5}", agentName, part.Name, part.UUID, regionname, regionID, m_gridnick);
+            string description = String.Format("{0} object purchased on {1}, {2}", part.Name, regionname, m_gridnick);
                 
             // Create a transaction ID
             UUID transactionID = UUID.Random();
@@ -1338,11 +1342,132 @@ namespace Gloebit.GloebitMoneyModule
             //// assetData["salePrice"] = salePrice;
                 
             GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, agentID, part.OwnerID, false, part.UUID, part.Name, categoryID, localID, saleType, salePrice);
+            /*
+            OSDMap descMap = new OSDMap();
+            
+            OSDArray platformNames = new OSDArray();
+            platformNames.Add("platform");
+            platformNames.Add("version");
+            platformNames.Add("version-number");
+            // TODO: Should we add hosting-provider or more?
+            OSDArray platformValues = new OSDArray();
+            platformValues.Add("OpenSim");
+            platformValues.Add(OpenSim.VersionInfo.Version);
+            platformValues.Add(OpenSim.VersionInfo.VersionNumber);
+            descMap["platform-names"] = platformNames;
+            descMap["platform-values"] = platformValues;
+            
+            OSDArray locationNames = new OSDArray();
+            locationNames.Add("grid-name");
+            locationNames.Add("grid-nick");
+            locationNames.Add("region-name");
+            locationNames.Add("region-id");
+            OSDArray locationValues = new OSDArray();
+            locationValues.Add(m_gridname);
+            locationValues.Add(m_gridnick);
+            locationValues.Add(regionname);
+            locationValues.Add(regionID.ToString());
+            descMap["location-names"] = locationNames;
+            descMap["location-values"] = locationValues;
+            
+            OSDArray transactionNames = new OSDArray();
+            transactionNames.Add("transaction-type");
+            transactionNames.Add("object-name");
+            transactionNames.Add("object-id");
+            OSDArray transactionValues = new OSDArray();
+            transactionValues.Add("ObjectBuy");
+            transactionValues.Add(part.Name);
+            transactionValues.Add(part.UUID.ToString());
+            descMap["transaction-names"] = transactionNames;
+            descMap["transaction-values"] = transactionValues;
+            */
+            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "ObjectBuy");
+            ((OSDArray)descMap["transaction-names"]).Add("object-name");
+            ((OSDArray)descMap["transaction-names"]).Add("object-id");
+            ((OSDArray)descMap["transaction-values"]).Add(part.Name);
+            ((OSDArray)descMap["transaction-values"]).Add(part.UUID.ToString());
+
+            /*
+            Dictionary<string, string[]> descMap = new Dictionary<string, string[]>();
+            string[] platformNames = {"platform", "version", "version-number"};     // TODO: Should we add hosting-provider or more?
+            string[] platformValues = {"OpenSim", OpenSim.VersionInfo.Version, OpenSim.VersionInfo.VersionNumber};
+            descMap["platform-names"] = platformNames;
+            descMap["platform-values"] = platformValues;
+            string[] locationNames = {"grid-name", "grid-nick", "region-name", "region-id"};
+            string[] locationValues = {m_gridname, m_gridnick, regionname, regionID.ToString()};
+            descMap["location-names"] = locationNames;
+            descMap["location-values"] = locationValues;
+            string[] transactionNames = {"transaction-type", "object-name", "object-id"};
+            string[] transactionValues = {"ObjectBuy", part.Name, part.UUID.ToString()};
+            descMap["transaction-names"] = transactionNames;
+            descMap["transaction-values"] = transactionValues;
+*/
+            /*
+            OSDMap platformDescMap = new OSDMap();
+            platformDescMap["platform"] = "OpenSim";
+            platformDescMap["version"] = OpenSim.VersionInfo.Version;
+            platformDescMap["version-number"] = OpenSim.VersionInfo.VersionNumber;
+            //platformDescMap["hosting-provider"] = "blah";
+            
+            OSDMap locationDescMap = new OSDMap();
+            locationDescMap["grid-name"] = m_gridname; // TODO: Should we be using osGetGridName() ?
+            locationDescMap["grid-nick"] = m_gridnick;
+            locationDescMap["region-name"] = regionname;
+            locationDescMap["region-id"] = regionID;
+            // TODO: add HyperGrid params if hypergrid
+            
+            OSDMap transactionDescMap = new OSDMap();
+            transactionDescMap["transaction-type"] = "ObjectBuy";
+            transactionDescMap["object-name"] = part.Name;
+            transactionDescMap["object-id"] = part.UUID;
+            */
                 
-            doMoneyTransferWithAsset(agentID, part.OwnerID, salePrice, 2, description, asset, transactionID, remoteClient);
+            doMoneyTransferWithAsset(agentID, part.OwnerID, salePrice, 2, description, asset, transactionID, descMap, remoteClient);
             
             //m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy Transaction queued {0}", transactionID.ToString());
+        }
+        private OSDMap buildBaseTransactionDescMap(string regionname, string regionID, string txnType)
+        {
+            OSDMap descMap = new OSDMap();
+            
+            OSDArray platformNames = new OSDArray();
+            platformNames.Add("platform");
+            platformNames.Add("version");
+            platformNames.Add("version-number");
+            // TODO: Should we add hosting-provider or more?
+            OSDArray platformValues = new OSDArray();
+            platformValues.Add("OpenSim");
+            platformValues.Add(OpenSim.VersionInfo.Version);
+            platformValues.Add(OpenSim.VersionInfo.VersionNumber);
+            descMap["platform-names"] = platformNames;
+            descMap["platform-values"] = platformValues;
+            
+            OSDArray locationNames = new OSDArray();
+            locationNames.Add("grid-name");
+            locationNames.Add("grid-nick");
+            locationNames.Add("region-name");
+            locationNames.Add("region-id");
+            OSDArray locationValues = new OSDArray();
+            locationValues.Add(m_gridname);
+            locationValues.Add(m_gridnick);
+            locationValues.Add(regionname);
+            locationValues.Add(regionID);
+            descMap["location-names"] = locationNames;
+            descMap["location-values"] = locationValues;
+            
+            OSDArray transactionNames = new OSDArray();
+            transactionNames.Add("transaction-type");
+            //transactionNames.Add("object-name");
+            //transactionNames.Add("object-id");
+            OSDArray transactionValues = new OSDArray();
+            transactionValues.Add(txnType);
+            //transactionValues.Add(part.Name);
+            //transactionValues.Add(part.UUID.ToString());
+            descMap["transaction-names"] = transactionNames;
+            descMap["transaction-values"] = transactionValues;
+            
+            return descMap;
         }
     }
 }
