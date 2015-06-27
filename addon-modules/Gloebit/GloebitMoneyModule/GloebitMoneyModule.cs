@@ -322,8 +322,37 @@ namespace Gloebit.GloebitMoneyModule
         {
             string description = String.Format("Object {0} pays {1}", resolveObjectName(objectID), resolveAgentName(toID));
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney {0}", description);
+            
+            SceneObjectPart part = null;
+            string regionname = "";
+            string regionID = "";
+            
+            // TODO: is there a better way to get the scene and part?
+            // Are the object and payee always in the same scene?
+            // Is the payee even necessarily online?
+            Scene s = LocateSceneClientIn(toID);
+            if (s != null) {
+                part = s.GetSceneObjectPart(objectID);
+                regionname = s.RegionInfo.RegionName;
+                regionID = s.RegionInfo.RegionID.ToString();
+            }
+            
+            
+            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectGiveMoney");
+            if (part != null) {
+                ((OSDArray)descMap["location-names"]).Add("object-group-position");
+                ((OSDArray)descMap["location-values"]).Add(part.GroupPosition.ToString());
+                ((OSDArray)descMap["location-names"]).Add("object-absolute-position");
+                ((OSDArray)descMap["location-values"]).Add(part.AbsolutePosition.ToString());
+                ((OSDArray)descMap["transaction-names"]).Add("object-name");
+                ((OSDArray)descMap["transaction-values"]).Add(part.Name);
+                ((OSDArray)descMap["transaction-names"]).Add("object-id");
+                ((OSDArray)descMap["transaction-values"]).Add(part.UUID.ToString());
+                ((OSDArray)descMap["transaction-names"]).Add("object-description");
+                ((OSDArray)descMap["transaction-values"]).Add(part.Description);
+            }
 
-            bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description);
+            bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description, descMap);
 
             // TODO - move this to a proper execute callback
             BalanceUpdate(fromID, toID, give_result, description);
@@ -413,14 +442,14 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="Receiver"></param>
         /// <param name="amount"></param>
         /// <returns></returns>
-        private bool doMoneyTransfer(UUID Sender, UUID Receiver, int amount, int transactiontype, string description)
+        private bool doMoneyTransfer(UUID Sender, UUID Receiver, int amount, int transactiontype, string description, OSDMap descMap)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] doMoneyTransfer from {0} to {1}, for amount {2}, transactiontype: {3}, description: {4}",
                 Sender, Receiver, amount, transactiontype, description);
             bool result = true;
 
             ////m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
-            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, null, UUID.Zero, null, m_economyURL);
+            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, null, UUID.Zero, descMap, m_economyURL);
 
             // TODO: Should we be returning true before Transact completes successfully now that this is async???
             // TODO: use transactiontype
@@ -1198,18 +1227,41 @@ namespace Gloebit.GloebitMoneyModule
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] OnMoneyTransfer sender {0} receiver {1} amount {2} transactiontype {3} description '{4}'", e.sender, e.receiver, e.amount, e.transactiontype, e.description);
             Scene s = (Scene) osender;
+            string regionname = s.RegionInfo.RegionName;
+            string regionID = s.RegionInfo.RegionID.ToString();
+            // TODO: figure out how to get agent locations and add them to descMaps below
+            
+            OSDMap descMap = null;
+            SceneObjectPart part = null;
 
             bool give_result = false;
             switch(e.transactiontype) {
                 case 5001:
                     // Pay User Gift
-                    give_result = doMoneyTransfer(e.sender, e.receiver, e.amount, e.transactiontype, e.description);
+                    
+                    descMap = buildBaseTransactionDescMap(regionname, regionID, "PayUser");
+                    
+                    give_result = doMoneyTransfer(e.sender, e.receiver, e.amount, e.transactiontype, e.description, descMap);
                     break;
                 case 5008:
                     // Pay Object
-                    SceneObjectPart part = s.GetSceneObjectPart(e.receiver);
+                    part = s.GetSceneObjectPart(e.receiver);
+                    // TODO: Do we need to verify that part is not null?  can it ever by here?
                     UUID receiverOwner = part.OwnerID;
-                    give_result = doMoneyTransfer(e.sender, receiverOwner, e.amount, e.transactiontype, e.description);
+                    
+                    descMap = buildBaseTransactionDescMap(regionname, regionID, "PayObject");
+                    ((OSDArray)descMap["location-names"]).Add("object-group-position");
+                    ((OSDArray)descMap["location-values"]).Add(part.GroupPosition.ToString());
+                    ((OSDArray)descMap["location-names"]).Add("object-absolute-position");
+                    ((OSDArray)descMap["location-values"]).Add(part.AbsolutePosition.ToString());
+                    ((OSDArray)descMap["transaction-names"]).Add("object-name");
+                    ((OSDArray)descMap["transaction-values"]).Add(part.Name);
+                    ((OSDArray)descMap["transaction-names"]).Add("object-id");
+                    ((OSDArray)descMap["transaction-values"]).Add(part.UUID.ToString());
+                    ((OSDArray)descMap["transaction-names"]).Add("object-description");
+                    ((OSDArray)descMap["transaction-values"]).Add(part.Description);
+                    
+                    give_result = doMoneyTransfer(e.sender, receiverOwner, e.amount, e.transactiontype, e.description, descMap);
                     ObjectPaid handleObjectPaid = OnObjectPaid;
                     if(handleObjectPaid != null) {
                         // TODO - move this to a proper execute callback.
@@ -1219,6 +1271,24 @@ namespace Gloebit.GloebitMoneyModule
                 case 5009:
                     // Object Pays User
                     m_log.ErrorFormat("Unimplemented transactiontype {0}", e.transactiontype);
+                    
+                    // TODO: verify that this gets the right thing
+                    part = s.GetSceneObjectPart(e.sender);
+                    
+                    descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectPaysUser");
+                    if (part != null) {
+                        ((OSDArray)descMap["location-names"]).Add("object-group-position");
+                        ((OSDArray)descMap["location-values"]).Add(part.GroupPosition.ToString());
+                        ((OSDArray)descMap["location-names"]).Add("object-absolute-position");
+                        ((OSDArray)descMap["location-values"]).Add(part.AbsolutePosition.ToString());
+                        ((OSDArray)descMap["transaction-names"]).Add("object-name");
+                        ((OSDArray)descMap["transaction-values"]).Add(part.Name);
+                        ((OSDArray)descMap["transaction-names"]).Add("object-id");
+                        ((OSDArray)descMap["transaction-values"]).Add(part.UUID.ToString());
+                        ((OSDArray)descMap["transaction-names"]).Add("object-description");
+                        ((OSDArray)descMap["transaction-values"]).Add(part.Description);
+                    }
+                    
                     return;
                     break;
                 default:
@@ -1313,16 +1383,6 @@ namespace Gloebit.GloebitMoneyModule
                 remoteClient.SendAlertMessage("Transaction Failed.  Unable to access IBuySellModule");
                 return;
             }
-            
-            // TODO: perhaps use a dictionary like this one and pass it through to our api
-            //Dictionary<string, string> buyObject = new Dictionary<string, string>();
-            //buyObject.Add("categoryID", categoryID.ToString());
-            //buyObject.Add("localID", Convert.ToString(localID));
-            //buyObject.Add("saleType", saleType.ToString());
-            //buyObject.Add("objectUUID", part.UUID.ToString());
-            //buyObject.Add("objectName", part.Name);
-            //buyObject.Add("objectDescription", part.Description);
-            //buyObject.Add("objectLocation", m_sceneHandler.GetObjectLocation(part));
 
             string agentName = resolveAgentName(agentID);
             string regionname = s.RegionInfo.RegionName;
@@ -1334,99 +1394,25 @@ namespace Gloebit.GloebitMoneyModule
             // Create a transaction ID
             UUID transactionID = UUID.Random();
                 
-            // TODO: build an asset.  pass asset to doMoneyTransfer
-            //// OSDMap assetData = new OSDMap();
-            //// assetData["categoryID"] = categoryID;
-            //// assetData["localID"] = localID;
-            //// assetData["saleType"] = (int)saleType;
-            //// assetData["salePrice"] = salePrice;
-                
             GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, agentID, part.OwnerID, false, part.UUID, part.Name, categoryID, localID, saleType, salePrice);
-            /*
-            OSDMap descMap = new OSDMap();
-            
-            OSDArray platformNames = new OSDArray();
-            platformNames.Add("platform");
-            platformNames.Add("version");
-            platformNames.Add("version-number");
-            // TODO: Should we add hosting-provider or more?
-            OSDArray platformValues = new OSDArray();
-            platformValues.Add("OpenSim");
-            platformValues.Add(OpenSim.VersionInfo.Version);
-            platformValues.Add(OpenSim.VersionInfo.VersionNumber);
-            descMap["platform-names"] = platformNames;
-            descMap["platform-values"] = platformValues;
-            
-            OSDArray locationNames = new OSDArray();
-            locationNames.Add("grid-name");
-            locationNames.Add("grid-nick");
-            locationNames.Add("region-name");
-            locationNames.Add("region-id");
-            OSDArray locationValues = new OSDArray();
-            locationValues.Add(m_gridname);
-            locationValues.Add(m_gridnick);
-            locationValues.Add(regionname);
-            locationValues.Add(regionID.ToString());
-            descMap["location-names"] = locationNames;
-            descMap["location-values"] = locationValues;
-            
-            OSDArray transactionNames = new OSDArray();
-            transactionNames.Add("transaction-type");
-            transactionNames.Add("object-name");
-            transactionNames.Add("object-id");
-            OSDArray transactionValues = new OSDArray();
-            transactionValues.Add("ObjectBuy");
-            transactionValues.Add(part.Name);
-            transactionValues.Add(part.UUID.ToString());
-            descMap["transaction-names"] = transactionNames;
-            descMap["transaction-values"] = transactionValues;
-            */
-            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "ObjectBuy");
-            ((OSDArray)descMap["transaction-names"]).Add("object-name");
-            ((OSDArray)descMap["transaction-names"]).Add("object-id");
-            ((OSDArray)descMap["transaction-values"]).Add(part.Name);
-            ((OSDArray)descMap["transaction-values"]).Add(part.UUID.ToString());
 
-            /*
-            Dictionary<string, string[]> descMap = new Dictionary<string, string[]>();
-            string[] platformNames = {"platform", "version", "version-number"};     // TODO: Should we add hosting-provider or more?
-            string[] platformValues = {"OpenSim", OpenSim.VersionInfo.Version, OpenSim.VersionInfo.VersionNumber};
-            descMap["platform-names"] = platformNames;
-            descMap["platform-values"] = platformValues;
-            string[] locationNames = {"grid-name", "grid-nick", "region-name", "region-id"};
-            string[] locationValues = {m_gridname, m_gridnick, regionname, regionID.ToString()};
-            descMap["location-names"] = locationNames;
-            descMap["location-values"] = locationValues;
-            string[] transactionNames = {"transaction-type", "object-name", "object-id"};
-            string[] transactionValues = {"ObjectBuy", part.Name, part.UUID.ToString()};
-            descMap["transaction-names"] = transactionNames;
-            descMap["transaction-values"] = transactionValues;
-*/
-            /*
-            OSDMap platformDescMap = new OSDMap();
-            platformDescMap["platform"] = "OpenSim";
-            platformDescMap["version"] = OpenSim.VersionInfo.Version;
-            platformDescMap["version-number"] = OpenSim.VersionInfo.VersionNumber;
-            //platformDescMap["hosting-provider"] = "blah";
-            
-            OSDMap locationDescMap = new OSDMap();
-            locationDescMap["grid-name"] = m_gridname; // TODO: Should we be using osGetGridName() ?
-            locationDescMap["grid-nick"] = m_gridnick;
-            locationDescMap["region-name"] = regionname;
-            locationDescMap["region-id"] = regionID;
-            // TODO: add HyperGrid params if hypergrid
-            
-            OSDMap transactionDescMap = new OSDMap();
-            transactionDescMap["transaction-type"] = "ObjectBuy";
-            transactionDescMap["object-name"] = part.Name;
-            transactionDescMap["object-id"] = part.UUID;
-            */
+            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "ObjectBuy");
+            ((OSDArray)descMap["location-names"]).Add("object-group-position");
+            ((OSDArray)descMap["location-values"]).Add(part.GroupPosition.ToString());
+            ((OSDArray)descMap["location-names"]).Add("object-absolute-position");
+            ((OSDArray)descMap["location-values"]).Add(part.AbsolutePosition.ToString());
+            ((OSDArray)descMap["transaction-names"]).Add("object-name");
+            ((OSDArray)descMap["transaction-values"]).Add(part.Name);
+            ((OSDArray)descMap["transaction-names"]).Add("object-id");
+            ((OSDArray)descMap["transaction-values"]).Add(part.UUID.ToString());
+            ((OSDArray)descMap["transaction-names"]).Add("object-description");
+            ((OSDArray)descMap["transaction-values"]).Add(part.Description);
                 
             doMoneyTransferWithAsset(agentID, part.OwnerID, salePrice, 2, description, asset, transactionID, descMap, remoteClient);
             
-            //m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy IBuySellModule.BuyObject success: {0}", success);
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy Transaction queued {0}", transactionID.ToString());
         }
+        
         private OSDMap buildBaseTransactionDescMap(string regionname, string regionID, string txnType)
         {
             OSDMap descMap = new OSDMap();
