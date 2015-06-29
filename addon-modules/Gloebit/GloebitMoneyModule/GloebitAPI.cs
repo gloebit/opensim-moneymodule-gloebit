@@ -777,6 +777,20 @@ namespace Gloebit.GloebitMoneyModule {
             
             return true;
         }
+
+        /// <summary>
+        /// Builds a URI for a user to purchase gloebits
+        /// </summary>
+        /// <returns>The fully constructed url with arguments for receiving a callback when the purchase is complete.</returns>
+        public Uri BuildPurchaseURI(Uri callbackBaseURL, User u) {
+            UriBuilder purchaseUri = new UriBuilder(m_url);
+            purchaseUri.Path = "/purchase";
+            UriBuilder callbackUrl = new UriBuilder(callbackBaseURL);
+            callbackUrl.Path = "/gloebit/buy_complete";
+            callbackUrl.Query = String.Format("agentId={0}", u.PrincipalID);
+            purchaseUri.Query = String.Format("reset&r={0}&return-to={1}", m_keyAlias, callbackUrl.Uri);
+            return purchaseUri.Uri;
+        }
  
         /***********************************************/
         /********* GLOEBIT API HELPER FUNCTIONS ********/
