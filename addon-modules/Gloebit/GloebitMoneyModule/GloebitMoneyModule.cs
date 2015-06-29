@@ -264,6 +264,8 @@ namespace Gloebit.GloebitMoneyModule
                         // Register callback for asset enact, consume, & cancel holds transaction parts
                         httpServer.AddHTTPHandler("/gloebit/asset", assetState_func);
                        
+                        // Used by the redirect-to parameter to GloebitAPI.Purchase.  Called when a user has finished purchasing gloebits
+                        httpServer.AddHTTPHandler("/gloebit/buy_complete", buyComplete_func);
                     }
 
                     if (m_scenel.ContainsKey(scene.RegionInfo.RegionHandle))
@@ -655,8 +657,8 @@ namespace Gloebit.GloebitMoneyModule
             m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
                 agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
 
-            // TODO - maybe call the /purchase endpoint for this? so that we can get a callback when the purchase is done and then send a balance update to the viewer?
-            string url = String.Format("{0}/purchase/?reset", m_apiUrl);
+            GloebitAPI.User u = GloebitAPI.User.Get(agentId);
+            Uri url = m_api.BuildPurchaseURI(m_economyURL, u);
             string message = String.Format("Unfortunately we cannot yet sell Gloebits directly in the viewer.  Please visit {0} to buy Gloebits.", url);
 
             XmlRpcResponse returnval = new XmlRpcResponse();
@@ -800,6 +802,26 @@ namespace Gloebit.GloebitMoneyModule
             response["str_response_string"] = OSDParser.SerializeJsonString(paramArray);
             response["content_type"] = "application/json";
             m_log.InfoFormat("[GLOEBITMONEYMODULE].assetState_func response:{0}", OSDParser.SerializeJsonString(paramArray));
+            return response;
+        }
+
+        /// <summary>
+        /// Used by the redirect-to parameter to GloebitAPI.Purchase.  Called when a user has finished purchasing gloebits
+        /// Sends a balance update to the user
+        /// </summary>
+        /// <param name="requestData">response data from GloebitAPI.Authorize</param>
+        private Hashtable buyComplete_func(Hashtable requestData) {
+            UUID agentId = UUID.Parse(requestData["agentId"] as string);
+            GloebitAPI.User u = GloebitAPI.User.Get(agentId);
+            IClientAPI client = LocateClientObject(agentId);
+
+            double balance = m_api.GetBalance(u);
+            client.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)balance, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+
+            Hashtable response = new Hashtable();
+            response["int_response_code"] = 200;
+            response["str_response_string"] = "<html><head><title>Purchase Complete</title></head><body><h2>Purchase Complete</h2>Thank you for purchasing Gloebits.  You may now close this window.</body></html>";
+            response["content_type"] = "text/html";
             return response;
         }
         
@@ -1222,26 +1244,24 @@ namespace Gloebit.GloebitMoneyModule
             OSDMap descMap = null;
             SceneObjectPart part = null;
 
-            bool give_result = false;
+            bool transaction_result = false;
             switch(e.transactiontype) {
                 case 5001:
                     // Pay User Gift
-                    
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "PayUser");
-                    
-                    give_result = doMoneyTransfer(e.sender, e.receiver, e.amount, e.transactiontype, e.description, descMap);
+                    transaction_result = doMoneyTransfer(e.sender, e.receiver, e.amount, e.transactiontype, e.description, descMap);
                     break;
                 case 5008:
                     // Pay Object
                     part = s.GetSceneObjectPart(e.receiver);
                     // TODO: Do we need to verify that part is not null?  can it ever by here?
                     UUID receiverOwner = part.OwnerID;
-                    
+    
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "PayObject", part);
+                    transaction_result = doMoneyTransfer(e.sender, receiverOwner, e.amount, e.transactiontype, e.description, descMap);
                     
-                    give_result = doMoneyTransfer(e.sender, receiverOwner, e.amount, e.transactiontype, e.description, descMap);
                     ObjectPaid handleObjectPaid = OnObjectPaid;
-                    if(handleObjectPaid != null) {
+                    if(transaction_result && handleObjectPaid != null) {
                         // TODO - move this to a proper execute callback.
                         handleObjectPaid(e.receiver, e.sender, e.amount);
                     }
