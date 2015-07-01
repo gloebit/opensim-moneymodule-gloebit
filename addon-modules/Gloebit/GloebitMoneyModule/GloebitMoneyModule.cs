@@ -1302,6 +1302,7 @@ namespace Gloebit.GloebitMoneyModule
             string actionStr = String.Empty;
             OSDMap descMap = null;
             SceneObjectPart part = null;
+            string description;
             
             // TODO: figure out how to get agent locations and add them to descMaps below
             
@@ -1313,6 +1314,7 @@ namespace Gloebit.GloebitMoneyModule
                     fromID = e.sender;
                     toID = e.receiver;
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "PayUser");
+                    description = String.Format("PayUser: {0}", e.description);
                     
                     activeClient = LocateClientObject(fromID);
                     actionStr = String.Format("Paying User: {0}", resolveAgentName(toID));
@@ -1328,6 +1330,7 @@ namespace Gloebit.GloebitMoneyModule
                     fromID = e.sender;
                     toID = part.OwnerID;
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "PayObject", part);
+                    description = e.description;
                     
                     activeClient = LocateClientObject(fromID);
                     actionStr = String.Format("Paying Object: {0}\nOwned By: {1}", partName, resolveAgentName(toID));
@@ -1344,6 +1347,7 @@ namespace Gloebit.GloebitMoneyModule
                     fromID = part.OwnerID;
                     toID = e.receiver;
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectPaysUser", part);
+                    description = e.description;
                     
                     activeClient = LocateClientObject(toID);
                     actionStr = String.Format("User Gifted Funds From Object: {0}\nOwned By: {1}", partName, resolveAgentName(fromID));
@@ -1364,7 +1368,7 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: create an enum. add transaction type to asset.  stop hijacking saleType.
             int saleType = e.transactiontype;
             bool requiresDelivery = false;
-            bool transaction_result = doMoneyTransferWithAsset(transactionID, fromID, toID, e.amount, e.transactiontype, e.description, descMap, activeClient, actionStr, partID, partName, requiresDelivery, UUID.Zero, 0, saleType);
+            bool transaction_result = doMoneyTransferWithAsset(transactionID, fromID, toID, e.amount, e.transactiontype, description, descMap, activeClient, actionStr, partID, partName, requiresDelivery, UUID.Zero, 0, saleType);
             
             /* Handle any necessary resolution after transaction submission */
             switch(e.transactiontype) {
