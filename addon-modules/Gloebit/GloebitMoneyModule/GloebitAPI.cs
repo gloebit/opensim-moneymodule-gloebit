@@ -124,7 +124,7 @@ namespace Gloebit.GloebitMoneyModule {
 
             public void InvalidateToken() {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.InvalidateToken() {0}, valid token? {1}", PrincipalID, !String.IsNullOrEmpty(GloebitToken)); 
-                if(!String.IsNullOrEmpty(sender.GloebitToken)) {
+                if(!String.IsNullOrEmpty(GloebitToken)) {
                     GloebitToken = String.Empty;
                     lock(s_tokenMap) {
                         s_tokenMap.Remove(PrincipalID);
