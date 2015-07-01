@@ -346,24 +346,13 @@ namespace Gloebit.GloebitMoneyModule
             int transactionType = 100;
             int saleType = transactionType;
             
-            GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, fromID, toID, true, objectID, part.Name, UUID.Zero, 0, saleType, amount);
-            
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectGiveMoney", part);
             
-            string partName = part.Name;
             IClientAPI activeClient = LocateClientObject(toID);
-            string actionStr = String.Format("User Gifted Funds From Object: {0}\nOwned By: {1}", partName, resolveAgentName(fromID));
-            //IClientAPI payeeClient = LocateClientObject(toID);
-            //string objectStr = String.Format("Object Gifting You Funds: {0}", part.Name);
-            //string sellerStr = String.Format("From: {0}", resolveAgentName(fromID));
-            string amountStr = String.Format("Amount: {0} gloebits", amount);
-            string descStr = String.Format("Description: {0}", description);
-            string idStr = String.Format("Transaction ID: {0}", transactionID);
-            activeClient.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}", actionStr, amountStr, descStr, idStr));
-            
-            bool give_result = doMoneyTransferWithAsset(fromID, toID, amount, transactionType, description, asset, transactionID, descMap, activeClient);
+            string actionStr = String.Format("User Gifted Funds From Object: {0}\nOwned By: {1}", part.Name, resolveAgentName(fromID));
 
-            // bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description, descMap);
+            bool requiresDelivery = false;
+            bool give_result = doMoneyTransferWithAsset(transactionID, fromID, toID, amount, transactionType, description, descMap, activeClient, actionStr, objectID, part.Name, requiresDelivery, UUID.Zero, 0, saleType);
 
             // TODO - move this to a proper execute callback
             BalanceUpdate(fromID, toID, give_result, description);
@@ -473,38 +462,57 @@ namespace Gloebit.GloebitMoneyModule
         /// Transfer money from one OpenSim agent to another.  Utilize asset to receive transact enact/consume/cancel callbacks, deliver
         /// any OpenSim assets being purchased, and handle any other OpenSim components of the transaction.
         /// </summary>
-        /// <param name="Sender">OpenSim UUID of agent sending gloebits.</param>
-        /// <param name="Receiver">OpenSim UUID of agent receiving gloebits</param>
+        /// <param name="transactionID">Unique ID for transaciton provided by OpenSim.  This will be provided back in any callbacks and allows for Idempotence.</param>
+        /// <param name="fromID">OpenSim UUID of agent sending gloebits.</param>
+        /// <param name="toID">OpenSim UUID of agent receiving gloebits</param>
         /// <param name="amount">Amount of gloebits being transferred.</param>
         /// <param name="transactiontype">int from OpenSim describing type of transaction (buy original, buy copy, buy contents, pay object, pay user, gift from object to user, etc)</param>
         /// <param name="description">Description of transaction for transaction history reporting.</param>
-        /// <param name="asset">Object which will handle reception of enact/consume/cancel callbacks and delivery of any OpenSim assets or handling of any other OpenSim components of the transaction.</param>
-        /// <param name="transactionID">Unique ID for transaciton provided by OpenSim.  This will be provided back in any callbacks allows for Idempotence.</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, see buildTransactionDescMap helper function.</param>
-        /// <param name="remoteClient">Used solely for sending transaction status messages to OpenSim user requesting transaction.</param>
+        /// <param name="activeClient">Used solely for sending transaction status messages to OpenSim user who caused the transaction.</param>
+        /// <param name="actionStr">String describing the type of transaction and who/what it is with.  Used solely for sending transaction status messages to OpenSim user who caused the transaction.</param>
+        /// <param name="partID">UUID of the object, when transaciton involves an object.  UUID.Zero otherwise.</param>
+        /// <param name="partName">string name of the object, when transaciton involves an object.  null otherwise.</param>
+        /// <param name="requiresDelivery">bool informing whether enact/consume/cancel callbacks will strictly be for transaction status, or will be delivering the asset specified by partID, partName, categoryID, localId and saleType.</param>
+        /// <param name="categoryID">UUID of folder in object used when transactionType is ObjectBuy and saleType is copy.  UUID.Zero otherwise.  Required by IBuySellModule.</param>
+        /// <param name="localID">uint region specific id of object used when transactionType is ObjectBuy.  0 otherwise.  Required by IBuySellModule.</param>
+        /// <param name="saleType">int differentiating between orginal, copy or contents for ObjectBuy.  Should be set to transactionType otherwise as hack since assets don't store transactionType.  Required by IBuySellModule.</param>
         /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
-        private bool doMoneyTransferWithAsset(UUID Sender, UUID Receiver, int amount, int transactiontype, string description, GloebitAPI.Asset asset, UUID transactionID, OSDMap descMap, IClientAPI remoteClient)
+        private bool doMoneyTransferWithAsset(UUID transactionID, UUID fromID, UUID toID, int amount, int transactionType, string description, OSDMap descMap, IClientAPI activeClient, string actionStr, UUID partID, string partName, bool requiresDelivery, UUID categoryID, uint localID, int saleType)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] doMoneyTransfer with asset from {0} to {1}, for amount {2}, transactiontype: {3}, description: {4}",
-                             Sender, Receiver, amount, transactiontype, description);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] doMoneyTransferWithAsset Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}",
+                             transactionID, fromID, toID, amount, transactionType, description);
+            
+            bool isGhostAsset = !requiresDelivery;
+            // TODO: add transactionType to asset and stop hijacking saleType.
+            GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, fromID, toID, isGhostAsset, partID, partName, categoryID, localID, saleType, amount);
+            
+            if (activeClient != null) {
+                string amountStr = String.Format("Amount: {0} gloebits", amount);
+                string descStr = String.Format("Description: {0}", description);
+                string idStr = String.Format("Transaction ID: {0}", transactionID);
+                activeClient.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}", actionStr, amountStr, descStr, idStr));
+            }
             
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
             // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
             //       but could make it easier for app to force synchronicity if desired.
-            bool result = m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, asset, transactionID, descMap, m_economyURL);
+            bool result = m_api.TransactU2U(GloebitAPI.User.Get(fromID), resolveAgentName(fromID), GloebitAPI.User.Get(toID), resolveAgentName(toID), resolveAgentEmail(toID), amount, description, asset, transactionID, descMap, m_economyURL);
             
             if (!result) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] doMoneyTransferWithAsset failed to create HttpWebRequest in GloebitAPI.TransactU2U");
-                remoteClient.SendAlertMessage(String.Format("Gloebit: Transaction Failed.\nRegion Failed to properly create and send request to Gloebit.  Please try again.\nTransaction ID: {0}", asset.TransactionID));
+                if (activeClient != null) {
+                    activeClient.SendAlertMessage(String.Format("Gloebit: Transaction Failed.\nRegion Failed to properly create and send request to Gloebit.  Please try again.\nTransaction ID: {0}", asset.TransactionID));
+                }
             } else {
-                remoteClient.SendAlertMessage(String.Format("Gloebit: Transaction Successfully submitted to Gloebit Service.\nTransaction ID: {0}", asset.TransactionID));
+                if (activeClient != null) {
+                    activeClient.SendAlertMessage(String.Format("Gloebit: Transaction Successfully submitted to Gloebit Service.\nTransaction ID: {0}", asset.TransactionID));
+                }
             }
             
             // TODO: Should we be returning true before Transact completes successfully now that this is async???
-            // TODO: use transactiontype
             return result;
         }
-
 
         /// <summary>
         /// Sends the the stored money balance to the client
@@ -1280,6 +1288,7 @@ namespace Gloebit.GloebitMoneyModule
         private void OnMoneyTransfer(Object osender, EventManager.MoneyTransferArgs e)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] OnMoneyTransfer sender {0} receiver {1} amount {2} transactiontype {3} description '{4}'", e.sender, e.receiver, e.amount, e.transactiontype, e.description);
+            
             Scene s = (Scene) osender;
             string regionname = s.RegionInfo.RegionName;
             string regionID = s.RegionInfo.RegionID.ToString();
@@ -1353,19 +1362,9 @@ namespace Gloebit.GloebitMoneyModule
             UUID transactionID = UUID.Random();
             
             // TODO: create an enum. add transaction type to asset.  stop hijacking saleType.
-            int transactionType = e.transactiontype;
-            int saleType = transactionType;
-            int amount = e.amount;
-            string description = e.description;
-            
-            GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, fromID, toID, true, partID, partName, UUID.Zero, 0, saleType, amount);
-            
-            string amountStr = String.Format("Amount: {0} gloebits", amount);
-            string descStr = String.Format("Description: {0}", description);
-            string idStr = String.Format("Transaction ID: {0}", transactionID);
-            activeClient.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}", actionStr, amountStr, descStr, idStr));
-            
-            bool transaction_result = doMoneyTransferWithAsset(fromID, toID, amount, transactionType, description, asset, transactionID, descMap, activeClient);
+            int saleType = e.transactiontype;
+            bool requiresDelivery = false;
+            bool transaction_result = doMoneyTransferWithAsset(transactionID, fromID, toID, e.amount, e.transactiontype, e.description, descMap, activeClient, actionStr, partID, partName, requiresDelivery, UUID.Zero, 0, saleType);
             
             /* Handle any necessary resolution after transaction submission */
             switch(e.transactiontype) {
@@ -1482,21 +1481,19 @@ namespace Gloebit.GloebitMoneyModule
                 
             // Create a transaction ID
             UUID transactionID = UUID.Random();
-                
-            GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, agentID, part.OwnerID, false, part.UUID, part.Name, categoryID, localID, saleType, salePrice);
 
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "ObjectBuy", part);
             
             string objectStr;
             switch (saleType) {
                 case 1: // Sell as original (in-place sale)
-                    objectStr = String.Format("Purchase Original: {0}", part.Name);
+                    objectStr = String.Format("Purchase Original: {0}\nFrom: {1}", part.Name, resolveAgentName(part.OwnerID));
                     break;
                 case 2: // Sell a copy
-                    objectStr = String.Format("Purchase Copy: {0}", part.Name);
+                    objectStr = String.Format("Purchase Copy: {0}\nFrom: {1}", part.Name, resolveAgentName(part.OwnerID));
                     break;
                 case 3: // Sell contents
-                    objectStr = String.Format("Purchase Contents: {0}", part.Name);
+                    objectStr = String.Format("Purchase Contents: {0}\nFrom: {1}", part.Name, resolveAgentName(part.OwnerID));
                     break;
                 default:
                     // Should not get here unless an object purchase is submitted with a bad or new (but unimplemented here) saleType.
@@ -1504,15 +1501,10 @@ namespace Gloebit.GloebitMoneyModule
                     remoteClient.SendAlertMessage(String.Format("Can not complete transaction due to unrecognized saleType of {0}.  Please report this error to the region or grid owner.", saleType));
                     return;
             }
-            string sellerStr = String.Format("From: {0}", resolveAgentName(part.OwnerID));
-            string priceStr = String.Format("Price: {0} gloebits", salePrice);
-            string descStr = String.Format("Description: {0}", description);
-            string idStr = String.Format("Transaction ID: {0}", transactionID);
-            remoteClient.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}\n{4}", objectStr, sellerStr, priceStr, descStr, idStr));
-            
-            // TODO: create an enum for transactionType, use enum, add transactionType as separate field to asset (stop hijacking saleType).
+
             int transactionType = (int)saleType;
-            doMoneyTransferWithAsset(agentID, part.OwnerID, salePrice, transactionType, description, asset, transactionID, descMap, remoteClient);
+            bool requiresDelivery = true;   // This is the one place where we don't have ghost assets
+            doMoneyTransferWithAsset(transactionID, agentID, part.OwnerID, salePrice, transactionType, description, descMap, remoteClient, objectStr, part.UUID, part.Name, requiresDelivery, categoryID, localID, saleType);
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy Transaction queued {0}", transactionID.ToString());
         }
