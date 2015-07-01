@@ -145,7 +145,6 @@ namespace Gloebit.GloebitMoneyModule {
             public bool GhostAsset;     // Set to true when asset is used for callback notification, but has no object to deliver
             public UUID PartID;         // UUID of object
             public string PartName;     // object name
-            //public OSDMap AssetData;
             public UUID CategoryID;     // Appears to be a folder id used when saleType is copy
             public uint LocalID;        // Region specific ID of object.  Unclear why this is passed instead of UUID
             public int SaleType;        // object, copy, or contents
@@ -185,9 +184,6 @@ namespace Gloebit.GloebitMoneyModule {
                 this.SaleType = saleType;
                 this.SalePrice = salePrice;
                 this.BuyerEndingBalance = -1;
-            
-                
-                //this.AssetData = assetData; // TODO: should I be making a copy here instead?
                 
                 // State variables used internally in GloebitAPI
                 this.enacted = false;
