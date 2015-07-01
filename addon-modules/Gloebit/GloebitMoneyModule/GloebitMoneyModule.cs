@@ -350,15 +350,18 @@ namespace Gloebit.GloebitMoneyModule
             
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectGiveMoney", part);
             
-            IClientAPI payeeClient = LocateClientObject(toID);
-            string objectStr = String.Format("Object Gifting You Funds: {0}", part.Name);
-            string sellerStr = String.Format("From: {0}", resolveAgentName(fromID));
-            string priceStr = String.Format("Amount: {0} gloebits", amount);
+            string partName = part.Name;
+            IClientAPI activeClient = LocateClientObject(toID);
+            string actionStr = String.Format("User Gifted Funds From Object: {0}\nOwned By: {1}", partName, resolveAgentName(fromID));
+            //IClientAPI payeeClient = LocateClientObject(toID);
+            //string objectStr = String.Format("Object Gifting You Funds: {0}", part.Name);
+            //string sellerStr = String.Format("From: {0}", resolveAgentName(fromID));
+            string amountStr = String.Format("Amount: {0} gloebits", amount);
             string descStr = String.Format("Description: {0}", description);
             string idStr = String.Format("Transaction ID: {0}", transactionID);
-            payeeClient.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}\n{4}", objectStr, sellerStr, priceStr, descStr, idStr));
+            activeClient.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}", actionStr, amountStr, descStr, idStr));
             
-            bool give_result = doMoneyTransferWithAsset(fromID, toID, amount, transactionType, description, asset, transactionID, descMap, payeeClient);
+            bool give_result = doMoneyTransferWithAsset(fromID, toID, amount, transactionType, description, asset, transactionID, descMap, activeClient);
 
             // bool give_result = doMoneyTransfer(fromID, toID, amount, 2, description, descMap);
 
@@ -1278,62 +1281,97 @@ namespace Gloebit.GloebitMoneyModule
             Scene s = (Scene) osender;
             string regionname = s.RegionInfo.RegionName;
             string regionID = s.RegionInfo.RegionID.ToString();
-            // TODO: figure out how to get agent locations and add them to descMaps below
             
+            // Decalare variables to be assigned in switch below
+            IClientAPI activeClient = null;
+            UUID fromID = UUID.Zero;
+            UUID toID = UUID.Zero;
+            UUID partID = UUID.Zero;
+            string partName = null;
+            string actionStr = String.Empty;
             OSDMap descMap = null;
             SceneObjectPart part = null;
             
-            // Create a transaction ID
-            UUID transactionID = UUID.Random();
+            // TODO: figure out how to get agent locations and add them to descMaps below
             
-            // TODO: create an enum.  stop hijacking saleType.
-            int saleType = e.transactiontype;
-
-            bool transaction_result = false;
+            /****** Fill in fields dependent upon transaction type ******/
             switch(e.transactiontype) {
                 case 5001:
                     // Pay User Gift
                     
-                    GloebitAPI.Asset asset1 = GloebitAPI.Asset.Init(transactionID, e.sender, e.receiver, true, UUID.Zero, null, UUID.Zero, 0, saleType, e.amount);
-                    
+                    fromID = e.sender;
+                    toID = e.receiver;
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "PayUser");
                     
-                    IClientAPI payingClient1 = LocateClientObject(e.sender);
-                    string objectStr1 = String.Format("Paying User: {0}", resolveAgentName(e.receiver));
-                    string sellerStr1 = String.Format("From: {0}", resolveAgentName(e.sender));
-                    string priceStr1 = String.Format("Amount: {0} gloebits", e.amount);
-                    string descStr1 = String.Format("Description: {0}", e.description);
-                    string idStr1 = String.Format("Transaction ID: {0}", transactionID);
-                    payingClient1.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}\n{4}", objectStr1, sellerStr1, priceStr1, descStr1, idStr1));
+                    activeClient = LocateClientObject(fromID);
+                    actionStr = String.Format("Paying User: {0}", resolveAgentName(toID));
                     
-                    transaction_result = doMoneyTransferWithAsset(e.sender, e.receiver, e.amount, e.transactiontype, e.description, asset1, transactionID, descMap, payingClient1);
-                    
-                    //descMap = buildBaseTransactionDescMap(regionname, regionID, "PayUser");
-                    //transaction_result = doMoneyTransfer(e.sender, e.receiver, e.amount, e.transactiontype, e.description, descMap);
                     break;
                 case 5008:
                     // Pay Object
-                    part = s.GetSceneObjectPart(e.receiver);
+                    
+                    partID = e.receiver;
+                    part = s.GetSceneObjectPart(partID);
                     // TODO: Do we need to verify that part is not null?  can it ever by here?
-                    UUID receiverOwner = part.OwnerID;
-                    
-                    GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, e.sender, receiverOwner, true, e.receiver, part.Name, UUID.Zero, 0, saleType, e.amount);
-                    
+                    partName = part.Name;
+                    fromID = e.sender;
+                    toID = part.OwnerID;
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "PayObject", part);
                     
-                    IClientAPI payingClient = LocateClientObject(e.sender);
-                    string objectStr = String.Format("Paying Object: {0}", part.Name);
-                    string sellerStr = String.Format("From: {0}", resolveAgentName(receiverOwner));
-                    string priceStr = String.Format("Amount: {0} gloebits", e.amount);
-                    string descStr = String.Format("Description: {0}", e.description);
-                    string idStr = String.Format("Transaction ID: {0}", transactionID);
-                    payingClient.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}\n{4}", objectStr, sellerStr, priceStr, descStr, idStr));
+                    activeClient = LocateClientObject(fromID);
+                    actionStr = String.Format("Paying Object: {0}\nOwned By: {1}", partName, resolveAgentName(toID));
                     
-                    transaction_result = doMoneyTransferWithAsset(e.sender, receiverOwner, e.amount, e.transactiontype, e.description, asset, transactionID, descMap, payingClient);
-    
-                    //descMap = buildBaseTransactionDescMap(regionname, regionID, "PayObject", part);
-                    //transaction_result = doMoneyTransfer(e.sender, receiverOwner, e.amount, e.transactiontype, e.description, descMap);
+                    break;
+                case 5009:
+                    // Object Pays User
+                    m_log.ErrorFormat("Unimplemented transactiontype {0}", e.transactiontype);
                     
+                    partID = e.sender;
+                    // TODO: verify that this gets the right thing
+                    part = s.GetSceneObjectPart(partID);
+                    partName = part.Name;
+                    fromID = part.OwnerID;
+                    toID = e.receiver;
+                    descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectPaysUser", part);
+                    
+                    activeClient = LocateClientObject(toID);
+                    actionStr = String.Format("User Gifted Funds From Object: {0}\nOwned By: {1}", partName, resolveAgentName(fromID));
+                    
+                    return;
+                    break;
+                default:
+                    m_log.ErrorFormat("UNKNOWN Unimplemented transactiontype {0}", e.transactiontype);
+                    return;
+                    break;
+            }
+            
+            /******** Set up necessary parts for gloebit transact-u2u **********/
+            
+            // Create a transaction ID
+            UUID transactionID = UUID.Random();
+            
+            // TODO: create an enum. add transaction type to asset.  stop hijacking saleType.
+            int transactionType = e.transactiontype;
+            int saleType = transactionType;
+            int amount = e.amount;
+            string description = e.description;
+            
+            GloebitAPI.Asset asset = GloebitAPI.Asset.Init(transactionID, fromID, toID, true, partID, partName, UUID.Zero, 0, saleType, amount);
+            
+            string amountStr = String.Format("Amount: {0} gloebits", amount);
+            string descStr = String.Format("Description: {0}", description);
+            string idStr = String.Format("Transaction ID: {0}", transactionID);
+            activeClient.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}", actionStr, amountStr, descStr, idStr));
+            
+            bool transaction_result = doMoneyTransferWithAsset(fromID, toID, amount, transactionType, description, asset, transactionID, descMap, activeClient);
+            
+            /* Handle any necessary resolution after transaction submission */
+            switch(e.transactiontype) {
+                case 5001:
+                    // Pay User Gift
+                    break;
+                case 5008:
+                    // Pay Object
                     ObjectPaid handleObjectPaid = OnObjectPaid;
                     if(transaction_result && handleObjectPaid != null) {
                         // TODO - move this to a proper execute callback.
@@ -1342,18 +1380,6 @@ namespace Gloebit.GloebitMoneyModule
                     break;
                 case 5009:
                     // Object Pays User
-                    m_log.ErrorFormat("Unimplemented transactiontype {0}", e.transactiontype);
-                    
-                    // TODO: verify that this gets the right thing
-                    part = s.GetSceneObjectPart(e.sender);
-                    
-                    descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectPaysUser", part);
-                    
-                    return;
-                    break;
-                default:
-                    m_log.ErrorFormat("UNKNOWN Unimplemented transactiontype {0}", e.transactiontype);
-                    return;
                     break;
             }
             
