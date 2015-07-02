@@ -528,7 +528,7 @@ namespace Gloebit.GloebitMoneyModule {
             //*********** SEND AUTHORIZE REQUEST URI TO USER ***********//
             // currently can not launch browser directly for user, so send in message
 
-            string message = String.Format("To use Gloebit currency, please autorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
+            string message = String.Format("To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
             user.SendBlueBoxMessage(UUID.Zero, "Gloebit", message);
             // use SendBlueBoxMessage as all others including SendLoadURL truncate to 255 char or below
 
