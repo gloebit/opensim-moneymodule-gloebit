@@ -1315,7 +1315,7 @@ namespace Gloebit.GloebitMoneyModule
                     toID = e.receiver;
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "PayUser");
                     if (String.IsNullOrEmpty(e.description)) {
-                        description = String.Format("PayUser: {0}", "<no description provided>");
+                        description = "PayUser: <no description provided>";
                     } else {
                         description = String.Format("PayUser: {0}", e.description);
                     }
