@@ -577,7 +577,8 @@ namespace Gloebit.GloebitMoneyModule {
                             User u = User.Init(user.AgentId, token);
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", u);
 
-                            // TODO: If we need to alert any process that this is complete, now is the time.
+                            // TODO - make this use a callback
+                            user.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)GetBalance(u), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
                         } else {
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken error: {0}, reason: {1}", responseDataMap["error"], responseDataMap["reason"]);
                             // TODO: signal error;
