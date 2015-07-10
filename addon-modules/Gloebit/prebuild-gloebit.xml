@@ -32,7 +32,7 @@
   <Reference name="OpenSim.Region.CoreModules"/>
   <Reference name="OpenSim.Framework.Communications"/>
   <Reference name="OpenSim.Server.Base"/>
-  <Reference name="OpenSim.Server.Handlers"/>
+  <!-- Reference name="OpenSim.Server.Handlers"/ -->
   <Reference name="OpenSim.Services.Interfaces"/>
   <Reference name="XMLRPC" path="../../../bin/"/>
  

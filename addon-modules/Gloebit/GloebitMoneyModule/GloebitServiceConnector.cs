@@ -34,13 +34,13 @@ using Mono.Addins;
 using Nini.Config;
 using OpenSim.Framework.Servers.HttpServer;
 using OpenSim.Server.Base;
-using OpenSim.Server.Handlers.Base;
+//using OpenSim.Server.Handlers.Base;
 
-[assembly: AddinDependency("Robust", OpenSim.VersionInfo.VersionNumber)]
+//[assembly: AddinDependency("Robust", OpenSim.VersionInfo.VersionNumber)]
 
 namespace Gloebit.GloebitMoneyModule {
-    [Extension(Path = "/Robust/Connector", NodeName = "RobustConnector", Id = "GloebitServiceConnector")]
-    public class GloebitServiceConnector : ServiceConnector, IRobustConnector
+    //[Extension(Path = "/Robust/Connector", NodeName = "RobustConnector", Id = "GloebitServiceConnector")]
+    public class GloebitServiceConnector //: ServiceConnector, IRobustConnector
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
