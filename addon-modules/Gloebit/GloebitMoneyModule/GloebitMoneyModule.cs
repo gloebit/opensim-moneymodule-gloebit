@@ -74,7 +74,7 @@ namespace Gloebit.GloebitMoneyModule
     public class GloebitMoneyModule : IMoneyModule, ISharedRegionModule, GloebitAPI.IAsyncEndpointCallback, GloebitAPI.IAssetCallback
     {
         
-        public class Dialog
+        public abstract class Dialog
         {
             // Counter used to create unique channels for each dialog message
             protected static int nextChannel = -17;
@@ -107,9 +107,62 @@ namespace Gloebit.GloebitMoneyModule
                 return nextChannel--;
             }
             
-            public void Cleanup()
+            // Methods that derived classes must implement
+            protected abstract void ProcessResponse(IClientAPI client, OSChatMessage chat);
+            
+            /// <summary>
+            /// Catch chat from client and see if it is a response to a dialog message we've delivered.
+            /// EVENT:
+            ///     ChatFromClientEvent is triggered via ChatModule (or
+            ///     substitutes thereof) when a chat message
+            ///     from the client  comes in.
+            /// </summary>
+            /// <param name="sender">Sender of message</param>
+            /// <param name="chat">message sent</param>
+            protected static void OnChatFromClientAPI(Object sender, OSChatMessage chat)
             {
-                Dictionary<int, SubscriptionDebitAuthDialog> dialogMap;
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI from:{0} chat:{1}", sender, chat);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI \n\tmessage:{0} \n\ttype: {1} \n\tchannel: {2} \n\tposition: {3} \n\tfrom: {4} \n\tto: {5} \n\tsender: {6} \n\tsenderObject: {7} \n\tsenderUUID: {8} \n\ttargetUUID: {9} \n\tscene: {10}", chat.Message, chat.Type, chat.Channel, chat.Position, chat.From, chat.To, chat.Sender, chat.SenderObject, chat.SenderUUID, chat.TargetUUID, chat.Scene);
+                
+                IClientAPI user = (IClientAPI) sender;
+                
+                Dictionary<int, DebitAuthDialog> channelDialogDict;
+                DebitAuthDialog dialog = null;
+                bool found = false;
+                if ( m_clientDialogMap.TryGetValue(user.AgentId, out channelDialogDict) ) {
+                    found = channelDialogDict.TryGetValue(chat.Channel, out dialog);
+                }
+                
+                // Check that this is a message on the channel we expect, otherwise, ignore it.
+                // TODO: need more complex channel logic
+                if (!found) {
+                    // message is not for us
+                    // TODO: Every so often, cleanup old dialog messages not yet deregistered.
+                    return;
+                }
+                
+                // Check defaults that should always be the same to ensure no one tried to impersonate our dialog response
+                if (chat.SenderUUID != UUID.Zero || chat.TargetUUID != UUID.Zero || !String.IsNullOrEmpty(chat.From) || !String.IsNullOrEmpty(chat.To) || chat.Type != ChatTypeEnum.Region) {
+                    m_log.WarnFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI Received message on Gloebit dialog channel:{0} which may be an attempted impersonation. SenderUUID:{1}, TargetUUID:{2}, From:{3} To:{4} Type: {5} Message:{6}", chat.Channel, chat.SenderUUID, chat.TargetUUID, chat.From, chat.To, chat.Type, chat.Message);
+                    return;
+                }
+                
+                // TODO: Should we check that chat.Sender/sender is IClientAPI as expected?
+                // TODO: Should we check that Chat.Scene is scene we sent this to?
+                
+                // Process message
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI Time to process the message:{0}", chat.Message);
+                
+                dialog.ProcessResponse(user, chat);
+
+                // Remove from dialog list and deregister if only active dialog for user.
+                dialog.Close();
+                
+            }
+            
+            private void Close()
+            {
+                Dictionary<int, DebitAuthDialog> dialogMap;
                 if (!GloebitMoneyModule.m_clientDialogMap.TryGetValue(this.AgentID, out dialogMap)) {
                     GloebitMoneyModule.m_log.ErrorFormat("[GLOEBITMONEYMODULE] Dialog.Cleanup Called on dialog where agent is not in map -  AgentID:{0}.", this.AgentID);
                     return;
@@ -123,7 +176,7 @@ namespace Gloebit.GloebitMoneyModule
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.Cleanup Removing dialog - AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
                 if (dialogMap.Count() == 0) {
                     GloebitMoneyModule.m_clientDialogMap.Remove(this.AgentID);
-                    this.Client.OnChatFromClient -= GloebitMoneyModule.OnChatFromClientAPI;
+                    this.Client.OnChatFromClient -= OnChatFromClientAPI;
                     GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.Cleanup Removing dialog event listener - AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
                 }
             }
@@ -139,14 +192,14 @@ namespace Gloebit.GloebitMoneyModule
                 
                 // TODO: what do I need to lock here to make sure that things don't overlap?
                 GloebitMoneyModule.m_clientDialogMap.Remove(client.AgentId);
-                client.OnChatFromClient -= GloebitMoneyModule.OnChatFromClientAPI;
+                client.OnChatFromClient -= OnChatFromClientAPI;
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent Removing listener - AgentID:{0}.", client.AgentId);
                 
             }
             
         };
         
-        public class SubscriptionDebitAuthDialog : Dialog
+        public class DebitAuthDialog : Dialog
         {
             public UUID ObjectID;
             public string ObjectName;
@@ -157,7 +210,7 @@ namespace Gloebit.GloebitMoneyModule
             // private static UUID dTextureID = UUID.Zero;
             private static string[] dButtonResponses = new string[3] {"Authorize", "Ignore", "Report Fraud"};
             
-            public SubscriptionDebitAuthDialog(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID) : base(client, agentID)
+            public DebitAuthDialog(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID) : base(client, agentID)
             {
                 // this.Client = client;
                 // this.AgentID = agentID;
@@ -170,17 +223,17 @@ namespace Gloebit.GloebitMoneyModule
             
             public static void Send(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID)
             {
-                // Build the SubscriptioNDebitAuthDialog
-                SubscriptionDebitAuthDialog dialog = new SubscriptionDebitAuthDialog(client, agentID, objectID, objectName, transactionID);
+                // Build the DebitAuthDialog
+                DebitAuthDialog dialog = new DebitAuthDialog(client, agentID, objectID, objectName, transactionID);
                 
                 // Add dialog to map and register for response.
-                Dictionary<UUID, Dictionary<int, SubscriptionDebitAuthDialog>> dialogMap = GloebitMoneyModule.m_clientDialogMap;
+                Dictionary<UUID, Dictionary<int, DebitAuthDialog>> dialogMap = GloebitMoneyModule.m_clientDialogMap;
                 if (!dialogMap.ContainsKey(agentID)) {
-                    dialogMap[agentID] = new Dictionary<int, SubscriptionDebitAuthDialog>();
-                    client.OnChatFromClient += GloebitMoneyModule.OnChatFromClientAPI;
+                    dialogMap[agentID] = new Dictionary<int, DebitAuthDialog>();
+                    client.OnChatFromClient += OnChatFromClientAPI;
                     // TODO: move the callback to the Dialog class.
                 }
-                Dictionary<int, SubscriptionDebitAuthDialog> clientDialogMap = dialogMap[agentID];
+                Dictionary<int, DebitAuthDialog> clientDialogMap = dialogMap[agentID];
                 clientDialogMap[dialog.Channel] = dialog;
                 
                 // Send Dialog message
@@ -188,6 +241,37 @@ namespace Gloebit.GloebitMoneyModule
                 
             }
             
+            protected override void ProcessResponse(IClientAPI client, OSChatMessage chat)
+            {
+                // TODO: Properly process response
+                
+                switch (chat.Message) {
+                    case "Ignore":
+                        // User actively ignored.  remove from our message listener
+                        break;
+                    case "Authorize":
+                        // Send Authorize URL
+                        string imMessage = "GLOEBIT Authorize Debit Script: \nTo authorize this object <object details>, please visit this web page:";
+                        UUID fromID = UUID.Zero;
+                        string fromName = String.Empty;
+                        UUID toID = client.AgentId;
+                        bool isFromGroup = false;
+                        UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
+                        bool isOffline = true;          // Don't know what this is for.  Should probably try both.
+                        bool addTimestamp = false;
+                        byte[] request_uri = Encoding.UTF8.GetBytes("http://www.gloebit.com/authorize-item/" + "\0");
+                        GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, request_uri, addTimestamp);
+                        client.SendInstantMessage(im);
+                        break;
+                    case "Report Fraud":
+                        // Report to Gloebit
+                        // TODO: fire off fraud report to Gloebit
+                        break;
+                    default:
+                        m_log.ErrorFormat("[GLOEBITMONEYMODULE] DebitAuthDialog.ProcessResopnse Received unexpected dialog response message:{0}", chat.Message);
+                        break;
+                }
+            }
 
             
         };
@@ -215,7 +299,7 @@ namespace Gloebit.GloebitMoneyModule
         private string m_gridname = "unknown_grid_name";
         private Uri m_economyURL;
         
-        private static Dictionary<UUID, Dictionary<int, SubscriptionDebitAuthDialog>> m_clientDialogMap = new Dictionary<UUID, Dictionary<int, SubscriptionDebitAuthDialog>>();    // Map of AgentIDs to map of channels to Dialog message info
+        private static Dictionary<UUID, Dictionary<int, DebitAuthDialog>> m_clientDialogMap = new Dictionary<UUID, Dictionary<int, DebitAuthDialog>>();    // Map of AgentIDs to map of channels to Dialog message info
 
         private IConfigSource m_gConfig;
 
@@ -1571,7 +1655,7 @@ namespace Gloebit.GloebitMoneyModule
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ClientLoggedOut {0}", client.AgentId);
             
             // Deregister OnChatFromClient if we have one.
-            SubscriptionDebitAuthDialog.DeregisterAgent(client);
+            DebitAuthDialog.DeregisterAgent(client);
             
         }
 
@@ -1674,35 +1758,7 @@ namespace Gloebit.GloebitMoneyModule
             int transactionType = (int)saleType;
             bool requiresDelivery = true;   // This is the one place where we don't have ghost assets
             
-            SubscriptionDebitAuthDialog.Send(remoteClient, remoteClient.AgentId, UUID.Zero, "objectName", UUID.Zero);
-            /*
-            // Build and send dialog
-            string objectName = "Script Debit Authorization";
-            UUID objectID = UUID.Zero;
-            UUID ownerID = UUID.Zero;
-            string ownerFirstName = "GLOEBIT";
-            string ownerLastName = "MoneyModule";
-            string message = "A script on an unauthorized object just tried to debit your account.  Would you like to...";
-            UUID textureID = UUID.Zero;
-            int channel = -17;
-            string[] buttonResponses = new string[3] {"Authorize", "Ignore", "Report Fraud"};
-                
-            // add client to dialog map
-            if (!m_clientDialogMap.ContainsKey(remoteClient.AgentId)) {
-                m_clientDialogMap[remoteClient.AgentId] = new Dictionary<int, SubscriptionDebitAuthDialog>();
-            }
-            // Build Dialog Item
-            SubscriptionDebitAuthDialog dialog = new SubscriptionDebitAuthDialog(remoteClient, remoteClient.AgentId, UUID.Zero, "objectName", UUID.Zero);
-            
-            
-            // pick and add channel
-            m_clientDialogMap[remoteClient.AgentId][channel] = dialog;
-            
-
-                
-            remoteClient.SendDialog(objectName, objectID, ownerID, ownerFirstName, ownerLastName, message, textureID, channel, buttonResponses);
-            */
-            //remoteClient.SendDialog(part.Name, part.UUID, part.OwnerID, "owner first name", "owner last name", "my message", UUID.Zero, 12, new string[2] {"yes", "no"});
+            DebitAuthDialog.Send(remoteClient, remoteClient.AgentId, UUID.Zero, "objectName", UUID.Zero);
             
             doMoneyTransferWithAsset(transactionID, agentID, part.OwnerID, salePrice, transactionType, description, descMap, remoteClient, objectStr, part.UUID, part.Name, requiresDelivery, categoryID, localID, saleType);
             
@@ -1831,90 +1887,6 @@ namespace Gloebit.GloebitMoneyModule
                     break;
             }
             return;
-        }
-        
-        /**************************************************************************************/
-        /*** Functions to handle chat message responses to dialog messages we send the user ***/
-        /**************************************************************************************/
-        
-        /// <summary>
-        /// Catch chat from client and see if it is a response to a dialog message we've delivered.
-        /// EVENT:
-        ///     ChatFromClientEvent is triggered via ChatModule (or
-        ///     substitutes thereof) when a chat message
-        ///     from the client  comes in.
-        /// </summary>
-        /// <param name="sender">Sender of message</param>
-        /// <param name="chat">message sent</param>
-        private static void OnChatFromClientAPI(Object sender, OSChatMessage chat)
-        {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI from:{0} chat:{1}", sender, chat);
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI \n\tmessage:{0} \n\ttype: {1} \n\tchannel: {2} \n\tposition: {3} \n\tfrom: {4} \n\tto: {5} \n\tsender: {6} \n\tsenderObject: {7} \n\tsenderUUID: {8} \n\ttargetUUID: {9} \n\tscene: {10}", chat.Message, chat.Type, chat.Channel, chat.Position, chat.From, chat.To, chat.Sender, chat.SenderObject, chat.SenderUUID, chat.TargetUUID, chat.Scene);
-            
-            IClientAPI user = (IClientAPI) sender;
-            
-            Dictionary<int, SubscriptionDebitAuthDialog> channelDialogDict;
-            SubscriptionDebitAuthDialog dialog = null;
-            bool found = false;
-            if ( m_clientDialogMap.TryGetValue(user.AgentId, out channelDialogDict) ) {
-                found = channelDialogDict.TryGetValue(chat.Channel, out dialog);
-            }
-            
-            // Check that this is a message on the channel we expect, otherwise, ignore it.
-            // TODO: need more complex channel logic
-            if (!found) {
-                // message is not for us
-                // TODO: Every so often, cleanup old dialog messages not yet deregistered.
-                return;
-            }
-            
-            // Check defaults that should always be the same to ensure no one tried to impersonate our dialog response
-            if (chat.SenderUUID != UUID.Zero || chat.TargetUUID != UUID.Zero || !String.IsNullOrEmpty(chat.From) || !String.IsNullOrEmpty(chat.To) || chat.Type != ChatTypeEnum.Region) {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI Received message on Gloebit dialog channel:{0} which may be an attempted impersonation. SenderUUID:{1}, TargetUUID:{2}, From:{3} To:{4} Type: {5} Message:{6}", chat.Channel, chat.SenderUUID, chat.TargetUUID, chat.From, chat.To, chat.Type, chat.Message);
-                return;
-            }
-            
-            // TODO: Should we check that chat.Sender/sender is IClientAPI as expected?
-            // TODO: Should we check that Chat.Scene is scene we sent this to?
-            
-            // TODO: Process message
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI Time to process the message:{0}", chat.Message);
-            
-            switch (chat.Message) {
-                case "Ignore":
-                    // User actively ignored.  remove from our message listener
-                    // TODO: remove from dialog list
-                    // TODO: if only dialog for client, deregister listener for client
-                    break;
-                case "Authorize":
-                    // Send Authorize URL
-                    string imMessage = "GLOEBIT Authorize Debit Script: \nTo authorize this object <object details>, please visit this web page:";
-                    UUID fromID = UUID.Zero;
-                    string fromName = String.Empty;
-                    UUID toID = user.AgentId;
-                    bool isFromGroup = false;
-                    UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
-                    bool isOffline = true;          // Don't know what this is for.  Should probably try both.
-                    bool addTimestamp = false;
-                    byte[] request_uri = Encoding.UTF8.GetBytes("http://www.gloebit.com/authorize-item/" + "\0");
-                    GridInstantMessage im = new GridInstantMessage(user.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, request_uri, addTimestamp);
-                    user.SendInstantMessage(im);
-                    // TODO: remove from dialog list
-                    // TODO: if only dialog for client, deregister listener for client
-                    break;
-                case "Report Fraud":
-                    // Report to Gloebit
-                    // TODO: fire off fraud report to Gloebit
-                    // TODO: remove from dialog list
-                    // TODO: if only dialog for client, deregister listener for client
-                    break;
-                default:
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI Received unexpected dialog response message:{0}", chat.Message);
-                    break;
-            }
-            // Remove from dialog list and deregister if only active dialog for user.
-            dialog.Cleanup();
-            
         }
         
     }
