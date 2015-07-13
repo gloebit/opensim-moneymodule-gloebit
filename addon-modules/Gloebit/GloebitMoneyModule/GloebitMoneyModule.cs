@@ -73,73 +73,38 @@ namespace Gloebit.GloebitMoneyModule
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "GloebitMoneyModule")]
     public class GloebitMoneyModule : IMoneyModule, ISharedRegionModule, GloebitAPI.IAsyncEndpointCallback, GloebitAPI.IAssetCallback
     {
-        /*
-        public class dialog
+        
+        public class Dialog
         {
+            // Counter used to create unique channels for each dialog message
+            protected static int nextChannel = -17;
+            
             // variables not used by dialog because we are sending the message, not an object from inworld
-            private static dObjectID = UUID.Zero;
-            private static UUID dOwnerID = UUID.Zero;
-            private static UUID dTextureID = UUID.Zero; // was never implemented
+            protected static UUID dObjectID = UUID.Zero;
+            protected static UUID dOwnerID = UUID.Zero;
+            protected static UUID dTextureID = UUID.Zero; // was never implemented
             
             // variables consistent across all dialog messages
-            private static string dOwnerFirstName = "GLOEBIT";
-            private static string dOwnerLastName = "MoneyModule";
+            protected static string dOwnerFirstName = "GLOEBIT";
+            protected static string dOwnerLastName = "MoneyModule";
             
             
-        };
-         */
-        public class SubscriptionDebitAuthDialog
-        {
-            public DateTime cTime = DateTime.UtcNow;
-            public UUID AgentID;
-            public IClientAPI Client;
-            public UUID ObjectID;
-            public string ObjectName;
-            public UUID TransactionID;
-            public int Channel = -17;
+            // variables common to all Dialog messages
+            protected DateTime cTime = DateTime.UtcNow;
+            protected int Channel = PickChannel();
+            protected IClientAPI Client;
+            protected UUID AgentID;
             
-            private static string dObjectName = "Script Debit Authorization";
-            private static UUID dObjectID = UUID.Zero;
-            private static UUID dOwnerID = UUID.Zero;
-            private static string dOwnerFirstName = "GLOEBIT";
-            private static string dOwnerLastName = "MoneyModule";
-            private static string dMessage = "A script on an unauthorized object just tried to debit your account.  Would you like to...";
-            private static UUID dTextureID = UUID.Zero;
-            private static string[] dButtonResponses = new string[3] {"Authorize", "Ignore", "Report Fraud"};
-            private static int dChannel = -17;
-            
-            public SubscriptionDebitAuthDialog(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID)
+            protected Dialog(IClientAPI client, UUID agentID)
             {
-                this.Client = client;
                 this.AgentID = agentID;
-                this.ObjectID = objectID;
-                this.ObjectName = objectName;
-                this.TransactionID = transactionID;
-                // TODO: create a randome channel
-                Channel = dChannel;
-                dChannel -= 1;
-                
-                // TODO: should we also save and double check all the region/grid/app info?
+                this.Client = client;
             }
             
-            public static void Send(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID)
+            private static int PickChannel()
             {
-                // Build the SubscriptioNDebitAuthDialog
-                SubscriptionDebitAuthDialog dialog = new SubscriptionDebitAuthDialog(client, agentID, objectID, objectName, transactionID);
-                
-                // Add dialog to map and register for response.
-                Dictionary<UUID, Dictionary<int, SubscriptionDebitAuthDialog>> dialogMap = GloebitMoneyModule.m_clientDialogMap;
-                if (!dialogMap.ContainsKey(agentID)) {
-                    dialogMap[agentID] = new Dictionary<int, SubscriptionDebitAuthDialog>();
-                    client.OnChatFromClient += GloebitMoneyModule.OnChatFromClientAPI;
-                    // TODO: move the callback to the Dialog class.
-                }
-                Dictionary<int, SubscriptionDebitAuthDialog> clientDialogMap = dialogMap[agentID];
-                clientDialogMap[dialog.Channel] = dialog;
-                
-                // Send Dialog message
-                client.SendDialog(dObjectName, dObjectID, dOwnerID, dOwnerFirstName, dOwnerLastName, dMessage, dTextureID, dialog.Channel, dButtonResponses);
-                
+                // TODO: can't lock an int, but do I need a lock here?
+                return nextChannel--;
             }
             
             public void Cleanup()
@@ -176,8 +141,54 @@ namespace Gloebit.GloebitMoneyModule
                 GloebitMoneyModule.m_clientDialogMap.Remove(client.AgentId);
                 client.OnChatFromClient -= GloebitMoneyModule.OnChatFromClientAPI;
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent Removing listener - AgentID:{0}.", client.AgentId);
-
+                
             }
+            
+        };
+        
+        public class SubscriptionDebitAuthDialog : Dialog
+        {
+            public UUID ObjectID;
+            public string ObjectName;
+            public UUID TransactionID;
+            
+            private static string dObjectName = "Script Debit Authorization";
+            private static string dMessage = "A script on an unauthorized object just tried to debit your account.  Would you like to...";
+            // private static UUID dTextureID = UUID.Zero;
+            private static string[] dButtonResponses = new string[3] {"Authorize", "Ignore", "Report Fraud"};
+            
+            public SubscriptionDebitAuthDialog(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID) : base(client, agentID)
+            {
+                // this.Client = client;
+                // this.AgentID = agentID;
+                this.ObjectID = objectID;
+                this.ObjectName = objectName;
+                this.TransactionID = transactionID;
+                
+                // TODO: should we also save and double check all the region/grid/app info?
+            }
+            
+            public static void Send(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID)
+            {
+                // Build the SubscriptioNDebitAuthDialog
+                SubscriptionDebitAuthDialog dialog = new SubscriptionDebitAuthDialog(client, agentID, objectID, objectName, transactionID);
+                
+                // Add dialog to map and register for response.
+                Dictionary<UUID, Dictionary<int, SubscriptionDebitAuthDialog>> dialogMap = GloebitMoneyModule.m_clientDialogMap;
+                if (!dialogMap.ContainsKey(agentID)) {
+                    dialogMap[agentID] = new Dictionary<int, SubscriptionDebitAuthDialog>();
+                    client.OnChatFromClient += GloebitMoneyModule.OnChatFromClientAPI;
+                    // TODO: move the callback to the Dialog class.
+                }
+                Dictionary<int, SubscriptionDebitAuthDialog> clientDialogMap = dialogMap[agentID];
+                clientDialogMap[dialog.Channel] = dialog;
+                
+                // Send Dialog message
+                client.SendDialog(dObjectName, dObjectID, dOwnerID, dOwnerFirstName, dOwnerLastName, dMessage, dTextureID, dialog.Channel, dButtonResponses);
+                
+            }
+            
+
             
         };
         
