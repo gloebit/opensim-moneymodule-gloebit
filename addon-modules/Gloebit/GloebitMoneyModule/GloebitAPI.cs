@@ -527,10 +527,23 @@ namespace Gloebit.GloebitMoneyModule {
             
             //*********** SEND AUTHORIZE REQUEST URI TO USER ***********//
             // currently can not launch browser directly for user, so send in message
+            
+            // TODO: Shouldn't this be an interface function from the GMM since launching a web page will be specific to the integration?
 
-            string message = String.Format("To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
-            user.SendBlueBoxMessage(UUID.Zero, "Gloebit", message);
+            // string message = String.Format("To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
+            // user.SendBlueBoxMessage(UUID.Zero, "Gloebit", message);
             // use SendBlueBoxMessage as all others including SendLoadURL truncate to 255 char or below
+            
+            string imMessage = "AUTHORIZE GLOEBIT \nTo use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:";
+            UUID fromID = UUID.Zero;
+            string fromName = String.Empty;
+            UUID toID = user.AgentId;
+            bool isFromGroup = false;
+            UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
+            bool isOffline = true;          // Don't know what this is for.  Should probably try both.
+            bool addTimestamp = false;
+            GridInstantMessage im = new GridInstantMessage(user.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, Encoding.UTF8.GetBytes(request_uri + "\0"), addTimestamp);
+            user.SendInstantMessage(im);
 
         }
         
