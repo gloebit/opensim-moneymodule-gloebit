@@ -529,21 +529,7 @@ namespace Gloebit.GloebitMoneyModule {
             // currently can not launch browser directly for user, so send in message
             
             // TODO: Shouldn't this be an interface function from the GMM since launching a web page will be specific to the integration?
-
-            // string message = String.Format("To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
-            // user.SendBlueBoxMessage(UUID.Zero, "Gloebit", message);
-            // use SendBlueBoxMessage as all others including SendLoadURL truncate to 255 char or below
-            
-            string imMessage = "AUTHORIZE GLOEBIT \nTo use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:";
-            UUID fromID = UUID.Zero;
-            string fromName = String.Empty;
-            UUID toID = user.AgentId;
-            bool isFromGroup = false;
-            UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
-            bool isOffline = true;          // Don't know what this is for.  Should probably try both.
-            bool addTimestamp = false;
-            GridInstantMessage im = new GridInstantMessage(user.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, Encoding.UTF8.GetBytes(request_uri + "\0"), addTimestamp);
-            user.SendInstantMessage(im);
+            SendUrlToClient(user, "AUTHORIZE GLOEBIT", "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:", request_uri);
 
         }
         
@@ -1046,6 +1032,45 @@ namespace Gloebit.GloebitMoneyModule {
                     myRequestState.continuation(responseDataMap);
                 }
             }
+        }
+        
+        // TODO: These functions should probably be moved to the money module.
+        
+        /// <summary>
+        /// Sends a message with url to user.
+        /// </summary>
+        /// <param name="client">IClientAPI of client we are sending the URL to</param>
+        /// <param name="title">string title of message we are sending with the url</param>
+        /// <param name="body">string body of message we are sending with the url</param>
+        /// <param name="uri">full url we are sending to the client</param>
+        public static void SendUrlToClient(IClientAPI client, string title, string body, Uri uri)
+        {
+            string imMessage = String.Format("{0}\n\n{1}", title, body);
+            UUID fromID = UUID.Zero;
+            string fromName = String.Empty;
+            UUID toID = client.AgentId;
+            bool isFromGroup = false;
+            UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
+            bool isOffline = true;          // Don't know what this is for.  Should probably try both.
+            bool addTimestamp = false;
+            GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, Encoding.UTF8.GetBytes(uri.ToString() + "\0"), addTimestamp);
+            client.SendInstantMessage(im);
+        }
+        
+        // TODO: This is a bit of a hack due to lack of access to non-static private variables m_key and m_url
+        /// <summary>
+        /// This should probably be moved to the money module.
+        /// Sends a message with url to user.
+        /// builds url from m_url, m_key and resourceID
+        /// </summary>
+        /// <param name="client">IClientAPI of client we are sending the URL to</param>
+        /// <param name="title">string title of message we are sending with the url</param>
+        /// <param name="body">string body of message we are sending with the url</param>
+        /// <param name="resourceID">url resourceID (everything after the domain) we are sending to the client.  No leading '/'</param>
+        public void SendUrlToClient(IClientAPI client, string title, string body, string resourceID)
+        {
+            Uri request_uri = new Uri(m_url, String.Format("{0}/{1}", m_key, resourceID));
+            SendUrlToClient(client, title, body, request_uri);
         }
     }
 }

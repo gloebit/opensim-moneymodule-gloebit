@@ -33,7 +33,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Reflection;
-using System.Text;
 using log4net;
 using Nini.Config;
 using Nwc.XmlRpc;
@@ -116,7 +115,7 @@ namespace Gloebit.GloebitMoneyModule
             protected abstract string[] dButtonResponses { get; }   // Button Responses
             
             // Methods that derived classes must implement
-            protected abstract void ProcessResponse(IClientAPI client, OSChatMessage chat);
+            protected abstract void ProcessResponse(IClientAPI client, OSChatMessage chat, Dialog dialog);
             
             /// <summary>
             /// base Dialog constructor.
@@ -249,7 +248,7 @@ namespace Gloebit.GloebitMoneyModule
                 /***** Process the response *****/
                 
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.OnChatFromClientAPI Processing Response: {0}", chat.Message);
-                dialog.ProcessResponse(client, chat);
+                dialog.ProcessResponse(client, chat, dialog);
 
                 /***** Handle Post Processing Cleanup of Dialog *****/
                 
@@ -427,7 +426,7 @@ namespace Gloebit.GloebitMoneyModule
             /// </summary>
             /// <param name="client">IClientAPI of sender of response</param>
             /// <param name="chat">response sent</param>
-            protected override void ProcessResponse(IClientAPI client, OSChatMessage chat)
+            protected override void ProcessResponse(IClientAPI client, OSChatMessage chat, Dialog dialog)
             {
                 // TODO: Properly process response
                 
@@ -437,17 +436,14 @@ namespace Gloebit.GloebitMoneyModule
                         break;
                     case "Authorize":
                         // Send Authorize URL
-                        string imMessage = "GLOEBIT Authorize Debit Script: \nTo authorize this object <object details>, please visit this web page:";
-                        UUID fromID = UUID.Zero;
-                        string fromName = String.Empty;
-                        UUID toID = client.AgentId;
-                        bool isFromGroup = false;
-                        UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
-                        bool isOffline = true;          // Don't know what this is for.  Should probably try both.
-                        bool addTimestamp = false;
-                        byte[] request_uri = Encoding.UTF8.GetBytes("http://www.gloebit.com/authorize-item/" + "\0");
-                        GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, request_uri, addTimestamp);
-                        client.SendInstantMessage(im);
+
+                        // TODO: properly build url
+                        DebitAuthDialog daDialog = (DebitAuthDialog) dialog;
+                        string body = String.Format("To authorize this object:\n   {0}\n   {1}\n\nPlease visit this web page:", daDialog.ObjectName, daDialog.ObjectID);
+                        string resourceID = String.Format("{0}/{1}/", daDialog.ObjectID,client.AgentId);
+                        GloebitMoneyModule gmm = (GloebitMoneyModule) client.Scene.RequestModuleInterface<IMoneyModule>();
+                        gmm.m_api.SendUrlToClient(client, "GLOEBIT Authorize Debit Script:", body, resourceID);
+                        
                         break;
                     case "Report Fraud":
                         // Report to Gloebit
