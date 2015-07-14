@@ -74,53 +74,93 @@ namespace Gloebit.GloebitMoneyModule
     public class GloebitMoneyModule : IMoneyModule, ISharedRegionModule, GloebitAPI.IAsyncEndpointCallback, GloebitAPI.IAssetCallback
     {
         
+        /// <summary>
+        /// Class for sending questions to a user and receiving and processing the clicked resopnse.
+        /// Create a derived class (see DebitAuthDialog) to send a new type of message.
+        /// All derived classes must implement all abstract methods and properties, as well as a
+        /// constructor which calls the base Dialog constructor.
+        /// To send a dialog to the user:
+        /// --- 1. Call the constructor for the derived Dialog type with new.
+        /// --- 2. Call the static method Dialog.Send() with the derived Dialog you just created.
+        /// --- 3. Handle the user's response via the derived classes implementation of ProcessResponse()
+        /// </summary>
         public abstract class Dialog
         {
             // Counter used to create unique channels for each dialog message
             protected static int nextChannel = -17;
             
             // variables not used by dialog because we are sending the message, not an object from inworld
-            protected static UUID dObjectID = UUID.Zero;
-            protected static UUID dOwnerID = UUID.Zero;
-            protected static UUID dTextureID = UUID.Zero; // was never implemented
+            protected static UUID dObjectID = UUID.Zero;    // Message from us, not from inworld object, so Zero
+            protected static UUID dOwnerID = UUID.Zero;     // Message from us, not from inworld object, so Zero
+            protected static UUID dTextureID = UUID.Zero;   // Background; was never implemented on client, so Zero
             
             // variables consistent across all dialog messages
-            protected static string dOwnerFirstName = "GLOEBIT";
-            protected static string dOwnerLastName = "MoneyModule";
+            protected static string dOwnerFirstName = "GLOEBIT";        // Displayed in Dialog Message
+            protected static string dOwnerLastName = "MoneyModule";     // Displayed in Dialog Message
             
             // variables common to all Dialog messages
-            protected DateTime cTime = DateTime.UtcNow;
-            protected int Channel = PickChannel();
-            protected IClientAPI Client;
-            protected UUID AgentID;
+            protected DateTime cTime = DateTime.UtcNow;     // Time created - used for purging old Dialogs
+            protected int Channel = PickChannel();          // Channel response will be received on for this Dialog
+            protected IClientAPI Client;                    // Client to whom we're sending the Dialog
+            protected UUID AgentID;                         // AgentID of client to whom we're sending the Dialog
             
-            // Properties that derived classes must implement
-            protected abstract string dObjectName { get; }
-            protected abstract string dMessage { get; }
-            protected abstract string[] dButtonResponses { get; }
+            // Properties that derived classes must implement - all are displayed in Dialog message
+            protected abstract string dObjectName { get; }          // Message Title
+            protected abstract string dMessage { get; }             // Message Body
+            protected abstract string[] dButtonResponses { get; }   // Button Responses
             
             // Methods that derived classes must implement
             protected abstract void ProcessResponse(IClientAPI client, OSChatMessage chat);
             
-            
+            /// <summary>
+            /// base Dialog constructor.
+            /// Must be called by all derived class constructors
+            /// Sets some universally required parameters which are specific to the Dialog instance.
+            /// </summary>
+            /// <param name="client">IClientAPI of agent to whom we are sending the Dialog</param>
+            /// <param name="agentID">UUID of agent to whom we are sending the Dialog</param>
             protected Dialog(IClientAPI client, UUID agentID)
             {
                 this.AgentID = agentID;
                 this.Client = client;
             }
             
+            /// <summary>
+            /// Creates a channel for this Dialog.
+            /// The channel is the chat channel that this dialog sends it's response through.
+            /// channel should always be negative (harder to mimic from standard viewers).
+            /// channel should always be unique for other active dialogs for the same user otherwise the
+            /// previous dialog will disappear.
+            /// channel should also always be unique from other active dialogs because it is used
+            /// as the unique identifier to alocate a response to a specific Dialog.
+            /// Channel could be made random in the future
+            /// </summary>
             private static int PickChannel()
             {
                 // TODO: can't lock an int, but do I need a lock here?
+                // TODO: assuming we don't move to random number, eventually this needs to be reset.
                 return nextChannel--;
             }
             
+            /// <summary>
+            /// Send instance of derived dialog to user.
+            /// This is the public interface and only way a Dialog message should be sent.
+            /// Create an instance of derived Dialog class using new to pass to this method.
+            /// </summary>
+            /// <param name="dialog">Instance of derived Dialog to track and send to user.</param>
             public static void Send(Dialog dialog)
             {
                 dialog.Open();
                 dialog.Deliver();
             }
             
+            /// <summary>
+            /// Adds dialog to our master map.
+            /// If there are no other dialogs for this user, creates a dictionary of dialogs and registers a chat listener
+            /// for this user.
+            /// Always called before delivering the dialog to the user in order to prepare to handle the response.
+            /// See Close() for cleanup
+            /// </summary>
             private void Open()
             {
                 // TODO: Do we need to lock anything here?
@@ -137,6 +177,9 @@ namespace Gloebit.GloebitMoneyModule
                 clientDialogMap[Channel] = this;
             }
             
+            /// <summary>
+            /// Delivers the dialog message to the client.
+            /// </summary>
             private void Deliver()
             {
                 /***** Send Dialog message to agent *****/
@@ -146,6 +189,10 @@ namespace Gloebit.GloebitMoneyModule
             
             /// <summary>
             /// Catch chat from client and see if it is a response to a dialog message we've delivered.
+            /// --- If not, consider purging old Dialogs.
+            /// --- If it is on a channel for a Dialog for this user, validate that it's not an imposter.
+            /// --- Call ProcessResponse on derived Dialog class
+            /// Callback registerd in Dialog.Open()
             /// EVENT:
             ///     ChatFromClientEvent is triggered via ChatModule (or
             ///     substitutes thereof) when a chat message
@@ -200,6 +247,15 @@ namespace Gloebit.GloebitMoneyModule
                 
             }
             
+            /// <summary>
+            /// Post processing cleanup of a Dialog.  Cleans everything that Open() set up.
+            /// Removes dialog to our master map.
+            /// If there are no other dialogs for this user, removes the dictionary of dialogs and deregisters the chat listener
+            /// for this user.
+            /// Always called after processing the response to a Dialog in order to clean up.
+            /// Also called when a Dialog is purged without a response due to age.
+            /// See Open() for setup that this cleans up.
+            /// </summary>
             private void Close()
             {
                 // TODO: Do we need to lock anything here?
@@ -228,6 +284,11 @@ namespace Gloebit.GloebitMoneyModule
                 }
             }
             
+            /// <summary>
+            /// Called when user logs out to cleanup any active dialogs.
+            /// If any dialogs are active, deletes dictionary and deregisters chat listener for this client
+            /// </summary>
+            /// <param name="client">Client which logged out</param>
             public static void DeregisterAgent(IClientAPI client)
             {
                 UUID agentID = client.AgentId;
@@ -244,6 +305,14 @@ namespace Gloebit.GloebitMoneyModule
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent Removing listener - AgentID:{0}.", agentID);
             }
             
+            /// <summary>
+            /// Called when we receive a chat message from a client for whom we've registered a listener
+            /// and m_lastTimeCleanedDialogs is greater than our purge duration (currently 6 hours).
+            /// If any active Dialogs are older than ttl (currently 6 hours), calls Close() on those dialogs.
+            /// Necessary because a user may not responsd or can ignore or block our messages without us knowing, and
+            /// we do not want to add load to the OpenSim server by continuing to get chat events from that user.
+            /// Assuming users log out reasonably frequently, this my be unnecessary.
+            /// </summary>
             private static void PurgeOldDialogs()
             {
                 m_lastPurgedOldDialogs = DateTime.UtcNow;
@@ -269,44 +338,75 @@ namespace Gloebit.GloebitMoneyModule
             
         };
         
+        /// <summary>
+        /// Class for asking a user to authorize or report an object which attempted an automatic debit.
+        /// Should be sent to a user whenever LLGiveMoney or LLTransferLindens causes a transaction request
+        /// for an object for which the user hasn't already authorized from the Gloebit website.
+        /// Upon response, we either send a fraud report or build a URL for the user to authorize this object.
+        /// To send this dialog to a user, use the following command
+        /// --- Dialog.Send(new DebitAuthDialog(<constructor params>))
+        /// </summary>
         public class DebitAuthDialog : Dialog
         {
-            public UUID ObjectID;
-            public string ObjectName;
-            public UUID TransactionID;
+            public UUID ObjectID;       // ID of object which attempted the auto debit.
+            public string ObjectName;   // name of object which attempted the auto debit.
+            public UUID TransactionID;  // id of the auto debit transaciton which failed due to lack of authorization
+            
+            // Create static variables here so we only need one string array
+            private static string m_title = "Script Debit Authorization";
+            private static string[] m_buttons = new string[3] {"Authorize", "Ignore", "Report Fraud"};
+            
+            // TODO: Improve this by adding object details so user knows what they are authorizing/reporting.
+            private string m_body = "A script on an unauthorized object just tried to debit your account.  Would you like to...";
             
             protected override string dObjectName
             {
                 get
                 {
-                    return "Script Debit Authorization";
+                    return m_title;
                 }
             }
             protected override string dMessage
             {
                 get
                 {
-                    return "A script on an unauthorized object just tried to debit your account.  Would you like to...";
+                    return m_body;
                 }
             }
             protected override string[] dButtonResponses
             {
                 get
                 {
-                    // TODO: consider moving this to an init and returning the same string array for all of these.
-                    return new string[3] {"Authorize", "Ignore", "Report Fraud"};
+                    return m_buttons;
                 }
             }
             
+            /// <summary>
+            /// Constructs a DebitAuthDialog
+            /// </summary>
+            /// <param name="client">IClientAPI of agent that script attempted to auto-debit</param>
+            /// <param name="agentID">UUID of agent that script attempted to auto-debit</param>
+            /// <param name="objectID">UUID of object containing script attempted to auto-debit</param>
+            /// <param name="objectName">Name of object containing script attempted to auto-debit</param>
+            /// <param name="transactionID">UUID of auto-debit transaction that failed due to lack of authorization</param>
             public DebitAuthDialog(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID) : base(client, agentID)
             {
                 this.ObjectID = objectID;
                 this.ObjectName = objectName;
                 this.TransactionID = transactionID;
+                // TODO: what else do we need to track for handling auth or fraud reporting on response?
                 
                 // TODO: should we also save and double check all the region/grid/app info?
             }
 
+            /// <summary>
+            /// Processes the user response (click of button on dialog) to a DebitAuthDialog.
+            /// --- Ignore: does nothing.
+            /// --- Report Fraud: sends fraud report to Gloebit
+            /// --- Authorize: Delivers authorization link to user
+            /// </summary>
+            /// <param name="client">IClientAPI of sender of response</param>
+            /// <param name="chat">response sent</param>
             protected override void ProcessResponse(IClientAPI client, OSChatMessage chat)
             {
                 // TODO: Properly process response
