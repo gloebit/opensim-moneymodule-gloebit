@@ -93,7 +93,7 @@ namespace Gloebit.GloebitMoneyModule
             private static DateTime m_lastPurgedOldDialogs = DateTime.UtcNow;
             
             // Counter used to create unique channels for each dialog message
-            protected static int nextChannel = -17;
+            protected static int nextChannel = -1500000;     // Use negative channels only as they are harder for standard viewers to mimic.
             
             // variables not used by dialog because we are sending the message, not an object from inworld
             protected static UUID dObjectID = UUID.Zero;    // Message from us, not from inworld object, so Zero
@@ -134,6 +134,7 @@ namespace Gloebit.GloebitMoneyModule
             /// <summary>
             /// Creates a channel for this Dialog.
             /// The channel is the chat channel that this dialog sends it's response through.
+            /// Chat channels are limited to -2,147,483,648 to 2,147,483,647
             /// channel should always be negative (harder to mimic from standard viewers).
             /// channel should always be unique for other active dialogs for the same user otherwise the
             /// previous dialog will disappear.
@@ -144,7 +145,10 @@ namespace Gloebit.GloebitMoneyModule
             private static int PickChannel()
             {
                 // TODO: can't lock an int, but do I need a lock here?
-                // TODO: assuming we don't move to random number, eventually this needs to be reset.
+                // TODO: should we move to random number?
+                if (nextChannel < -2100000000) {
+                    nextChannel = -1500000;     // channel limited to -2,147,483,648
+                }
                 return nextChannel--;
             }
             
@@ -357,6 +361,9 @@ namespace Gloebit.GloebitMoneyModule
             public UUID ObjectID;       // ID of object which attempted the auto debit.
             public string ObjectName;   // name of object which attempted the auto debit.
             public UUID TransactionID;  // id of the auto debit transaciton which failed due to lack of authorization
+            public UUID ToID;           // ID of the agent receiving the proceeds
+            public string ToName;       // name of the agent receiving the proceeds
+            public int Amount;          // The amount of the auto-debit transaction
             
             // Create static variables here so we only need one string array
             private static string m_title = "Script Debit Authorization";
@@ -395,11 +402,18 @@ namespace Gloebit.GloebitMoneyModule
             /// <param name="objectID">UUID of object containing script attempted to auto-debit</param>
             /// <param name="objectName">Name of object containing script attempted to auto-debit</param>
             /// <param name="transactionID">UUID of auto-debit transaction that failed due to lack of authorization</param>
-            public DebitAuthDialog(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID) : base(client, agentID)
+            public DebitAuthDialog(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID, UUID toID, string toName, int amount) : base(client, agentID)
             {
                 this.ObjectID = objectID;
                 this.ObjectName = objectName;
                 this.TransactionID = transactionID;
+                this.ToID = toID;
+                this.ToName = toName;
+                this.Amount = amount;
+                
+                // TODO: Add ToName, ToID and Amount to this.
+                
+                this.m_body = String.Format("\nAn auto-debit was attempted by an object which you have not yet authorized to auto-debit from the Gloebit Website.\n\nObject:\n   {0}\n   {1}\nTo:\n   {2}\n   {3}\nAmount:\n   {4} Gloebits", ObjectName, ObjectID, ToName, ToID, Amount);
                 // TODO: what else do we need to track for handling auth or fraud reporting on response?
                 
                 // TODO: should we also save and double check all the region/grid/app info?
@@ -1933,7 +1947,7 @@ namespace Gloebit.GloebitMoneyModule
             bool requiresDelivery = true;   // This is the one place where we don't have ghost assets
             
             // DebitAuthDialog.Send(remoteClient, remoteClient.AgentId, UUID.Zero, "objectName", UUID.Zero);
-            Dialog.Send(new DebitAuthDialog(remoteClient, remoteClient.AgentId, UUID.Zero, "objectName", UUID.Zero));
+            Dialog.Send(new DebitAuthDialog(remoteClient, remoteClient.AgentId, part.UUID, part.Name, transactionID, part.OwnerID, resolveAgentName(part.OwnerID), salePrice));
             
             doMoneyTransferWithAsset(transactionID, agentID, part.OwnerID, salePrice, transactionType, description, descMap, remoteClient, objectStr, part.UUID, part.Name, requiresDelivery, categoryID, localID, saleType);
             
