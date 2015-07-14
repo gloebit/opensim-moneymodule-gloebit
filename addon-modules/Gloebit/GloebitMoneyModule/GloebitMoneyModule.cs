@@ -86,6 +86,12 @@ namespace Gloebit.GloebitMoneyModule
         /// </summary>
         public abstract class Dialog
         {
+            // Master map of Dialogs - Map of AgentIDs to map of channels to Dialog message info
+            private static Dictionary<UUID, Dictionary<int, Dialog>> m_clientDialogMap = new Dictionary<UUID, Dictionary<int, Dialog>>();
+            
+            // Time of last purge used to purge old Dialogs for which the user didn't respond.  See PurgeOldDialogs()
+            private static DateTime m_lastPurgedOldDialogs = DateTime.UtcNow;
+            
             // Counter used to create unique channels for each dialog message
             protected static int nextChannel = -17;
             
@@ -166,7 +172,7 @@ namespace Gloebit.GloebitMoneyModule
                 // TODO: Do we need to lock anything here?
                 
                 /***** Create Dialog Dict for agent and register chat listener if no open dialogs exist for this agent *****/
-                Dictionary<UUID, Dictionary<int, Dialog>> dialogMap = GloebitMoneyModule.m_clientDialogMap;
+                Dictionary<UUID, Dictionary<int, Dialog>> dialogMap = m_clientDialogMap;
                 if (!dialogMap.ContainsKey(AgentID)) {
                     dialogMap[AgentID] = new Dictionary<int, Dialog>();
                     Client.OnChatFromClient += OnChatFromClientAPI;
@@ -263,7 +269,7 @@ namespace Gloebit.GloebitMoneyModule
                 /***** Remove Dialog from master map *****/
                 
                 Dictionary<int, Dialog> dialogMap;
-                if (!GloebitMoneyModule.m_clientDialogMap.TryGetValue(this.AgentID, out dialogMap)) {
+                if (!m_clientDialogMap.TryGetValue(this.AgentID, out dialogMap)) {
                     GloebitMoneyModule.m_log.ErrorFormat("[GLOEBITMONEYMODULE] Dialog.Cleanup Called on dialog where agent is not in map -  AgentID:{0}.", this.AgentID);
                     return;
                 }
@@ -278,7 +284,7 @@ namespace Gloebit.GloebitMoneyModule
                 /***** Deregister chat listener if not more open dialogs for this agent *****/
                 
                 if (dialogMap.Count() == 0) {
-                    GloebitMoneyModule.m_clientDialogMap.Remove(this.AgentID);
+                    m_clientDialogMap.Remove(this.AgentID);
                     this.Client.OnChatFromClient -= OnChatFromClientAPI;
                     GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.Cleanup Removing dialog event listener - AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
                 }
@@ -294,13 +300,13 @@ namespace Gloebit.GloebitMoneyModule
                 UUID agentID = client.AgentId;
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent - AgentID:{0}.", agentID);
                 
-                if (!GloebitMoneyModule.m_clientDialogMap.ContainsKey(agentID)) {
+                if (!m_clientDialogMap.ContainsKey(agentID)) {
                     GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent No listener - AgentID:{0}.", agentID);
                     return;
                 }
                 
                 // TODO: what do I need to lock here to make sure that things don't overlap?
-                GloebitMoneyModule.m_clientDialogMap.Remove(agentID);
+                m_clientDialogMap.Remove(agentID);
                 client.OnChatFromClient -= OnChatFromClientAPI;
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent Removing listener - AgentID:{0}.", agentID);
             }
@@ -464,10 +470,6 @@ namespace Gloebit.GloebitMoneyModule
         private string m_gridnick = "unknown_grid";
         private string m_gridname = "unknown_grid_name";
         private Uri m_economyURL;
-        
-        // TODO: should this be moved to a static member of Dialog and created via an init?
-        private static Dictionary<UUID, Dictionary<int, Dialog>> m_clientDialogMap = new Dictionary<UUID, Dictionary<int, Dialog>>();    // Map of AgentIDs to map of channels to Dialog message info
-        private static DateTime m_lastPurgedOldDialogs = DateTime.UtcNow;
 
         private IConfigSource m_gConfig;
 
@@ -725,6 +727,13 @@ namespace Gloebit.GloebitMoneyModule
             
             IClientAPI activeClient = LocateClientObject(toID);
             string actionStr = String.Format("User Gifted Funds From Object: {0}\nOwned By: {1}", part.Name, resolveAgentName(fromID));
+            
+            // TODO: Process as subscription
+            // Check subscription table.  If not exists, send create call to Gloebit
+            // Add subscription info to transaction reqeust.
+            // Need to handle a transact failure to trigger DebitAuthDialog
+            // /authorize-subscription/AppIDorAppKey/SubscriptionID/UserID/UserName
+            
 
             bool requiresDelivery = false;
             bool give_result = doMoneyTransferWithAsset(transactionID, fromID, toID, amount, transactionType, description, descMap, activeClient, actionStr, objectID, part.Name, requiresDelivery, UUID.Zero, 0, saleType);
@@ -1761,6 +1770,8 @@ namespace Gloebit.GloebitMoneyModule
                     
                     activeClient = LocateClientObject(toID);
                     actionStr = String.Format("User Gifted Funds From Object: {0}\nOwned By: {1}", partName, resolveAgentName(fromID));
+                    
+                    // TODO: If we implement this, make sure it does so as a subscription with Debit-Auth Dialog.
                     
                     return;
                     break;
