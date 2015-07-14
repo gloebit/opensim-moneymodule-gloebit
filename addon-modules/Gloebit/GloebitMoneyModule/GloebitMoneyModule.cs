@@ -369,8 +369,8 @@ namespace Gloebit.GloebitMoneyModule
             private static string m_title = "Script Debit Authorization";
             private static string[] m_buttons = new string[3] {"Authorize", "Ignore", "Report Fraud"};
             
-            // TODO: Improve this by adding object details so user knows what they are authorizing/reporting.
-            private string m_body = "A script on an unauthorized object just tried to debit your account.  Would you like to...";
+            // Create variable we can format once in constructor to return for dMessage
+            private string m_body;
             
             protected override string dObjectName
             {
@@ -747,6 +747,12 @@ namespace Gloebit.GloebitMoneyModule
             // Add subscription info to transaction reqeust.
             // Need to handle a transact failure to trigger DebitAuthDialog
             // /authorize-subscription/AppIDorAppKey/SubscriptionID/UserID/UserName
+            
+            // TODO: remove when we are done testing
+            IClientAPI remoteClient = LocateClientObject(fromID);
+            if (remoteClient != null) {
+                Dialog.Send(new DebitAuthDialog(remoteClient, remoteClient.AgentId, objectID, resolveObjectName(objectID), transactionID, toID, resolveAgentName(toID), amount));
+            }
             
 
             bool requiresDelivery = false;
@@ -1946,8 +1952,9 @@ namespace Gloebit.GloebitMoneyModule
             int transactionType = (int)saleType;
             bool requiresDelivery = true;   // This is the one place where we don't have ghost assets
             
-            // DebitAuthDialog.Send(remoteClient, remoteClient.AgentId, UUID.Zero, "objectName", UUID.Zero);
-            Dialog.Send(new DebitAuthDialog(remoteClient, remoteClient.AgentId, part.UUID, part.Name, transactionID, part.OwnerID, resolveAgentName(part.OwnerID), salePrice));
+            // TODO: remove when we are done testing.
+            // Commented out because this shouldn't be here, but remaining because it is a useful place to display for testing.
+            // Dialog.Send(new DebitAuthDialog(remoteClient, remoteClient.AgentId, part.UUID, part.Name, transactionID, part.OwnerID, resolveAgentName(part.OwnerID), salePrice));
             
             doMoneyTransferWithAsset(transactionID, agentID, part.OwnerID, salePrice, transactionType, description, descMap, remoteClient, objectStr, part.UUID, part.Name, requiresDelivery, categoryID, localID, saleType);
             
