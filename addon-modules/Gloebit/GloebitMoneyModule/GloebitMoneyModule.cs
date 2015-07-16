@@ -33,6 +33,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Reflection;
+using System.Threading;
 using log4net;
 using Nini.Config;
 using Nwc.XmlRpc;
@@ -86,28 +87,32 @@ namespace Gloebit.GloebitMoneyModule
         public abstract class Dialog
         {
             // Master map of Dialogs - Map of AgentIDs to map of channels to Dialog message info
-            private static Dictionary<UUID, Dictionary<int, Dialog>> m_clientDialogMap = new Dictionary<UUID, Dictionary<int, Dialog>>();
+            private static Dictionary<UUID, Dictionary<int, Dialog>> s_clientDialogMap = new Dictionary<UUID, Dictionary<int, Dialog>>();
             
             // Time of last purge used to purge old Dialogs for which the user didn't respond.  See PurgeOldDialogs()
-            private static DateTime m_lastPurgedOldDialogs = DateTime.UtcNow;
+            private static DateTime s_lastPurgedOldDialogs = DateTime.UtcNow;
+            private static Object s_purgeLock = new Object();       // Lock to enforce only a single purge per period
             
             // Counter used to create unique channels for each dialog message
-            protected static int nextChannel = -1500000;     // Use negative channels only as they are harder for standard viewers to mimic.
+            private const int c_MinChannel = -2100000000;           // channel limited to -2,147,483,648 -- reset when we get close
+            private const int c_MaxChannel = -1500001;              // Use negative channels only as they are harder for standard viewers to mimic.
+            protected static int s_lastChannel = c_MaxChannel + 1;  // Use negative channels only as they are harder for standard viewers to mimic.
             
             // variables not used by dialog because we are sending the message, not an object from inworld
-            protected static UUID dObjectID = UUID.Zero;    // Message from us, not from inworld object, so Zero
-            protected static UUID dOwnerID = UUID.Zero;     // Message from us, not from inworld object, so Zero
-            protected static UUID dTextureID = UUID.Zero;   // Background; was never implemented on client, so Zero
+            protected static readonly UUID c_dObjectID = UUID.Zero;    // Message from us, not from inworld object, so Zero
+            protected static readonly UUID c_dOwnerID = UUID.Zero;     // Message from us, not from inworld object, so Zero
+            protected static readonly UUID c_dTextureID = UUID.Zero;   // Background; was never implemented on client, so Zero
             
             // variables consistent across all dialog messages
-            protected static string dOwnerFirstName = "GLOEBIT";        // Displayed in Dialog Message
-            protected static string dOwnerLastName = "MoneyModule";     // Displayed in Dialog Message
+            protected const string c_dOwnerFirstName = "GLOEBIT";        // Displayed in Dialog Message
+            protected const string c_dOwnerLastName = "MoneyModule";     // Displayed in Dialog Message
             
             // variables common to all Dialog messages
-            protected DateTime cTime = DateTime.UtcNow;     // Time created - used for purging old Dialogs
-            protected int Channel = PickChannel();          // Channel response will be received on for this Dialog
-            protected IClientAPI Client;                    // Client to whom we're sending the Dialog
-            protected UUID AgentID;                         // AgentID of client to whom we're sending the Dialog
+            // TODO: test cTime to make sure they are different.
+            protected readonly DateTime cTime = DateTime.UtcNow;     // Time created - used for purging old Dialogs
+            protected readonly int Channel = PickChannel();          // Channel response will be received on for this Dialog
+            protected readonly IClientAPI Client;                    // Client to whom we're sending the Dialog
+            protected readonly UUID AgentID;                         // AgentID of client to whom we're sending the Dialog
             
             // Properties that derived classes must implement - all are displayed in Dialog message
             protected abstract string dObjectName { get; }          // Message Title
@@ -115,7 +120,7 @@ namespace Gloebit.GloebitMoneyModule
             protected abstract string[] dButtonResponses { get; }   // Button Responses
             
             // Methods that derived classes must implement
-            protected abstract void ProcessResponse(IClientAPI client, OSChatMessage chat, Dialog dialog);
+            protected abstract void ProcessResponse(IClientAPI client, OSChatMessage chat);
             
             /// <summary>
             /// base Dialog constructor.
@@ -143,12 +148,23 @@ namespace Gloebit.GloebitMoneyModule
             /// </summary>
             private static int PickChannel()
             {
-                // TODO: can't lock an int, but do I need a lock here?
                 // TODO: should we move to random number?
-                if (nextChannel < -2100000000) {
-                    nextChannel = -1500000;     // channel limited to -2,147,483,648
-                }
-                return nextChannel--;
+                
+                int local_lc, myChannel;
+                do {
+                    local_lc = s_lastChannel;
+                    myChannel = local_lc - 1;
+                    
+                    // channel limited to -2,147,483,648 -- reset when we get close
+                    if (myChannel < c_MinChannel) {
+                        myChannel = c_MaxChannel;
+                    }
+                } while (local_lc != Interlocked.CompareExchange(ref s_lastChannel, myChannel, local_lc));
+                // while ensures that one and only one thread finieshes and modifies s_lastChannel
+                // If s_lastChannel has changed since local_lc was set, this fails and the loop runs again.
+                // If multiple threads are executing at the same time, at least one will always succeed.
+                
+                return myChannel;
             }
             
             /// <summary>
@@ -172,18 +188,17 @@ namespace Gloebit.GloebitMoneyModule
             /// </summary>
             private void Open()
             {
-                // TODO: Do we need to lock anything here?
-                
                 /***** Create Dialog Dict for agent and register chat listener if no open dialogs exist for this agent *****/
-                Dictionary<UUID, Dictionary<int, Dialog>> dialogMap = m_clientDialogMap;
-                if (!dialogMap.ContainsKey(AgentID)) {
-                    dialogMap[AgentID] = new Dictionary<int, Dialog>();
-                    Client.OnChatFromClient += OnChatFromClientAPI;
-                }
+                Dictionary<int, Dialog> channelDialogMap;
+                lock (s_clientDialogMap) {
+                    if (!s_clientDialogMap.TryGetValue(AgentID, out channelDialogMap )) {
+                        s_clientDialogMap[AgentID] = channelDialogMap = new Dictionary<int, Dialog>();
+                        Client.OnChatFromClient += OnChatFromClientAPI;
+                    }
                 
-                /***** Add Dialog from master map *****/
-                Dictionary<int, Dialog> clientDialogMap = dialogMap[AgentID];
-                clientDialogMap[Channel] = this;
+                    /***** Add Dialog from master map *****/
+                    channelDialogMap[Channel] = this;
+                }
             }
             
             /// <summary>
@@ -192,7 +207,7 @@ namespace Gloebit.GloebitMoneyModule
             private void Deliver()
             {
                 /***** Send Dialog message to agent *****/
-                Client.SendDialog(dObjectName, dObjectID, dOwnerID, dOwnerFirstName, dOwnerLastName, dMessage, dTextureID, Channel, dButtonResponses);
+                Client.SendDialog(dObjectName, c_dObjectID, c_dOwnerID, c_dOwnerFirstName, c_dOwnerLastName, dMessage, c_dTextureID, Channel, dButtonResponses);
             }
 
             
@@ -216,21 +231,29 @@ namespace Gloebit.GloebitMoneyModule
                 
                 IClientAPI client = (IClientAPI) sender;
                 
-                /***** Verify that this is a message intended for us.  Otherwise, ignore *****/
+                /***** Verify that this is a message intended for us.  Otherwise, ignore or check to see if time to purge old dialogs *****/
+                
+                // Since we have to lock the map to look for a dialog with this channel, let's only proceed if the channel is within our range,
+                // or we've reached our purge duration.
+                if (chat.Channel < c_MinChannel || chat.Channel > c_MaxChannel) {
+                    // Every so often, cleanup old dialog messages not yet deregistered.
+                    if (s_lastPurgedOldDialogs.CompareTo(DateTime.UtcNow.AddHours(-6)) < 0) {
+                        Dialog.PurgeOldDialogs();
+                    }
+                    // message is not for us, so exit
+                    return;
+                }
                 
                 Dictionary<int, Dialog> channelDialogDict;
                 Dialog dialog = null;
                 bool found = false;
-                if ( m_clientDialogMap.TryGetValue(client.AgentId, out channelDialogDict) ) {
-                    found = channelDialogDict.TryGetValue(chat.Channel, out dialog);
+                lock (s_clientDialogMap) {
+                    if ( s_clientDialogMap.TryGetValue(client.AgentId, out channelDialogDict) ) {
+                        found = channelDialogDict.TryGetValue(chat.Channel, out dialog);
+                    }
                 }
                 if (!found) {
                     // message is not for us
-                    // Every so often, cleanup old dialog messages not yet deregistered.
-                    if (m_lastPurgedOldDialogs.CompareTo(DateTime.UtcNow.AddHours(-6)) < 0) {
-                        // TODO: do we need to lock anything here?
-                        Dialog.PurgeOldDialogs();
-                    }
                     return;
                 }
                 
@@ -248,7 +271,7 @@ namespace Gloebit.GloebitMoneyModule
                 /***** Process the response *****/
                 
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.OnChatFromClientAPI Processing Response: {0}", chat.Message);
-                dialog.ProcessResponse(client, chat, dialog);
+                dialog.ProcessResponse(client, chat);
 
                 /***** Handle Post Processing Cleanup of Dialog *****/
                 
@@ -267,29 +290,44 @@ namespace Gloebit.GloebitMoneyModule
             /// </summary>
             private void Close()
             {
-                // TODO: Do we need to lock anything here?
+                GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.Close AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
                 
-                /***** Remove Dialog from master map *****/
+                Dictionary<int, Dialog> channelDialogMap;
+                bool foundChannelDialogMap = false;
+                bool foundChannel = false;
+                bool lastActiveDialog = false;
                 
-                Dictionary<int, Dialog> dialogMap;
-                if (!m_clientDialogMap.TryGetValue(this.AgentID, out dialogMap)) {
-                    GloebitMoneyModule.m_log.ErrorFormat("[GLOEBITMONEYMODULE] Dialog.Cleanup Called on dialog where agent is not in map -  AgentID:{0}.", this.AgentID);
-                    return;
+                /***** Remove Dialog from master map and deregister chat listener if no more active dialogs for this agent *****/
+                
+                lock (s_clientDialogMap) {
+                    if (s_clientDialogMap.TryGetValue(this.AgentID, out channelDialogMap)) {
+                        foundChannelDialogMap = true;
+                        if (channelDialogMap.ContainsKey(this.Channel)) {
+                            foundChannel = true;
+                            
+                            // TODO: BRAD -- In the case where this is the only open dialog for this agent (count == 1) -- do we need to call this?  We're removing the whole dict that contains this.  Given that we're inside of a lock, is it worth it to only call this if there are other active dialogs?
+                            channelDialogMap.Remove(this.Channel);
+                            
+                            // Delete channelDialogMap and Deregister chat listener if not more open dialogs for this agent
+                            if (channelDialogMap.Count() == 0) {
+                                lastActiveDialog = true;
+                                this.Client.OnChatFromClient -= OnChatFromClientAPI;
+                                s_clientDialogMap.Remove(this.AgentID);
+                            }
+                        }
+                    }
                 }
-                if (!dialogMap.ContainsKey(this.Channel)) {
-                    GloebitMoneyModule.m_log.ErrorFormat("[GLOEBITMONEYMODULE] Dialog.Cleanup Called on dialog where channel is not in map for agent -  AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
-                    return;
-                }
-                // TODO: what do I need to lock here to make sure that things don't overlap?
-                dialogMap.Remove(this.Channel);
-                GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.Cleanup Removing dialog - AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
                 
-                /***** Deregister chat listener if not more open dialogs for this agent *****/
-                
-                if (dialogMap.Count() == 0) {
-                    m_clientDialogMap.Remove(this.AgentID);
-                    this.Client.OnChatFromClient -= OnChatFromClientAPI;
-                    GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.Cleanup Removing dialog event listener - AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
+                /***** Handle error/info messaging here so it is outside of the lock *****/
+                if (!foundChannelDialogMap) {
+                    GloebitMoneyModule.m_log.WarnFormat("[GLOEBITMONEYMODULE] Dialog.Close Called on dialog where agent is not in map -  AgentID:{0}.", this.AgentID);
+                } else if (!foundChannel){
+                    GloebitMoneyModule.m_log.WarnFormat("[GLOEBITMONEYMODULE] Dialog.Close Called on dialog where channel is not in map for agent -  AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
+                } else {
+                    GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.Close Removed dialog - AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
+                    if (lastActiveDialog) {
+                        GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.Close Removed agent dialog event listener - AgentID:{0}", this.AgentID);
+                    }
                 }
             }
             
@@ -302,16 +340,20 @@ namespace Gloebit.GloebitMoneyModule
             {
                 UUID agentID = client.AgentId;
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent - AgentID:{0}.", agentID);
+                bool foundChannelDialogMap = false;
                 
-                if (!m_clientDialogMap.ContainsKey(agentID)) {
-                    GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent No listener - AgentID:{0}.", agentID);
-                    return;
+                lock (s_clientDialogMap) {
+                    if (s_clientDialogMap.ContainsKey(agentID)) {
+                        foundChannelDialogMap = true;
+                        client.OnChatFromClient -= OnChatFromClientAPI;
+                        s_clientDialogMap.Remove(agentID);
+                    }
                 }
-                
-                // TODO: what do I need to lock here to make sure that things don't overlap?
-                m_clientDialogMap.Remove(agentID);
-                client.OnChatFromClient -= OnChatFromClientAPI;
-                GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent Removing listener - AgentID:{0}.", agentID);
+                if (!foundChannelDialogMap) {
+                    GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent No listener - AgentID:{0}.", agentID);
+                } else {
+                    GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.DeregisterAgent Removed listener - AgentID:{0}.", agentID);
+                }
             }
             
             /// <summary>
@@ -324,23 +366,34 @@ namespace Gloebit.GloebitMoneyModule
             /// </summary>
             private static void PurgeOldDialogs()
             {
-                m_lastPurgedOldDialogs = DateTime.UtcNow;
+                // Let's avoid two of these running
+                lock (s_purgeLock) {
+                    if (s_lastPurgedOldDialogs.CompareTo(DateTime.UtcNow.AddHours(-6)) < 0) {
+                        s_lastPurgedOldDialogs = DateTime.UtcNow;
+                    } else {
+                        return;
+                    }
+                }
+                
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.PurgeOldDialogs.");
                 
                 List<Dialog> dialogsToPurge = new List<Dialog>();
                 
-                // TODO: Do we need to lock the m_clientDialogMap while iterating over it?
-                foreach( KeyValuePair<UUID, Dictionary<int, Dialog>> kvp in m_clientDialogMap )
-                {
-                    foreach (KeyValuePair<int, Dialog> idp in kvp.Value) {
-                        if (idp.Value.cTime.CompareTo(DateTime.UtcNow.AddHours(-6)) < 0) {
-                            dialogsToPurge.Add(idp.Value);
+                // TODO: BRAD -- Would it be more efficient within the lock to use the Dictionary constructor to make a copy of this dictionary?
+                // Then we could iterate through the copy to build our list ouside of the lock.
+                lock (s_clientDialogMap) {
+                    foreach( KeyValuePair<UUID, Dictionary<int, Dialog>> kvp in s_clientDialogMap )
+                    {
+                        foreach (KeyValuePair<int, Dialog> idp in kvp.Value) {
+                            if (idp.Value.cTime.CompareTo(DateTime.UtcNow.AddHours(-6)) < 0) {
+                                dialogsToPurge.Add(idp.Value);
+                            }
                         }
                     }
                 }
                 
                 foreach( Dialog dialog in dialogsToPurge ) {
-                    // TODO: Do we need to make sure this was not already closed?
+                    // If any of these have already been closed, we'll produce a WarnFormat log.
                     dialog.Close();
                 }
             }
@@ -357,25 +410,25 @@ namespace Gloebit.GloebitMoneyModule
         /// </summary>
         public class DebitAuthDialog : Dialog
         {
-            public UUID ObjectID;       // ID of object which attempted the auto debit.
-            public string ObjectName;   // name of object which attempted the auto debit.
-            public UUID TransactionID;  // id of the auto debit transaciton which failed due to lack of authorization
-            public UUID ToID;           // ID of the agent receiving the proceeds
-            public string ToName;       // name of the agent receiving the proceeds
-            public int Amount;          // The amount of the auto-debit transaction
+            public readonly UUID ObjectID;       // ID of object which attempted the auto debit.
+            public readonly string ObjectName;   // name of object which attempted the auto debit.
+            public readonly UUID TransactionID;  // id of the auto debit transaciton which failed due to lack of authorization
+            public readonly UUID ToID;           // ID of the agent receiving the proceeds
+            public readonly string ToName;       // name of the agent receiving the proceeds
+            public readonly int Amount;          // The amount of the auto-debit transaction
             
             // Create static variables here so we only need one string array
-            private static string m_title = "Script Debit Authorization";
-            private static string[] m_buttons = new string[3] {"Authorize", "Ignore", "Report Fraud"};
+            private const string c_title = "Script Debit Authorization";
+            private static readonly string[] c_buttons = new string[3] {"Authorize", "Ignore", "Report Fraud"};
             
             // Create variable we can format once in constructor to return for dMessage
-            private string m_body;
+            private readonly string m_body;
             
             protected override string dObjectName
             {
                 get
                 {
-                    return m_title;
+                    return c_title;
                 }
             }
             protected override string dMessage
@@ -389,7 +442,7 @@ namespace Gloebit.GloebitMoneyModule
             {
                 get
                 {
-                    return m_buttons;
+                    return c_buttons;
                 }
             }
             
@@ -426,7 +479,7 @@ namespace Gloebit.GloebitMoneyModule
             /// </summary>
             /// <param name="client">IClientAPI of sender of response</param>
             /// <param name="chat">response sent</param>
-            protected override void ProcessResponse(IClientAPI client, OSChatMessage chat, Dialog dialog)
+            protected override void ProcessResponse(IClientAPI client, OSChatMessage chat)
             {
                 // TODO: Properly process response
                 
@@ -438,9 +491,8 @@ namespace Gloebit.GloebitMoneyModule
                         // Send Authorize URL
 
                         // TODO: properly build url
-                        DebitAuthDialog daDialog = (DebitAuthDialog) dialog;
-                        string body = String.Format("To authorize this object:\n   {0}\n   {1}\n\nPlease visit this web page:", daDialog.ObjectName, daDialog.ObjectID);
-                        string resourceID = String.Format("{0}/{1}/", daDialog.ObjectID,client.AgentId);
+                        string body = String.Format("To authorize this object:\n   {0}\n   {1}\n\nPlease visit this web page:", ObjectName, ObjectID);
+                        string resourceID = String.Format("{0}/{1}/", ObjectID, client.AgentId);
                         GloebitMoneyModule gmm = (GloebitMoneyModule) client.Scene.RequestModuleInterface<IMoneyModule>();
                         gmm.m_api.SendUrlToClient(client, "GLOEBIT Authorize Debit Script:", body, resourceID);
                         
@@ -450,7 +502,7 @@ namespace Gloebit.GloebitMoneyModule
                         // TODO: fire off fraud report to Gloebit
                         break;
                     default:
-                        m_log.ErrorFormat("[GLOEBITMONEYMODULE] DebitAuthDialog.ProcessResopnse Received unexpected dialog response message:{0}", chat.Message);
+                        m_log.ErrorFormat("[GLOEBITMONEYMODULE] DebitAuthDialog.ProcessResponse Received unexpected dialog response message:{0}", chat.Message);
                         break;
                 }
             }
