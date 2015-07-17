@@ -229,6 +229,11 @@ namespace Gloebit.GloebitMoneyModule
                 m_gridnick = config.GetString("gridnick", m_gridnick);
                 m_gridname = config.GetString("gridname", m_gridname);
                 m_economyURL = new Uri(config.GetString("economy"));
+
+                // TODO(brad) - figure out a better way to configure this in Robust mode
+                if(m_economyURL == null) {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GridInfoService.economy setting MUST be configured!");
+                }
             }
         }
 
@@ -425,7 +430,6 @@ namespace Gloebit.GloebitMoneyModule
         private void OnNewClient(IClientAPI client)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] OnNewClient for {0}", client.AgentId);
-            CheckExistAndRefreshFunds(client.AgentId);
 
             // Subscribe to Money messages
             client.OnEconomyDataRequest += EconomyDataRequestHandler;
@@ -433,6 +437,23 @@ namespace Gloebit.GloebitMoneyModule
             client.OnRequestPayPrice += requestPayPrice;
             client.OnObjectBuy += ObjectBuy;
             client.OnLogout += ClientLoggedOut;
+
+            // if(client.AgentId == null) {
+            //     m_log.ErrorFormat("[GLOEBITMONEYMODULE] OnNewClient client has no AgentId, cannot authorize!");
+            //     return;
+            // }
+
+            GloebitAPI.User user = GloebitAPI.User.Get(client.AgentId);
+            if(user != null && !String.IsNullOrEmpty(user.GloebitToken)) {
+                m_api.GetBalance(user);
+            } else {
+                RegionInfo ri = client.Scene.RegionInfo;
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] building auth uri '{0}'", ri.ServerURI);
+                // IUrlModule urlModule = client.Scene.RequestModuleInterface<IUrlModule>();
+                // UriBuilder uri = new UriBuilder("http", urlModule.ExternalHostNameForLSL, (int)ri.HttpPort);
+
+                m_api.Authorize(client, new Uri(ri.ServerURI));
+            }
         }
 
         /// <summary>
@@ -449,7 +470,8 @@ namespace Gloebit.GloebitMoneyModule
             bool result = true;
 
             ////m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
-            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, null, UUID.Zero, descMap, m_economyURL);
+            Uri baseUri = new Uri(GetAnyScene().RegionInfo.ServerURI);
+            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, null, UUID.Zero, descMap, baseUri);
 
             // TODO: Should we be returning true before Transact completes successfully now that this is async???
             // TODO: use transactiontype
@@ -497,7 +519,8 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
             // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
             //       but could make it easier for app to force synchronicity if desired.
-            bool result = m_api.TransactU2U(GloebitAPI.User.Get(fromID), resolveAgentName(fromID), GloebitAPI.User.Get(toID), resolveAgentName(toID), resolveAgentEmail(toID), amount, description, asset, transactionID, descMap, m_economyURL);
+            Uri baseUri = new Uri(GetAnyScene().RegionInfo.ServerURI);
+            bool result = m_api.TransactU2U(GloebitAPI.User.Get(fromID), resolveAgentName(fromID), GloebitAPI.User.Get(toID), resolveAgentName(toID), resolveAgentEmail(toID), amount, description, asset, transactionID, descMap, baseUri);
             
             if (!result) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] doMoneyTransferWithAsset failed to create HttpWebRequest in GloebitAPI.TransactU2U");
@@ -772,10 +795,9 @@ namespace Gloebit.GloebitMoneyModule
             // GloebitAPI.User user = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
 
             // string token = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
-            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code, m_economyURL);
+            Uri baseUri = new Uri(GetAnyScene().RegionInfo.ServerURI);
+            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code, baseUri);
 
-            // TODO: stop logging token
-            //m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func started ExchangeAccessToken");
 
             // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
@@ -1091,18 +1113,6 @@ namespace Gloebit.GloebitMoneyModule
         #endregion
 
         #region local Fund Management
-
-        /// <summary>
-        /// Ensures that the agent accounting data is set up in this instance.
-        /// </summary>
-        /// <param name="agentID"></param>
-        private void CheckExistAndRefreshFunds(UUID agentID)
-        {
-            GloebitAPI.User user = GloebitAPI.User.Get(agentID);
-            if(user != null) {
-                m_api.GetBalance(user);
-            }
-        }
 
         /// <summary>
         /// Retrieves the gloebit balance of the gloebit account linked to the OpenSim agent defined by the agentID.

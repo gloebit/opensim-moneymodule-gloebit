@@ -529,8 +529,22 @@ namespace Gloebit.GloebitMoneyModule {
             // currently can not launch browser directly for user, so send in message
 
             string message = String.Format("To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page: {0}", request_uri);
-            user.SendBlueBoxMessage(UUID.Zero, "Gloebit", message);
+            // user.SendBlueBoxMessage(UUID.Zero, "Gloebit", message);
             // use SendBlueBoxMessage as all others including SendLoadURL truncate to 255 char or below
+            user.SendInstantMessage(new GridInstantMessage(
+                scene : null,
+                _fromAgentID : UUID.Zero,
+                _fromAgentName : "Gloebit",
+                _toAgentID : user.AgentId,
+                _dialog : (byte)InstantMessageDialog.GotoUrl,
+                _fromGroup: false,
+                _message : message,
+                _imSessionID : UUID.Zero,
+                _offline : false,
+                _position : Vector3.Zero,
+                _binaryBucket : Encoding.UTF8.GetBytes(request_uri.ToString() + "\0"),
+                addTimestamp : true
+            ));
 
         }
         
