@@ -1,0 +1,49 @@
+:VERSION 1		# -------------------------
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS `GloebitSubscriptions` (
+    `SubscriptionID` CHAR(36),
+    `ObjectID` CHAR(36) NOT NULL,
+    `AppKey` VARCHAR(64) NOT NULL,
+    `GlbApiUrl` VARCHAR(100) NOT NULL,
+    `enabled` TINYINT(1) NOT NULL,
+    `ObjectName` VARCHAR(64),
+    `Description` VARCHAR(255) NOT NULL,
+    `cTime` TIMESTAMP NOT NULL,
+    PRIMARY KEY pk_obj_app_api (`ObjectID`, `AppKey`, `GlbApiUrl`),
+    UNIQUE KEY k_sub_api (`SubscriptionID`, `GlbApiUrl`),
+    INDEX ix_oid (`ObjectID`),
+    INDEX ix_sid (`SubscriptionID`),
+    INDEX ix_cts (`cTime`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+COMMIT;
+
+
+#    `CreatorID` CHAR(36) NOT NULL,
+#
+#    `PartID` CHAR(36),
+#    `PartName` VARCHAR(64),
+#    `CategoryID` CHAR(36),
+#    `LocalID` INT(10) UNSIGNED,
+#    `SaleType` INT(11),
+#    `SalePrice` INT(11) NOT NULL,
+#    `BuyerEndingBalance` INT(11) NOT NULL,
+#    `enacted` TINYINT(1) NOT NULL,
+#    `consumed` TINYINT(1) NOT NULL,
+#    `canceled` TINYINT(1) NOT NULL,
+#    `enactedTime` TIMESTAMP NULL,
+#    `finishedTime` TIMESTAMP NULL,
+#
+#    PRIMARY KEY (`SubscriptionID`),
+#    KEY k_obj_app_api (`ObjectID`, `AppKey`, `GlbApiUrl`),
+#    INDEX ix_bid (`ObjectID`),
+#    INDEX ix_cts (`cTime`),
+#
+#    INDEX ix_sid (`SellerID`),
+#    INDEX ix_pid (`PartID`),
+#
+# INDEX ix_cts (`cTime`)
+
+

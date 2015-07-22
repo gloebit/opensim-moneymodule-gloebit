@@ -426,6 +426,12 @@ namespace Gloebit.GloebitMoneyModule
             public readonly UUID ToID;           // ID of the agent receiving the proceeds
             public readonly string ToName;       // name of the agent receiving the proceeds
             public readonly int Amount;          // The amount of the auto-debit transaction
+            public readonly UUID SubscriptionID; // The subscription id return by GloebitAPI.CreateSubscription
+            // TODO: can these be static, or should we be passing in the m_api instead?
+            public readonly GloebitAPI api;      // The GloebitAPI environment that is currently active
+            public readonly Uri economyUrl;      // The economyURL for the sim - used if we decide to create callbacks.
+            public readonly string AgentName;    // Name of the agent we're sending the dialog to and requesting auths this subscription
+            public readonly string ObjectDescription;
             
             // Create static variables here so we only need one string array
             private const string c_title = "Script Debit Authorization";
@@ -464,7 +470,7 @@ namespace Gloebit.GloebitMoneyModule
             /// <param name="objectID">UUID of object containing script attempted to auto-debit</param>
             /// <param name="objectName">Name of object containing script attempted to auto-debit</param>
             /// <param name="transactionID">UUID of auto-debit transaction that failed due to lack of authorization</param>
-            public DebitAuthDialog(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID, UUID toID, string toName, int amount) : base(client, agentID)
+            public DebitAuthDialog(IClientAPI client, UUID agentID, UUID objectID, string objectName, UUID transactionID, UUID toID, string toName, int amount, UUID subscriptionID, GloebitAPI activeApi, Uri appEconomyUrl, string agentName, string objectDescription) : base(client, agentID)
             {
                 this.ObjectID = objectID;
                 this.ObjectName = objectName;
@@ -472,6 +478,12 @@ namespace Gloebit.GloebitMoneyModule
                 this.ToID = toID;
                 this.ToName = toName;
                 this.Amount = amount;
+                this.SubscriptionID = subscriptionID;
+                
+                this.api = activeApi;
+                this.economyUrl = appEconomyUrl;
+                this.AgentName = agentName;
+                this.ObjectDescription = objectDescription;
                 
                 // TODO: Add ToName, ToID and Amount to this.
                 
@@ -498,13 +510,37 @@ namespace Gloebit.GloebitMoneyModule
                         // User actively ignored.  remove from our message listener
                         break;
                     case "Authorize":
-                        // Send Authorize URL
-
-                        // TODO: properly build url
-                        string body = String.Format("To authorize this object:\n   {0}\n   {1}\n\nPlease visit this web page:", ObjectName, ObjectID);
-                        string resourceID = String.Format("{0}/{1}/", ObjectID, client.AgentId);
-                        GloebitMoneyModule gmm = (GloebitMoneyModule) client.Scene.RequestModuleInterface<IMoneyModule>();
-                        gmm.m_api.SendUrlToClient(client, "GLOEBIT Authorize Debit Script:", body, resourceID);
+                        // Create authorization
+                        
+                        string subscriptionIDStr = SubscriptionID.ToString();
+                        string appSubscriptionIDStr = ObjectID.ToString();
+                        string apiUrl = api.m_url.ToString();
+                        
+                        // Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
+                        // TODO: wrap this code block into the Get function (sID, oID, key, url)
+                        GloebitAPI.Subscription sub = GloebitAPI.Subscription.GetBySubscriptionID(subscriptionIDStr, apiUrl);
+                        if (sub == null) {
+                            m_log.WarnFormat("[GLOEBITMONEYMODULE] DebitAuthDialog Auhtorize - could not locate local subscription by id:{0}", subscriptionIDStr);
+                            sub = GloebitAPI.Subscription.Get(appSubscriptionIDStr, api.m_key, apiUrl);
+                            if (sub == null) {
+                                m_log.ErrorFormat("[GLOEBITMONEYMODULE] DebitAuthDialog Auhthorize - could not locate local subscription by app-subscription-id:{0} appKey:{1} apiUrl:{2}", appSubscriptionIDStr, api.m_key, apiUrl);
+                                // Create local sub
+                                m_log.ErrorFormat("[GLOEBITMONEYMODULE] DebitAuthDialog INITING SUBSCRIPTION for {0}", ObjectName);
+                                sub = GloebitAPI.Subscription.Init(ObjectID, api.m_key, apiUrl, ObjectName, ObjectDescription);
+                            }
+                            // assign subscription-id to local sub
+                            if (SubscriptionID != UUID.Zero) {
+                                sub.SubscriptionID = SubscriptionID;
+                                // store local sub
+                                GloebitSubscriptionData.Instance.Store(sub);
+                            }
+                        }
+                        
+                        // Get GloebitAPI.User for this agent
+                        GloebitAPI.User user = GloebitAPI.User.Get(AgentID);
+                        
+                        // TODO: need to include transactionID, payeeID, payeeName and amount somehow
+                        api.CreateSubscriptionAuthorization(sub, user, AgentName, economyUrl, client);
                         
                         break;
                     case "Report Fraud":
@@ -604,6 +640,7 @@ namespace Gloebit.GloebitMoneyModule
                 m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
                 GloebitUserData.Initialise(m_gConfig.Configs["DatabaseService"]);
                 GloebitAssetData.Initialise(m_gConfig.Configs["DatabaseService"]);
+                GloebitSubscriptionData.Initialise(m_gConfig.Configs["DatabaseService"]);
             }
         }
 
@@ -808,18 +845,40 @@ namespace Gloebit.GloebitMoneyModule
             
             // TODO: Process as subscription
             // Check subscription table.  If not exists, send create call to Gloebit
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - looking for local subscription");
+            GloebitAPI.Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
+            if (sub == null) {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - creating local subscription");
+                // Create local sub
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney -- INITING SUBSCRIPTION for {0}", part.Name);
+                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
+            }
+            if (sub.SubscriptionID == UUID.Zero) {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - SID is ZERO -- calling GloebitAPI Create Subscription");
+                // call api to have Gloebit create
+                m_api.CreateSubscription(sub, m_economyURL);
+                
+                return false;
+                // TODO: figure out how to store this request and use createSubscriptionCompleted to drop back in here.
+                // TODO: Do we exit? or attempt a transaction we expect to fail?
+                // TODO: Do we store this transaction in a way that we can drop back in at this point once a callback is received?
+            }
+            // Should we store subscription authorizations and check, or just let transaction failures trigger these?
+            
             // Add subscription info to transaction reqeust.
             // Need to handle a transact failure to trigger DebitAuthDialog
-            // /authorize-subscription/AppIDorAppKey/SubscriptionID/UserID/UserName
+            // /authorize-subscription/AppKeyorAppKeyAlias/SubscriptionID/UserID/UserName/
             
-            // TODO: remove when we are done testing
-            IClientAPI remoteClient = LocateClientObject(fromID);
+            // TODO: Move to callback from failed transaction when we are done testing
+            // TODO: wrap in a function that both sends a dialog and emails the user.
+            /*IClientAPI remoteClient = LocateClientObject(fromID);
             if (remoteClient != null) {
-                Dialog.Send(new DebitAuthDialog(remoteClient, remoteClient.AgentId, objectID, resolveObjectName(objectID), transactionID, toID, resolveAgentName(toID), amount));
-            }
+                Dialog.Send(new DebitAuthDialog(remoteClient, remoteClient.AgentId, objectID, resolveObjectName(objectID), transactionID, toID, resolveAgentName(toID), amount, sub.SubscriptionID, m_api, m_economyURL, resolveAgentName(remoteClient.AgentId), part.Description) );
+            }*/
             
 
             bool requiresDelivery = false;
+            // TODO: need to add a field to doMoneyTransferWithAsset that this is an unattended payment / subscription
             bool give_result = doMoneyTransferWithAsset(transactionID, fromID, toID, amount, transactionType, description, descMap, activeClient, actionStr, objectID, part.Name, requiresDelivery, UUID.Zero, 0, saleType);
 
             // TODO - move this to a proper execute callback
@@ -1427,7 +1486,22 @@ namespace Gloebit.GloebitMoneyModule
                     }
                 }
             } else {                                                        /* failure prior to queing.  Something requires fixing */
+                string subscriptionIDStr = String.Empty;
+                string appSubscriptionIDStr = String.Empty;
+                string subscriptionAuthIDStr = String.Empty;
+                if (responseDataMap.ContainsKey("subscription-id")) {
+                    subscriptionIDStr = responseDataMap["subscription-id"];
+                }
+                if (responseDataMap.ContainsKey("app-subscription-id")) {
+                    appSubscriptionIDStr = responseDataMap["app-subscription-id"];
+                }
+                if (responseDataMap.ContainsKey("subscription-authorization-id")) {
+                    subscriptionAuthIDStr = responseDataMap["subscription-authorization-id"];
+                }
+                
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted with FAILURE reason:{0} status:{1} id:{2}", reason, status, tID);
+                
+                
                 if (status == "queuing-failed") {                           /* failed to queue.  net or processor error */
                     if (buyerClient != null) {
                         buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed. Queuing error.  Please try again.  If problem persists, contact Gloebit.", false);
@@ -1451,12 +1525,207 @@ namespace Gloebit.GloebitMoneyModule
                     if (buyerClient != null) {
                         buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Gloebit can not identify seller from OpenSim account.  Please alert seller to this issue if possible and have seller contact Gloebit.", false);
                     }
+                } else if (reason == "Transaction with automated-transaction=True is missing subscription-id") {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Subscription-id missing from transaction marked as unattended/automated transaction.  transactionID:{0}", tID);
+                    // TODO: Do we need to register a subscription, or is this a case we should never end up in?
+                } else if (status == "unknown-subscription") {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit can not identify subscription from identifier(s).  transactionID:{0}, subscription-id:{1}, app-subscription-id:{2}", tID, subscriptionIDStr, appSubscriptionIDStr);
+                    // TODO: We should wipe this subscription from the DB and re-create it.
+                } else if (status == "unknown-subscription-authorization") {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit No subscription authorization in place.  transactionID:{0}, subscription-id:{1}, app-subscription-id:{2} BuyerID:{3} BuyerName:{4}", tID, subscriptionIDStr, appSubscriptionIDStr, buyerID, resolveAgentName(buyerID));
+                    // TODO: Should we store auths so we know if we need to create it or just to ask user to auth it again?
+                    // We have a valid subscription, but no subscription auth for this user-id-on-app+token(gloebit_uid) combo
+                    // Ask user if they would like to authorize
+                    // Don't call CreateSubscriptionAuthorization unless they do.  If this is fraud, the user will not want to see a pending auth.
+                    
+                    // Get local subscription
+                    // Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
+                    // TODO: do we need the subscription here, or just the ID?
+                    GloebitAPI.Subscription sub = GloebitAPI.Subscription.GetBySubscriptionID(subscriptionIDStr, m_apiUrl);
+                    if (sub == null) {
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - could not locate local subscription by id:{0}", subscriptionIDStr);
+                        sub = GloebitAPI.Subscription.Get(appSubscriptionIDStr, m_key, m_apiUrl);
+                        if (sub == null) {
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - could not locate local subscription by app-subscription-id:{0} appKey:{1} apiUrl:{2}", appSubscriptionIDStr, m_key, m_apiUrl);
+                            // Create local sub
+                            // TODO: store object description in asset and get rid of this hack
+                            Scene s = GetAnyScene();
+                            SceneObjectPart soPart = s.GetSceneObjectPart(asset.PartID);
+                            string desc = soPart.Description;
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] transactU2UCompleted status:'unknown-subscription-authorization' -- INITING SUBSCRIPTION for {0}", asset.PartName);
+                            sub = GloebitAPI.Subscription.Init(asset.PartID, m_key, m_apiUrl, asset.PartName, desc);
+                        }
+                        // assign subscription-id to local sub
+                        if (!String.IsNullOrEmpty(subscriptionIDStr)) {
+                            sub.SubscriptionID = UUID.Parse(subscriptionIDStr);
+                            // store local sub
+                            GloebitSubscriptionData.Instance.Store(sub);
+                        }
+                    }
+                    
+                    if (buyerClient != null) {
+                        // TODO: store object description in asset and get rid of this hack
+                        Scene s = GetAnyScene();
+                        SceneObjectPart soPart = s.GetSceneObjectPart(asset.PartID);
+                        string desc = soPart.Description;
+                        Dialog.Send(new DebitAuthDialog(buyerClient, buyerID, asset.PartID, asset.PartName, transactionID, sellerID, resolveAgentName(sellerID), asset.SalePrice, sub.SubscriptionID, m_api, m_economyURL, resolveAgentName(buyerID), desc));
+                    } else {
+                        // TODO: does the message eventually make it if the user is offline?  Is there a way to send a Dialog to a user the next time they log in?
+                        // Should we just create the subscription_auth in this case?
+                    }
+                    
+                    
+                } else if (status == "subscription-authorization-pending") {
+                    // User has been asked and chose to auth already.
+                    // Subscription-authorization has already been created.
+                    // User has not yet responded to that request, so send the URL again.
+                    // TODO: should send a message letting them know that it is still pending (not first ask).
+                    // Send request to user again
+                    
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - status:{0} \n subID:{1} appSubID:{2} apiUrl:{3} ", status, subscriptionIDStr, appSubscriptionIDStr, m_apiUrl);
+                    
+                    // Get local subscription
+                    // Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
+                    GloebitAPI.Subscription sub = GloebitAPI.Subscription.GetBySubscriptionID(subscriptionIDStr, m_apiUrl);
+                    if (sub == null) {
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - could not locate local subscription by id:{0}", subscriptionIDStr);
+                        sub = GloebitAPI.Subscription.Get(appSubscriptionIDStr, m_key, m_apiUrl);
+                        if (sub == null) {
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - could not locate local subscription by app-subscription-id:{0} appKey:{1} apiUrl:{2}", appSubscriptionIDStr, m_key, m_apiUrl);
+                            // Create local sub
+                            // TODO: store object description in asset and get rid of this hack
+                            Scene s = GetAnyScene();
+                            SceneObjectPart soPart = s.GetSceneObjectPart(asset.PartID);
+                            string desc = soPart.Description;
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] transactU2UCompleted status:'subscription-authorization-pending' -- INITING SUBSCRIPTION for {0}", asset.PartName);
+                            sub = GloebitAPI.Subscription.Init(asset.PartID, m_key, m_apiUrl, asset.PartName, desc);
+                        }
+                        // assign subscription-id to local sub
+                        if (!String.IsNullOrEmpty(subscriptionIDStr)) {
+                            sub.SubscriptionID = UUID.Parse(subscriptionIDStr);
+                            // store local sub
+                            GloebitSubscriptionData.Instance.Store(sub);
+                        }
+                    }
+                    
+                    // Send Authorize URL
+                    m_api.SendSubscriptionAuthorizationToClient(buyerClient, subscriptionAuthIDStr, sub);
+
+                } else if (status == "subscription-authorization-declined") {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- user declined subscription auth.");
+                    // TODO: should we do something here? -- different type of dialog perhaps
+                    // Send dialog asking user to auth or report --- needs different message.
                 } else {                                                    /* App issue --- Something needs fixing by app */
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Transaction failed.  App needs to fix something.");
                     if (buyerClient != null) {
                         buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Application provided malformed transaction to Gloebit.  Please retry.  Contact Regoin/Grid owner if failure persists.", false);
                     }
                 }
+            }
+            return;
+        }
+        
+        public void createSubscriptionCompleted(OSDMap responseDataMap, GloebitAPI.Subscription subscription) {
+            
+            bool success = (bool)responseDataMap["success"];
+            string reason = responseDataMap["reason"];
+            string status = responseDataMap["status"];
+            
+            //string tID = "";
+            //if (responseDataMap.ContainsKey("id")) {
+            //    tID = responseDataMap["id"];
+            //}
+            
+            //UUID buyerID = UUID.Parse(sender.PrincipalID);
+            //UUID sellerID = UUID.Parse(recipient.PrincipalID);
+            //UUID transactionID = UUID.Parse(tID);
+            //IClientAPI buyerClient = LocateClientObject(buyerID);
+            //IClientAPI sellerClient = LocateClientObject(sellerID);
+            
+            if (success) {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionCompleted with SUCCESS reason:{0} status:{1}", reason, status);
+                // TODO: Do we need to message any client?
+                
+                // TODO: Do we need to take any action? -- should we restart a stalled transaction?
+                
+            } else if (status == "retry") {                                /* failure could be temporary -- retry. */
+                m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionCompleted with FAILURE but suggested retry.  reason:{0}", reason);
+                
+                // TODO: Should we retry?  How do we prevent infinite loop?
+                
+            } else if (status == "failed") {                                /* failure permanent -- requires fixing something. */
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].createSubscriptionCompleted with FAILURE permanently.  reason:{0}", reason);
+                
+                // TODO: Any action required?
+                
+            } else {                                                        /* failure - unexpected status */
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].createSubscriptionCompleted with FAILURE - unhandled status:{0} reason:{1}", status, reason);
+            }
+            return;
+        }
+        
+        public void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitAPI.Subscription sub, GloebitAPI.User sender, IClientAPI client) {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionAuthorizationCompleted");
+            
+            bool success = (bool)responseDataMap["success"];
+            string reason = responseDataMap["reason"];
+            string status = responseDataMap["status"];
+            
+            //string tID = "";
+            //if (responseDataMap.ContainsKey("id")) {
+            //    tID = responseDataMap["id"];
+            //}
+            
+            UUID senderID = UUID.Parse(sender.PrincipalID);
+            //UUID sellerID = UUID.Parse(recipient.PrincipalID);
+            //UUID transactionID = UUID.Parse(tID);
+            IClientAPI senderClient = LocateClientObject(senderID);
+            //IClientAPI sellerClient = LocateClientObject(sellerID);
+            
+            // TODO: we need to carry the transactionID through and retrieve toID, toName, amount
+            UUID toID = UUID.Zero;
+            UUID transactionID = UUID.Zero;
+            string toName = "testing name";
+            int amount = 47;
+            
+            if (success) {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionAuthorizationCompleted with SUCCESS reason:{0} status:{1}", reason, status);
+                switch (status) {
+                    case "success":
+                    case "created":
+                    case "duplicate":
+                        // grab subscription_authorization_id
+                        string subAuthID = responseDataMap["id"];
+                        
+                        // Send Authorize URL
+                        m_api.SendSubscriptionAuthorizationToClient(client, subAuthID, sub);
+                        
+                        break;
+                    case "duplicate-and-already-approved-by-user":
+                        // TODO: if we have a transaction pending, trigger it
+                        break;
+                    case "duplicate-and-previously-declined-by-user":
+                        // TODO: determine what we'll do here.
+                        // Is this a success case or failure case?
+                        // Do we make a call to reset to pending?
+                        // Do we send a dialog to the user --- maybe that makes more sense. !!! I think a new dialog message is the winner.
+                        break;
+                    default:
+                        break;
+                }
+            } else if (status == "retry") {                                /* failure could be temporary -- retry. */
+                m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionAuthorizationCompleted with FAILURE but suggested retry.  reason:{0}", reason);
+                
+                // TODO: Should we retry?  How do we prevent infinite loop?
+                
+            } else if (status == "failed") {                                /* failure permanent -- requires fixing something. */
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].createSubscriptionAuthorizationCompleted with FAILURE permanently.  reason:{0}", reason);
+                
+                // TODO: Any action required?
+                // TODO: if we move "duplicate-and-previously-declined-by-user" to here, then we should handle it here and we need another endpoint to reset status of this subscription auth to pending
+                
+            } else {                                                        /* failure - unexpected status */
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].createSubscriptionAuthorizationCompleted with FAILURE - unhandled status:{0} reason:{1}", status, reason);
             }
             return;
         }
