@@ -91,11 +91,11 @@ namespace Gloebit.GloebitMoneyModule
             
             // Time of last purge used to purge old Dialogs for which the user didn't respond.  See PurgeOldDialogs()
             private static DateTime s_lastPurgedOldDialogs = DateTime.UtcNow;
-            private static Object s_purgeLock = new Object();       // Lock to enforce only a single purge per period
+            private static readonly Object s_purgeLock = new Object();       // Lock to enforce only a single purge per period
             
             // Counter used to create unique channels for each dialog message
-            private const int c_MinChannel = -2100000000;           // channel limited to -2,147,483,648 -- reset when we get close
-            private const int c_MaxChannel = -1500001;              // Use negative channels only as they are harder for standard viewers to mimic.
+            private const int c_MinChannel = -1700000000;           // channel limited to -2,147,483,648 -- reset when we get close
+            private const int c_MaxChannel = -1600000001;              // Use negative channels only as they are harder for standard viewers to mimic.
             protected static int s_lastChannel = c_MaxChannel + 1;  // Use negative channels only as they are harder for standard viewers to mimic.
             
             // variables not used by dialog because we are sending the message, not an object from inworld
@@ -188,15 +188,15 @@ namespace Gloebit.GloebitMoneyModule
             /// </summary>
             private void Open()
             {
-                /***** Create Dialog Dict for agent and register chat listener if no open dialogs exist for this agent *****/
-                Dictionary<int, Dialog> channelDialogMap;
                 lock (s_clientDialogMap) {
+                    /***** Create Dialog Dict for agent and register chat listener if no open dialogs exist for this agent *****/
+                    Dictionary<int, Dialog> channelDialogMap;
                     if (!s_clientDialogMap.TryGetValue(AgentID, out channelDialogMap )) {
                         s_clientDialogMap[AgentID] = channelDialogMap = new Dictionary<int, Dialog>();
                         Client.OnChatFromClient += OnChatFromClientAPI;
                     }
                 
-                    /***** Add Dialog from master map *****/
+                    /***** Add Dialog to master map *****/
                     channelDialogMap[Channel] = this;
                 }
             }
@@ -292,27 +292,27 @@ namespace Gloebit.GloebitMoneyModule
             {
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.Close AgentID:{0} Channel:{1}.", this.AgentID, this.Channel);
                 
-                Dictionary<int, Dialog> channelDialogMap;
                 bool foundChannelDialogMap = false;
                 bool foundChannel = false;
                 bool lastActiveDialog = false;
                 
-                /***** Remove Dialog from master map and deregister chat listener if no more active dialogs for this agent *****/
+                /***** Remove Dialog from master map --- also deregister chat listener if no more active dialogs for this agent *****/
                 
                 lock (s_clientDialogMap) {
+                    Dictionary<int, Dialog> channelDialogMap;
                     if (s_clientDialogMap.TryGetValue(this.AgentID, out channelDialogMap)) {
                         foundChannelDialogMap = true;
                         if (channelDialogMap.ContainsKey(this.Channel)) {
                             foundChannel = true;
                             
-                            // TODO: BRAD -- In the case where this is the only open dialog for this agent (count == 1) -- do we need to call this?  We're removing the whole dict that contains this.  Given that we're inside of a lock, is it worth it to only call this if there are other active dialogs?
-                            channelDialogMap.Remove(this.Channel);
-                            
-                            // Delete channelDialogMap and Deregister chat listener if not more open dialogs for this agent
-                            if (channelDialogMap.Count() == 0) {
+                            if (channelDialogMap.Count() == 1) {
+                                // Delete channelDialogMap and Deregister chat listener as we're closing the only open dialog for this agent
                                 lastActiveDialog = true;
                                 this.Client.OnChatFromClient -= OnChatFromClientAPI;
                                 s_clientDialogMap.Remove(this.AgentID);
+                            } else {
+                                // Remove this dialog from the map for this agent
+                                channelDialogMap.Remove(this.Channel);
                             }
                         }
                     }
@@ -366,21 +366,31 @@ namespace Gloebit.GloebitMoneyModule
             /// </summary>
             private static void PurgeOldDialogs()
             {
-                // Let's avoid two of these running
-                lock (s_purgeLock) {
-                    if (s_lastPurgedOldDialogs.CompareTo(DateTime.UtcNow.AddHours(-6)) < 0) {
-                        s_lastPurgedOldDialogs = DateTime.UtcNow;
-                    } else {
-                        return;
+                // Let's avoid two purges running at the same time.
+                if (Monitor.TryEnter(s_purgeLock)) {
+                    try {
+                        if (s_lastPurgedOldDialogs.CompareTo(DateTime.UtcNow.AddHours(-6)) < 0) {
+                            // Time to purge.  Reset s_lastPurgedOldDialogs so no other thread will purge after the Monitor exists.
+                            s_lastPurgedOldDialogs = DateTime.UtcNow;
+                        } else {
+                            // Not yet time.  Return
+                            return;
+                        }
+                    } finally {
+                        // Allow other threads access to this resource again.
+                        Monitor.Exit(s_purgeLock);
                     }
+                } else {
+                    // another thread is making this check.  Return
+                    return;
                 }
+                
+                // If we've reached this point, then we have a single thread which has reset s_lastPurgedOldDialogs and is ready to purge.
                 
                 GloebitMoneyModule.m_log.InfoFormat("[GLOEBITMONEYMODULE] Dialog.PurgeOldDialogs.");
                 
                 List<Dialog> dialogsToPurge = new List<Dialog>();
                 
-                // TODO: BRAD -- Would it be more efficient within the lock to use the Dictionary constructor to make a copy of this dictionary?
-                // Then we could iterate through the copy to build our list ouside of the lock.
                 lock (s_clientDialogMap) {
                     foreach( KeyValuePair<UUID, Dictionary<int, Dialog>> kvp in s_clientDialogMap )
                     {
