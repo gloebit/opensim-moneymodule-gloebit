@@ -678,7 +678,8 @@ namespace Gloebit.GloebitMoneyModule
                 m_gridname = config.GetString("gridname", m_gridname);
                 m_economyURL = new Uri(config.GetString("economy"));
 
-                // TODO(brad) - figure out a better way to configure this in Robust mode
+                // TODO(brad) - figure out how to install a global economy url handler
+                // in robust mode.  do we need to make a separate addon for Robust.exe?
                 if(m_economyURL == null) {
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] GridInfoService.economy setting MUST be configured!");
                 }
@@ -904,7 +905,7 @@ namespace Gloebit.GloebitMoneyModule
             if(user != null && !String.IsNullOrEmpty(user.GloebitToken)) {
                 m_api.GetBalance(user);
             } else {
-                m_api.Authorize(client, BaseUri);
+                m_api.Authorize(client, BaseURI);
             }
         }
 
@@ -922,7 +923,7 @@ namespace Gloebit.GloebitMoneyModule
             m_api.TransactU2U(
                 sender: GloebitAPI.User.Get(Sender), senderName: resolveAgentName(Sender),
                 recipient: GloebitAPI.User.Get(Receiver), recipientName: resolveAgentName(Receiver), recipientEmail: resolveAgentEmail(Receiver),
-                amount: amount, description: description, asset: null, transactionId: UUID.Zero, descMap: descMap, baseURL: BaseUri);
+                amount: amount, description: description, asset: null, transactionId: UUID.Zero, descMap: descMap, baseURI: BaseURI);
         }
         
         // TODO: May want to merge these separate doMoneyTransfer functions into one.
@@ -966,7 +967,7 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
             // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
             //       but could make it easier for app to force synchronicity if desired.
-            bool result = m_api.TransactU2U(GloebitAPI.User.Get(fromID), resolveAgentName(fromID), GloebitAPI.User.Get(toID), resolveAgentName(toID), resolveAgentEmail(toID), amount, description, asset, transactionID, descMap, BaseUri);
+            bool result = m_api.TransactU2U(GloebitAPI.User.Get(fromID), resolveAgentName(fromID), GloebitAPI.User.Get(toID), resolveAgentName(toID), resolveAgentEmail(toID), amount, description, asset, transactionID, descMap, BaseURI);
             
             if (!result) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] doMoneyTransferWithAsset failed to create HttpWebRequest in GloebitAPI.TransactU2U");
@@ -1269,7 +1270,7 @@ namespace Gloebit.GloebitMoneyModule
             string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
 
-            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code, BaseUri);
+            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code, BaseURI);
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func started ExchangeAccessToken");
 
@@ -2133,7 +2134,7 @@ namespace Gloebit.GloebitMoneyModule
             return;
         }
 
-        private Uri BaseUri {
+        private Uri BaseURI {
             get { return new Uri(GetAnyScene().RegionInfo.ServerURI); }
         }
         
