@@ -250,20 +250,20 @@ namespace Gloebit.GloebitMoneyModule {
                 return a;
             }
             
-            public Uri BuildEnactURI(Uri baseURL) {
-                UriBuilder enact_uri = new UriBuilder(baseURL);
+            public Uri BuildEnactURI(Uri baseURI) {
+                UriBuilder enact_uri = new UriBuilder(baseURI);
                 enact_uri.Path = "gloebit/asset";
                 enact_uri.Query = String.Format("id={0}&state={1}", this.TransactionID, "enact");
                 return enact_uri.Uri;
             }
-            public Uri BuildConsumeURI(Uri baseURL) {
-                UriBuilder consume_uri = new UriBuilder(baseURL);
+            public Uri BuildConsumeURI(Uri baseURI) {
+                UriBuilder consume_uri = new UriBuilder(baseURI);
                 consume_uri.Path = "gloebit/asset";
                 consume_uri.Query = String.Format("id={0}&state={1}", this.TransactionID, "consume");
                 return consume_uri.Uri;
             }
-            public Uri BuildCancelURI(Uri baseURL) {
-                UriBuilder cancel_uri = new UriBuilder(baseURL);
+            public Uri BuildCancelURI(Uri baseURI) {
+                UriBuilder cancel_uri = new UriBuilder(baseURI);
                 cancel_uri.Path = "gloebit/asset";
                 cancel_uri.Query = String.Format("id={0}&state={1}", this.TransactionID, "cancel");
                 return cancel_uri.Uri;
@@ -482,11 +482,11 @@ namespace Gloebit.GloebitMoneyModule {
 
         /// <summary>
         /// Helper function to build the auth redirect callback url consistently everywhere.
-        /// <param name="baseURL">The base url where this server's http services can be accessed.</param>
-        /// <param name="baseURL">The uuid of the agent being authorized.</param>
+        /// <param name="baseURI">The base url where this server's http services can be accessed.</param>
+        /// <param name="agentId">The uuid of the agent being authorized.</param>
         /// </summary>
-        private static Uri BuildAuthCallbackURL(Uri baseURL, UUID agentId) {
-            UriBuilder redirect_uri = new UriBuilder(baseURL);
+        private static Uri BuildAuthCallbackURL(Uri baseURI, UUID agentId) {
+            UriBuilder redirect_uri = new UriBuilder(baseURI);
             redirect_uri.Path = "gloebit/auth_complete";
             redirect_uri.Query = String.Format("agentId={0}", agentId);
             return redirect_uri.Uri;
@@ -498,7 +498,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// This is how a user links a Gloebit account to this OpenSim account.
         /// </summary>
         /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
-        public void Authorize(IClientAPI user, Uri baseURL) {
+        public void Authorize(IClientAPI user, Uri baseURI) {
 
             //********* BUILD AUTHORIZE QUERY ARG STRING ***************//
             ////Dictionary<string, string> auth_params = new Dictionary<string, string>();
@@ -510,7 +510,7 @@ namespace Gloebit.GloebitMoneyModule {
             }
 
             auth_params["scope"] = "user balance transact";
-            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURL, user.AgentId).ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.AgentId).ToString();
             auth_params["response_type"] = "code";
             auth_params["user"] = user.AgentId.ToString();
             // TODO - make use of 'state' param for XSRF protection
@@ -541,7 +541,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <returns>The authenticated User object containing the access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.</returns>
         /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
         /// <param name="auth_code">Authorization Code returned to the redirect_uri from the Gloebit Authorize endpoint.</param>
-        public void ExchangeAccessToken(IClientAPI user, string auth_code, Uri baseURL) {
+        public void ExchangeAccessToken(IClientAPI user, string auth_code, Uri baseURI) {
             
             //TODO stop logging auth_code
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken Name:[{0}] AgentID:{1} auth_code:{1}", user.Name, user.AgentId, auth_code);
@@ -554,7 +554,7 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["code"] = auth_code;
             auth_params["grant_type"] = "authorization_code";
             auth_params["scope"] = "user balance transact";
-            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURL, user.AgentId).ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.AgentId).ToString();
             
             HttpWebRequest request = BuildGloebitRequest("oauth2/access-token", "POST", null, "application/x-www-form-urlencoded", auth_params);
             if (request == null) {
@@ -719,12 +719,12 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="asset">Asset representing local transaction part requiring processing via callbacks.</param>
         /// <param name="transactionId">UUID provided by calling application.  This ID will be provided back to the application in any callbacks and allows for Idempotence.</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, see buildTransactionDescMap helper function.</param>
-        /// <param name="baseURL">Asset representing local transaction part requiring processing via callbacks.</param>
+        /// <param name="baseURI">Asset representing local transaction part requiring processing via callbacks.</param>
         /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
 
-        public bool TransactU2U(User sender, string senderName, User recipient, string recipientName, string recipientEmail, int amount, string description, Asset asset, UUID transactionId, OSDMap descMap, Uri baseURL) {
+        public bool TransactU2U(User sender, string senderName, User recipient, string recipientName, string recipientEmail, int amount, string description, Asset asset, UUID transactionId, OSDMap descMap, Uri baseURI) {
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURL:{7}", sender.PrincipalID, senderName, recipient.PrincipalID, recipientName, recipientEmail, amount, description, baseURL);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURI:{7}", sender.PrincipalID, senderName, recipient.PrincipalID, recipientName, recipientEmail, amount, description, baseURI);
             
             // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
             // TODO: How do we identify recipient?  Get email from profile from OpenSim UUID?
@@ -753,9 +753,9 @@ namespace Gloebit.GloebitMoneyModule {
             
             // If asset, add callback params
             if (asset != null) {
-                transact_params["asset-enact-hold-url"] = asset.BuildEnactURI(baseURL);
-                transact_params["asset-consume-hold-url"] = asset.BuildConsumeURI(baseURL);
-                transact_params["asset-cancel-hold-url"] = asset.BuildCancelURI(baseURL);
+                transact_params["asset-enact-hold-url"] = asset.BuildEnactURI(baseURI);
+                transact_params["asset-consume-hold-url"] = asset.BuildConsumeURI(baseURI);
+                transact_params["asset-cancel-hold-url"] = asset.BuildCancelURI(baseURI);
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] asset-enact-hold-url:{0}", transact_params["asset-enact-hold-url"]);
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] asset-consume-hold-url:{0}", transact_params["asset-consume-hold-url"]);
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] asset-cancel-hold-url:{0}", transact_params["asset-cancel-hold-url"]);

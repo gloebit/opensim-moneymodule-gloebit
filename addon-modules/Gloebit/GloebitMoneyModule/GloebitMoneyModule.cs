@@ -677,6 +677,12 @@ namespace Gloebit.GloebitMoneyModule
                 m_gridnick = config.GetString("gridnick", m_gridnick);
                 m_gridname = config.GetString("gridname", m_gridname);
                 m_economyURL = new Uri(config.GetString("economy"));
+
+                // TODO(brad) - figure out how to install a global economy url handler
+                // in robust mode.  do we need to make a separate addon for Robust.exe?
+                if(m_economyURL == null) {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GridInfoService.economy setting MUST be configured!");
+                }
             }
         }
 
@@ -887,7 +893,6 @@ namespace Gloebit.GloebitMoneyModule
         private void OnNewClient(IClientAPI client)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] OnNewClient for {0}", client.AgentId);
-            CheckExistAndRefreshFunds(client.AgentId);
 
             // Subscribe to Money messages
             client.OnEconomyDataRequest += EconomyDataRequestHandler;
@@ -895,6 +900,13 @@ namespace Gloebit.GloebitMoneyModule
             client.OnRequestPayPrice += requestPayPrice;
             client.OnObjectBuy += ObjectBuy;
             client.OnLogout += ClientLoggedOut;
+
+            GloebitAPI.User user = GloebitAPI.User.Get(client.AgentId);
+            if(user != null && !String.IsNullOrEmpty(user.GloebitToken)) {
+                m_api.GetBalance(user);
+            } else {
+                m_api.Authorize(client, BaseURI);
+            }
         }
 
         /// <summary>
@@ -903,19 +915,15 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="Sender"></param>
         /// <param name="Receiver"></param>
         /// <param name="amount"></param>
-        /// <returns></returns>
-        private bool doMoneyTransfer(UUID Sender, UUID Receiver, int amount, int transactiontype, string description, OSDMap descMap)
+        private void doMoneyTransfer(UUID Sender, UUID Receiver, int amount, int transactiontype, string description, OSDMap descMap)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] doMoneyTransfer from {0} to {1}, for amount {2}, transactiontype: {3}, description: {4}",
                 Sender, Receiver, amount, transactiontype, description);
-            bool result = true;
 
-            ////m_api.Transact(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), amount, description);
-            m_api.TransactU2U(GloebitAPI.User.Get(Sender), resolveAgentName(Sender), GloebitAPI.User.Get(Receiver), resolveAgentName(Receiver), resolveAgentEmail(Receiver), amount, description, null, UUID.Zero, descMap, m_economyURL);
-
-            // TODO: Should we be returning true before Transact completes successfully now that this is async???
-            // TODO: use transactiontype
-            return result;
+            m_api.TransactU2U(
+                sender: GloebitAPI.User.Get(Sender), senderName: resolveAgentName(Sender),
+                recipient: GloebitAPI.User.Get(Receiver), recipientName: resolveAgentName(Receiver), recipientEmail: resolveAgentEmail(Receiver),
+                amount: amount, description: description, asset: null, transactionId: UUID.Zero, descMap: descMap, baseURI: BaseURI);
         }
         
         // TODO: May want to merge these separate doMoneyTransfer functions into one.
@@ -959,7 +967,7 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
             // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
             //       but could make it easier for app to force synchronicity if desired.
-            bool result = m_api.TransactU2U(GloebitAPI.User.Get(fromID), resolveAgentName(fromID), GloebitAPI.User.Get(toID), resolveAgentName(toID), resolveAgentEmail(toID), amount, description, asset, transactionID, descMap, m_economyURL);
+            bool result = m_api.TransactU2U(GloebitAPI.User.Get(fromID), resolveAgentName(fromID), GloebitAPI.User.Get(toID), resolveAgentName(toID), resolveAgentEmail(toID), amount, description, asset, transactionID, descMap, BaseURI);
             
             if (!result) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] doMoneyTransferWithAsset failed to create HttpWebRequest in GloebitAPI.TransactU2U");
@@ -1262,13 +1270,8 @@ namespace Gloebit.GloebitMoneyModule
             string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
 
-            // GloebitAPI.User user = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
+            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code, BaseURI);
 
-            // string token = m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code);
-            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code, m_economyURL);
-
-            // TODO: stop logging token
-            //m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func got token: {0}", token);
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func started ExchangeAccessToken");
 
             // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
@@ -1584,18 +1587,6 @@ namespace Gloebit.GloebitMoneyModule
         #endregion
 
         #region local Fund Management
-
-        /// <summary>
-        /// Ensures that the agent accounting data is set up in this instance.
-        /// </summary>
-        /// <param name="agentID"></param>
-        private void CheckExistAndRefreshFunds(UUID agentID)
-        {
-            GloebitAPI.User user = GloebitAPI.User.Get(agentID);
-            if(user != null) {
-                m_api.GetBalance(user);
-            }
-        }
 
         /// <summary>
         /// Retrieves the gloebit balance of the gloebit account linked to the OpenSim agent defined by the agentID.
@@ -2141,6 +2132,10 @@ namespace Gloebit.GloebitMoneyModule
                     break;
             }
             return;
+        }
+
+        private Uri BaseURI {
+            get { return new Uri(GetAnyScene().RegionInfo.ServerURI); }
         }
         
     }
