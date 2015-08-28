@@ -575,6 +575,7 @@ namespace Gloebit.GloebitMoneyModule
         private string m_key;
         private string m_secret;
         private string m_apiUrl;
+        private Uri m_overrideBaseURI;
         private string m_gridnick = "unknown_grid";
         private string m_gridname = "unknown_grid_name";
         private Uri m_economyURL;
@@ -678,6 +679,10 @@ namespace Gloebit.GloebitMoneyModule
                     case "custom":
                         m_environment = GLBEnv.Custom;
                         m_apiUrl = config.GetString("GLBApiUrl", SANDBOX_URL);
+                        string overrideBaseURIStr = config.GetString("GLBCallbackBaseURI", null);
+                        if(overrideBaseURIStr != null) {
+                            m_overrideBaseURI = new Uri(overrideBaseURIStr);
+                        }
                         m_log.Warn("[GLOEBITMONEYMODULE] GLBEnvironment \"custom\" unsupported, things will probably fail later");
                         break;
                     default:
@@ -2404,7 +2409,13 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         private Uri BaseURI {
-            get { return new Uri(GetAnyScene().RegionInfo.ServerURI); }
+            get {
+                if(m_overrideBaseURI != null) {
+                    return m_overrideBaseURI;
+                } else {
+                    return new Uri(GetAnyScene().RegionInfo.ServerURI);
+                }
+             }
         }
         
     }
