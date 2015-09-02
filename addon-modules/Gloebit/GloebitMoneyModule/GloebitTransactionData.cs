@@ -37,9 +37,9 @@ using OpenSim.Data.SQLite;
 
 namespace Gloebit.GloebitMoneyModule
 {
-    class GloebitAssetData {
+    class GloebitTransactionData {
 
-        private static IGloebitAssetData m_impl;
+        private static IGloebitTransactionData m_impl;
 
         public static void Initialise(IConfig config) {
             switch(config.GetString("StorageProvider")) {
@@ -57,34 +57,34 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
 
-        public static IGloebitAssetData Instance {
+        public static IGloebitTransactionData Instance {
             get { return m_impl; }
         }
 
-        public interface IGloebitAssetData {
-            GloebitAPI.Asset[] Get(string field, string key);
+        public interface IGloebitTransactionData {
+            GloebitAPI.Transaction[] Get(string field, string key);
 
-            GloebitAPI.Asset[] Get(string[] fields, string[] keys);
+            GloebitAPI.Transaction[] Get(string[] fields, string[] keys);
 
-            bool Store(GloebitAPI.Asset asset);
+            bool Store(GloebitAPI.Transaction txn);
         }
 
-        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.Asset>, IGloebitAssetData {
+        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
             public SQLiteImpl(IConfig config)
-                : base(config.GetString("ConnectionString"), "GloebitAssets", "GloebitAssetsSQLite")
+                : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsSQLite")
             {
                 /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
                 /// Start with SQLiteGenericTableHandler impl and see MySql override below
             }
         }
 
-        private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.Asset>, IGloebitAssetData {
+        private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
             public MySQLImpl(IConfig config)
-                : base(config.GetString("ConnectionString"), "GloebitAssets", "GloebitAssetsMySQL")
+                : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsMySQL")
             {
             }
             
-            public override bool Store(GloebitAPI.Asset asset)
+            public override bool Store(GloebitAPI.Transaction txn)
             {
                 //            m_log.DebugFormat("[MYSQL GENERIC TABLE HANDLER]: Store(T row) invoked");
                 
@@ -108,7 +108,7 @@ namespace Gloebit.GloebitMoneyModule
                                                                            "[MYSQL GENERIC TABLE HANDLER]: Trying to store field {0} for {1} which is unexpectedly null",
                                                                            fi.Name, asset));*/
                         
-                        cmd.Parameters.AddWithValue(fi.Name, fi.GetValue(asset));
+                        cmd.Parameters.AddWithValue(fi.Name, fi.GetValue(txn));
                     }
                     
                     /*if (m_DataField != null)
@@ -136,9 +136,9 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
 
-        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.Asset>, IGloebitAssetData {
+        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
             public PGSQLImpl(IConfig config)
-                : base(config.GetString("ConnectionString"), "GloebitAssets", "GloebitAssetsPGSQL")
+                : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsPGSQL")
             {
                 /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
                 /// Start with PGSQLGenericTableHandler impl and see MySql override above
