@@ -1203,10 +1203,7 @@ namespace Gloebit.GloebitMoneyModule {
             sub_params["local-id"] = subscription.ObjectID;
             sub_params["name"] = subscription.ObjectName;
             sub_params["description"] = subscription.Description;
-            //sub_params["additional_details"] = subscription.AdditionalDetails;
-            sub_params["additional-details"] = "no additional details";
-            // TODO: need to test if additional-details, name or description are blank and fill them in with a default if so.  Otherwise, they
-            // need to be optional on the Gloebit side.
+            // TODO: should we add additional-details to sub_params?
             
             HttpWebRequest request = BuildGloebitRequest("create-subscription", "POST", null, "application/json", sub_params);
             if (request == null) {
@@ -1302,10 +1299,8 @@ namespace Gloebit.GloebitMoneyModule {
             //sub_auth_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
             sub_auth_params["username-on-application"] = senderName;
             sub_auth_params["user-id-on-application"] = sender.PrincipalID;
-            sub_auth_params["additional-details"] = "no additional details";
+            // TODO: should we add additional-details to sub_auth_params?
             sub_auth_params["subscription-id"] = sub.SubscriptionID;
-            // TODO: need to test if additional-details is blank and fill it in with a default if so.  Otherwise, it
-            // needs to be optional on the Gloebit side.
             
             HttpWebRequest request = BuildGloebitRequest("create-subscription-authorization", "POST", sender, "application/json", sub_auth_params);
             if (request == null) {
