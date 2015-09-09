@@ -1,0 +1,24 @@
+:VERSION 1
+
+BEGIN TRANSACTION;
+
+-- gloebitsubscriptions table
+CREATE TABLE IF NOT EXISTS GloebitSubscriptions (
+    SubscriptionID  CHAR(36),
+    ObjectID        CHAR(36)        NOT NULL,
+    AppKey          VARCHAR(64)     NOT NULL,
+    GlbApiUrl       VARCHAR(100)    NOT NULL,
+    enabled         TINYINT(1)      NOT NULL,
+    ObjectName      VARCHAR(64),
+    Description     VARCHAR(255)    NOT NULL,
+    cTime           TIMESTAMP       NOT NULL,
+    CONSTRAINT  pk_obj_app_api  PRIMARY KEY     (ObjectID, AppKey, GlbApiUrl),
+    CONSTRAINT  k_sub_api       UNIQUE          (SubscriptionID, `GlbApiUrl)
+);
+
+CREATE INDEX IF NOT EXISTS ix_oid ON GloebitSubscriptions(ObjectID);
+CREATE INDEX IF NOT EXISTS ix_sid ON GloebitSubscriptions(SubscriptionID);
+CREATE INDEX IF NOT EXISTS ix_cts ON GloebitSubscriptions(cTime);
+
+COMMIT;
+
