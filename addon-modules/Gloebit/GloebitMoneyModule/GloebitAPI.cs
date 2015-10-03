@@ -1606,7 +1606,7 @@ namespace Gloebit.GloebitMoneyModule {
             UUID toID = client.AgentId;
             bool isFromGroup = false;
             UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
-            bool isOffline = true;          // Don't know what this is for.  Should probably try both.
+            bool isOffline = true;       // I believe when true, if user is logged out, saves message and delivers it next time the user logs in.
             bool addTimestamp = false;
             GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, Encoding.UTF8.GetBytes(uri.ToString() + "\0"), addTimestamp);
             client.SendInstantMessage(im);
