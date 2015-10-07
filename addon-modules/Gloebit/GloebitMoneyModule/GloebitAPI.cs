@@ -1636,5 +1636,21 @@ namespace Gloebit.GloebitMoneyModule {
                 // Perhaps, when user is not logged in, add to queue and send when user next logs in.
             }
         }
+        
+        public enum TransactionStage : int
+        {
+            BEGIN           = 0,    // Not really a stage.  may not need this
+            BUILD           = 100,   // Preparing the transaction locally for submission
+            SUBMIT          = 200,   // Submitting the transaciton to Gloebit via the API Endpoints.
+            VALIDATE        = 300,   // Validating the txn form submitted to Gloebit -- may need to add in somesubscription specific validations
+            QUEUE           = 400,   // Queing the transaction for processing
+            ENACT_GLOEBIT   = 500,   // perfoming Gloebit components of transaction
+            ENACT_ASSET     = 550,   // performing local components of transaction
+            CONSUME_GLOEBIT = 600,   // committing Gloebit components of transaction
+            CONSUME_ASSET   = 650,   // committing local components of transaction
+            CANCEL_GLOEBIT  = 700,   // canceling gloebit components of transaction
+            CANCEL_ASSET    = 750,   // canceling local components of transaction
+            COMPLETE        = 1000,  // Not really a stage.  May not need this.  Once local asset is consumed, we are complete.
+        }
     }
 }
