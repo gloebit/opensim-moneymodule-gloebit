@@ -2438,7 +2438,7 @@ namespace Gloebit.GloebitMoneyModule
             
             if (!m_sellEnabled)
             {
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.BUYING_DISABLED, remoteClient, null, String.Empty);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.BUYING_DISABLED, remoteClient, null);
                 return;
             }
 
@@ -2456,14 +2456,14 @@ namespace Gloebit.GloebitMoneyModule
             SceneObjectPart part = s.GetSceneObjectPart(localID);
             if (part == null)
             {
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.OBJECT_NOT_FOUND, remoteClient, null, String.Empty);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.OBJECT_NOT_FOUND, remoteClient, null);
                 return;
             }
             
             // Validate that the client sent the price that the object is being sold for 
             if (part.SalePrice != salePrice)
             {
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.AMOUNT_MISMATCH, remoteClient, null, String.Empty);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.AMOUNT_MISMATCH, remoteClient, null);
                 return;
             }
 
@@ -2471,11 +2471,11 @@ namespace Gloebit.GloebitMoneyModule
             if (saleType < 1 || saleType > 3) {
                 // Should not get here unless an object purchase is submitted with a bad or new (but unimplemented) saleType.
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] ObjectBuy Unrecognized saleType:{0} --- expected 1,2 or 3 for original, copy, or contents", saleType);
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.SALE_TYPE_INVALID, remoteClient, null, String.Empty);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.SALE_TYPE_INVALID, remoteClient, null);
                 return;
             }
             if (part.ObjectSaleType != saleType) {
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.SALE_TYPE_MISMATCH, remoteClient, null, String.Empty);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.SALE_TYPE_MISMATCH, remoteClient, null);
                 return;
             }
 
@@ -2483,7 +2483,7 @@ namespace Gloebit.GloebitMoneyModule
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
             if (module == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] ObjectBuy FAILED to access to IBuySellModule");
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.BUY_SELL_MODULE_INACCESSIBLE, remoteClient, null, String.Empty);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.BUY_SELL_MODULE_INACCESSIBLE, remoteClient, null);
                 return;
             }
 
@@ -2740,8 +2740,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="failure">TransactionPrecheckFailure that occurred.</param>
         /// <param name="payerClient">IClientAPI of payer or null.</param>
         /// <param name="payeeClient">IClientAPI of payee or null.</param>
-        /// <param name="message">String containing additional details to be appended to the alert message.  Generally String.Empty.</param>
-        private void alertUsersTransactionPreparationFailure(TransactionType typeID, TransactionPrecheckFailure failure, IClientAPI payerClient, IClientAPI payeeClient, string message)
+        private void alertUsersTransactionPreparationFailure(TransactionType typeID, TransactionPrecheckFailure failure, IClientAPI payerClient, IClientAPI payeeClient)
         {
             string txnTypeFailure = String.Empty;
             string precheckFailure = String.Empty;
@@ -2776,27 +2775,31 @@ namespace Gloebit.GloebitMoneyModule
                             instruction = "Please retry your purchase.  If this error continues to occur, please report it to the region or grid owner.";
                             break;
                         default:
-                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented failure TransactionPrecheckFailure [{0}] TransactionType [{1}]with message [{2}].", failure, typeID, message);
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented failure TransactionPrecheckFailure [{0}] TransactionType.", failure, typeID);
                             break;
                     }
                     break;
                 case TransactionType.OBJECT_PAYS_USER:
                     // Alert payer and payee
                     // never happens currently
+                    // txnTypeFailure = "Attempt by scripted object to pay user failed prechecks.";
                 case TransactionType.USER_PAYS_USER:
                     // Alert payer only
                     // never happens currently
+                    // txnTypeFailure = "Attempt to pay user failed prechecks.";
                 case TransactionType.USER_PAYS_OBJECT:
                     // Alert payer only
                     // never happens currently
+                    // txnTypeFailure = "Attempt to pay object failed prechecks.";
                 default:
                     // Alert payer and payee
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented failure TransactionType [{0}] Failure [{1}]with message [{2}].", typeID, failure, message);
+                    txnTypeFailure = "Transaction attempt failed prechecks.";
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented failure TransactionType [{0}] Failure [{1}].", typeID, failure);
                     break;
             }
-            string failureDetails = String.Format("Details:\n   {0}\n   {1}", txnTypeFailure, precheckFailure);
-            if (!String.IsNullOrEmpty(message)) {
-                failureDetails = String.Format("{0}\n   {1}", failureDetails, message);
+            string failureDetails = String.Format("Details:\n   {0}", txnTypeFailure);
+            if (!String.IsNullOrEmpty(precheckFailure)) {
+                failureDetails = String.Format("{0}\n   {1}", failureDetails, precheckFailure);
             }
             string failureMsg = String.Format("Transaction precheck FAILURE.\n{0}\n\n{1}\n", failureDetails, instruction);
             sendMessageToClient(payerClient, failureMsg);
