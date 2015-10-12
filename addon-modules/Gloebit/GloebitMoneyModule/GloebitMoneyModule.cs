@@ -736,6 +736,9 @@ namespace Gloebit.GloebitMoneyModule
         private string m_gridnick = "unknown_grid";
         private string m_gridname = "unknown_grid_name";
         private Uri m_economyURL;
+        
+        private static string m_contactGloebit = "Gloebit at OpenSimTransactionIssue@gloebit.com";
+        private string m_contactOwner = "region or grid owner";
 
         private IConfigSource m_gConfig;
 
@@ -851,6 +854,14 @@ namespace Gloebit.GloebitMoneyModule
                 m_keyAlias = config.GetString("GLBKeyAlias", null);
                 m_key = config.GetString("GLBKey", null);
                 m_secret = config.GetString("GLBSecret", null);
+                
+                // Get region/grid owner contact details for transaction failure contact instructions.
+                string ownerName = config.GetString("GLBOwnerName", "region or grid owner");
+                string ownerEmail = config.GetString("GLBOwnerEmail", null);
+                m_contactOwner = ownerName;
+                if (!String.IsNullOrEmpty(ownerEmail)) {
+                    m_contactOwner = String.Format("{0} at {1}", ownerName, ownerEmail);
+                }
             }
 
             if (section == "Economy") {
@@ -2742,9 +2753,18 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="payeeClient">IClientAPI of payee or null.</param>
         private void alertUsersTransactionPreparationFailure(TransactionType typeID, TransactionPrecheckFailure failure, IClientAPI payerClient, IClientAPI payeeClient)
         {
+            // TODO: move these to a string resource at some point.
+            // Set up instruction strings which are used mutliple times
+            string tryAgainRelog = "Please retry your purchase.  If you continue to get this error, relog.";
+            string tryAgainContactOwner = String.Format("Please try again.  If problem persists, contact {0}.", m_contactOwner);
+            string tryAgainContactGloebit = String.Format("Please try again.  If problem persists, contact {0}.", m_contactGloebit);
+            
+            // Set up temp strings to hold failure messages based on transaction type and failure
             string txnTypeFailure = String.Empty;
             string precheckFailure = String.Empty;
             string instruction = String.Empty;
+            
+            // Retrieve failure strings into temp variables based on transaction type and failure
             switch (typeID) {
                 case TransactionType.USER_BUYS_OBJECT:
                     // Alert payer only; payee will be null
@@ -2752,27 +2772,27 @@ namespace Gloebit.GloebitMoneyModule
                     switch (failure) {
                         case TransactionPrecheckFailure.BUYING_DISABLED:
                             precheckFailure = "Buying is not enabled in economy settings.";
-                            instruction = "If you believe this should be enabled on this region, please contact Region/Grid Owner.";
+                            instruction = String.Format("If you believe this should be enabled on this region, please contact {0}.", m_contactOwner);
                             break;
                         case TransactionPrecheckFailure.OBJECT_NOT_FOUND:
                             precheckFailure = "Unable to buy now. The object was not found.";
-                            instruction = "Please retry your purchase.  If you continue to get this error, relog.";
+                            instruction = tryAgainRelog;
                             break;
                         case TransactionPrecheckFailure.AMOUNT_MISMATCH:
                             precheckFailure = "Cannot buy at this price.  Price may have changed.";
-                            instruction = "Please retry your purchase.  If you continue to get this error, relog.";
+                            instruction = tryAgainRelog;
                             break;
                         case TransactionPrecheckFailure.SALE_TYPE_INVALID:
                             precheckFailure = "Invalid saleType.";
-                            instruction = "Please retry your purchase.  If this error continues to occur, please report it to the region or grid owner.";
+                            instruction = tryAgainContactOwner;
                             break;
                         case TransactionPrecheckFailure.SALE_TYPE_MISMATCH:
                             precheckFailure = "Sale type mismatch.  Cannot buy this way.  Sale type may have changed.";
-                            instruction = "Please retry your purchase.  If you continue to get this error, relog.";
+                            instruction = tryAgainRelog;
                             break;
                         case TransactionPrecheckFailure.BUY_SELL_MODULE_INACCESSIBLE:
                             precheckFailure = "Unable to access IBuySellModule necessary for transferring inventory.";
-                            instruction = "Please retry your purchase.  If this error continues to occur, please report it to the region or grid owner.";
+                            instruction = tryAgainContactOwner;
                             break;
                         default:
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented failure TransactionPrecheckFailure [{0}] TransactionType.", failure, typeID);
@@ -2797,11 +2817,15 @@ namespace Gloebit.GloebitMoneyModule
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented failure TransactionType [{0}] Failure [{1}].", typeID, failure);
                     break;
             }
+            
+            // build failure message from temp strings
             string failureDetails = String.Format("Details:\n   {0}", txnTypeFailure);
             if (!String.IsNullOrEmpty(precheckFailure)) {
                 failureDetails = String.Format("{0}\n   {1}", failureDetails, precheckFailure);
             }
             string failureMsg = String.Format("Transaction precheck FAILURE.\n{0}\n\n{1}\n", failureDetails, instruction);
+            
+            // send failure message to client
             sendMessageToClient(payerClient, failureMsg);
 
         }
@@ -2997,15 +3021,18 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="additionalFailureDetails">String containing additional details to be appended to the alert message.</param>
         private void alertUsersTransactionFailed(GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure, string additionalFailureDetails)
         {
-            string error = String.Empty;
-            string instruction = String.Empty;
-            
+            // TODO: move these to a string resource at some point.
             // Set up instruction strings which are used mutliple times
-            string tryAgainContactOwner = "Please try again.  If problem persists, please contact Region or Grid Owner.";
-            string tryAgainContactGloebit = "Please try again.  If problem persists, contact Gloebit.";
+            string tryAgainContactOwner = String.Format("Please try again.  If problem persists, contact {0}.", m_contactOwner);
+            string tryAgainContactGloebit = String.Format("Please try again.  If problem persists, contact {0}.", m_contactGloebit);
             string subAuthDialogComing = "You will be presented with an additional message instructing you how to approve or deny authorization for future automated transactions for this subscription.";
             string contactPayee = "Please alert seller/payee to this issue if possible and have seller/payee contact Gloebit.";
             
+            // Set up temp strings to hold failure messages based on transaction type and failure
+            string error = String.Empty;
+            string instruction = String.Empty;
+            
+            // Retrieve failure strings into temp variables based on transaction type and failure
             switch (stage) {
                 case GloebitAPI.TransactionStage.SUBMIT:
                     error = "Region failed to propery create and send request to Gloebit.";
@@ -3132,7 +3159,7 @@ namespace Gloebit.GloebitMoneyModule
                             error = "Enacting of local transaction components failed.";
                             break;
                         default:
-                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionStageCompleted called on unknown transaction type: {0}", txn.TransactionType);
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionFailed called on unknown transaction type: {0}", txn.TransactionType);
                             // TODO: should we throw an exception?  return null?  just continue?
                             error = "Enacting of local transaction components failed.";
                             break;
@@ -3144,6 +3171,8 @@ namespace Gloebit.GloebitMoneyModule
                     error = "Unhandled transaction failure.";
                     break;
             }
+            
+            // build failure message from temp strings
             string status = error;
             if (!String.IsNullOrEmpty(additionalFailureDetails)) {
                 status = String.Format("{0}\n{1}", status, additionalFailureDetails);
@@ -3151,6 +3180,8 @@ namespace Gloebit.GloebitMoneyModule
             if (!String.IsNullOrEmpty(instruction)) {
                 status = String.Format("{0}\n{1}", status, instruction);
             }
+            
+            // send failure message to client
             // TODO: figure out when we should message payee/payer instead
             IClientAPI payerClient = LocateClientObject(txn.PayerID);
             sendTxnStatusToClient(txn, payerClient, status);
