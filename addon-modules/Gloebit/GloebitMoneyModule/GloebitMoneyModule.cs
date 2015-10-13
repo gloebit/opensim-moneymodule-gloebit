@@ -2858,7 +2858,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="description">String containing txn description since this is not in the Transaction class yet.</param>
         private void alertUsersTransactionBegun(GloebitAPI.Transaction txn, IClientAPI payerClient, string description)
         {
-            // TODO: make configurable
+            // TODO: make user configurable
             bool showDetailsWithTxnBegun = true;
             bool showIDWithTxnBegun = false;
             
@@ -2949,7 +2949,22 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="additionalDetails">String containing additional details to be appended to the alert message.</param>
         private void alertUsersTransactionStageCompleted(GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, string additionalDetails)
         {
-            // TODO: make configurable
+            // TODO: make user configurable
+            bool reportAllTxnStagesOverride = false;
+            bool reportNoTxnStagesOverride = false;
+            Dictionary<GloebitAPI.TransactionStage, bool> reportTxnStageMap = new Dictionary<GloebitAPI.TransactionStage, bool>();
+            reportTxnStageMap[GloebitAPI.TransactionStage.ENACT_ASSET] = true;
+            
+            // Determine if we are going to report this stage
+            bool reportThisStage = false;
+            if (reportTxnStageMap.ContainsKey(stage)) {
+                reportThisStage = reportTxnStageMap[stage];
+            }
+            if (!(reportAllTxnStagesOverride || (reportThisStage && !reportNoTxnStagesOverride))) {
+                return;
+            }
+            
+            // TODO: make user configurable
             bool showDetailsWithTxnStage = false;
             bool showIDWithTxnStage = false;
             
@@ -2985,14 +3000,14 @@ namespace Gloebit.GloebitMoneyModule
                                     break;
                                 default:
                                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionStageCompleted called on unknown sale type: {0}", txn.SaleType);
-                                    status = "Successfully enacted local components of transaction.";
+                                    ////status = "Successfully enacted local components of transaction.";
                                     break;
                             }
                             break;
                         case TransactionType.USER_PAYS_USER:
                             // 5001 - OnMoneyTransfer - Pay User
                             // nothing local enacted
-                            status = "Successfully enacted local components of transaction.";
+                            ////status = "Successfully enacted local components of transaction.";
                             break;
                         case TransactionType.USER_PAYS_OBJECT:
                             // 5008 - OnMoneyTransfer - Pay Object
@@ -3002,13 +3017,13 @@ namespace Gloebit.GloebitMoneyModule
                         case TransactionType.OBJECT_PAYS_USER:
                             // 5009 - ObjectGiveMoney
                             // nothing local enacted
-                            status = "Successfully enacted local components of transaction.";
+                            ////status = "Successfully enacted local components of transaction.";
                             break;
                         default:
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionStageCompleted called on unknown transaction type: {0}", txn.TransactionType);
                             // TODO: should we throw an exception?  return null?  just continue?
                             // take no action.
-                            status = "Successfully enacted local components of transaction.";
+                            ////status = "Successfully enacted local components of transaction.";
                             break;
                     }
                     break;
@@ -3030,6 +3045,12 @@ namespace Gloebit.GloebitMoneyModule
                     status = "Successfully completed undefined transaction stage";
                     break;
             }
+            
+            // If this is a stage we have not stored a status for, then don't send a message
+            if (String.IsNullOrEmpty(status)) {
+                return;
+            }
+            
             if (!String.IsNullOrEmpty(additionalDetails)) {
                 status = String.Format("{0}\n{1}", status, additionalDetails);
             }
@@ -3049,7 +3070,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="additionalFailureDetails">String containing additional details to be appended to the alert message.</param>
         private void alertUsersTransactionFailed(GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure, string additionalFailureDetails)
         {
-            // TODO: make configurable
+            // TODO: make user configurable
             bool showDetailsWithTxnFailed = false;
             bool showIDWithTxnFailed = true;
             // TODO: how does this work with instructions?
@@ -3255,7 +3276,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="txn">Transaction that succeeded.</param>
         private void alertUsersTransactionSucceeded(GloebitAPI.Transaction txn)
         {
-            // TODO: make configurable
+            // TODO: make user configurable
             bool showDetailsWithTxnSucceeded = false;
             bool showIDWithTxnSucceeded = false;
             
