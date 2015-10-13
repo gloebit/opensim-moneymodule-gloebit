@@ -2684,24 +2684,19 @@ namespace Gloebit.GloebitMoneyModule
             sendMessageToClient(client, msg);
         }
         
-        
         private void alertUsersSubscriptionTransactionFailedForSubscriptionCreation(UUID payerID, UUID payeeID, int amount, GloebitAPI.Subscription sub)
         {
             IClientAPI payerClient = LocateClientObject(payerID);
             IClientAPI payeeClient = LocateClientObject(payeeID);
             
-            // Need to alert payer whether online or not as action is required.
-            if (payerClient != null) {
-                payerClient.SendAlertMessage(String.Format("Gloebit: Scripted object attempted payment from you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  Once created, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\nFailed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment To: {2}\n   Amount: {3}", sub.ObjectName, sub.Description, resolveAgentName(payeeID), amount));
-            } else {
-                // TODO: send an email
-            }
+            string failedTxnDetails = String.Format("Failed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment From: {2}\n   Payment To: {3}\n   Amount: {4}", sub.ObjectName, sub.Description, resolveAgentName(payerID), resolveAgentName(payeeID), amount);
+            
+            // TODO: Need to alert payer whether online or not as action is required.
+            sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  Once created, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails));
             
             // TODO: is this message bad if fraudster?
             // Should alert payee if online as might be expecting feedback
-            if (payeeClient != null) {
-                payeeClient.SendAlertMessage(String.Format("Gloebit: Scripted object attempted payment to you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  If you triggered this transaction with an action, you can retry in a minute.\n\nFailed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Owner: {2}\n   Amount: {3}", sub.ObjectName, sub.Description, resolveAgentName(payerID), amount));
-            }
+            sendMessageToClient(payeeClient, String.Format("Gloebit: Scripted object attempted payment to you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  If you triggered this transaction with an action, you can retry in a minute.\n\n{0}", failedTxnDetails));
         }
         
         private void alertUsersSubscriptionTransactionFailedForGloebitAuthorization(UUID payerID, UUID payeeID, int amount, GloebitAPI.Subscription sub)
@@ -2709,19 +2704,17 @@ namespace Gloebit.GloebitMoneyModule
             IClientAPI payerClient = LocateClientObject(payerID);
             IClientAPI payeeClient = LocateClientObject(payeeID);
             
-            // Need to alert payer whether online or not as action is required.
+            string failedTxnDetails = String.Format("Failed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment From: {2}\n   Payment To: {3}\n   Amount: {4}", sub.ObjectName, sub.Description, resolveAgentName(payerID), resolveAgentName(payeeID), amount);
+            
+            // TODO: Need to alert payer whether online or not as action is required.
+            sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because you have not authorized this application from Gloebit.  Once you authorize this application, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails));
             if (payerClient != null) {
-                payerClient.SendAlertMessage(String.Format("Gloebit: Scripted object attempted payment from you, but failed because you have not authorized this application from Gloebit.  Once you authorize this application, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\nFailed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment To: {2}\n   Amount: {3}", sub.ObjectName, sub.Description, resolveAgentName(payeeID), amount));
                 m_api.Authorize(payerClient, BaseURI);
-            } else {
-                // TODO: send an email
             }
             
             // TODO: is this message bad if fraudster?
             // Should alert payee if online as might be expecting feedback
-            if (payeeClient != null) {
-                payeeClient.SendAlertMessage(String.Format("Gloebit: Scripted object attempted payment to you, but failed because the object owner has not yet authorized this subscription to make recurring, automated payments.  Requesting authorization now.\n\nFailed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Owner: {2}\n   Amount: {3}", sub.ObjectName, sub.Description, resolveAgentName(payerID), amount));
-            }
+            sendMessageToClient(payeeClient, String.Format("Gloebit: Scripted object attempted payment to you, but failed because the object owner has not yet authorized this subscription to make recurring, automated payments.  Requesting authorization now.\n\n{0}", failedTxnDetails));
         }
         
         /// <summary>
