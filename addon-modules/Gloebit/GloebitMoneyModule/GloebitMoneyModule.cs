@@ -2674,14 +2674,52 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
         
-        private void sendTxnStatusToClient(GloebitAPI.Transaction txn, IClientAPI client, string message)
+        /// <summary>
+        /// Builds a status string and sends it to the client
+        /// Always includes an intro with shortened txn id and a base message.
+        /// May include addtional transaction details and txn id based upon bool arguments and bool overrides.
+        /// </summary>
+        /// <param name="txn">GloebitAPI.Transaction this status is in regards to.</param>
+        /// <param name="client">Client we are messaging.  If null, our sendMessage func will handle properly.</param>
+        /// <param name="baseStatus">String Status message to deliver.</param>
+        /// <param name="showTxnDetails">If true, include txn details in status (can be overriden by global overrides).</param>
+        /// <param name="showTxnID">If true, include full transaction id in status (can be overriden by global overrides).</param>
+        private void sendTxnStatusToClient(GloebitAPI.Transaction txn, IClientAPI client, string baseStatus, bool showTxnDetails, bool showTxnID)
         {
+            // Determine if we're including Details and ID based on args and overrides
+            bool alwaysShowTxnDetailsOverride = false;
+            bool alwaysShowTxnIDOverride = false;
+            bool neverShowTxnDetailsOverride = false;
+            bool neverShowTxnIDOverride = false;
+            bool includeDetails = (alwaysShowTxnDetailsOverride || (showTxnDetails && !neverShowTxnDetailsOverride));
+            bool includeID = (alwaysShowTxnIDOverride || (showTxnID && !neverShowTxnIDOverride));
+            
+            // Get shortened txn id
             //int shortenedID = (int)(txn.TransactionID.GetULong() % 10000);
             string sid = txn.TransactionID.ToString().Substring(0,4).ToUpper();
             
-            string msg = String.Format("Gloebit Transaction [{0}]:\n{1}\n", sid, message);
+            // Build status string
+            string status = String.Format("Gloebit Transaction [{0}]:\n{1}"/*\n"*/, sid, baseStatus);
+            if (includeDetails) {
+                // build txn details string
+                string paymentFrom = String.Format("Payment from: {0}", txn.PayerName);
+                string paymentTo = String.Format("Payment to: {0}", txn.PayeeName);
+                string amountStr = String.Format("Amount: {0:n0} gloebits", txn.Amount);
+                // TODO: add description back in once txn includes it.
+                // string descStr = String.Format("Description: {0}", description);
+                string txnDetails = String.Format("Details:\n   {0}\n   {1}\n   {2}", paymentFrom, paymentTo, amountStr/*, descStr*/);
+                
+                status = String.Format("{0}\n{1}", status, txnDetails);
+            }
+            if (includeID) {
+                // build txn id string
+                string idStr = String.Format("Transaction ID: {0}", txn.TransactionID);
+                
+                status = String.Format("{0}\n{1}", status, idStr);
+            }
             
-            sendMessageToClient(client, msg);
+            // Send status string to client
+            sendMessageToClient(client, status);
         }
         
         private void alertUsersSubscriptionTransactionFailedForSubscriptionCreation(UUID payerID, UUID payeeID, int amount, GloebitAPI.Subscription sub)
@@ -2820,6 +2858,10 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="description">String containing txn description since this is not in the Transaction class yet.</param>
         private void alertUsersTransactionBegun(GloebitAPI.Transaction txn, IClientAPI payerClient, string description)
         {
+            // TODO: make configurable
+            bool showDetailsWithTxnBegun = true;
+            bool showIDWithTxnBegun = false;
+            
             // TODO: consider using Txn.TransactionTypeString
             String actionStr = String.Empty;
             String payeeActionStr = String.Empty;
@@ -2829,13 +2871,13 @@ namespace Gloebit.GloebitMoneyModule
                     // Alert payer only; payee will be null
                     switch (txn.SaleType) {
                         case 1: // Sell as original (in-place sale)
-                            actionStr = String.Format("Purchase Original: {0}\nFrom: {1}", txn.PartName, txn.PayeeName);
+                            actionStr = String.Format("Purchase Original: {0}", txn.PartName);
                             break;
                         case 2: // Sell a copy
-                            actionStr = String.Format("Purchase Copy: {0}\nFrom: {1}", txn.PartName, txn.PayeeName);
+                            actionStr = String.Format("Purchase Copy: {0}", txn.PartName);
                             break;
                         case 3: // Sell contents
-                            actionStr = String.Format("Purchase Contents: {0}\nFrom: {1}", txn.PartName, txn.PayeeName);
+                            actionStr = String.Format("Purchase Contents: {0}", txn.PartName);
                             break;
                         default:
                             // Should not get here as this should fail before transaction is built.
@@ -2859,7 +2901,7 @@ namespace Gloebit.GloebitMoneyModule
                     break;
                 case TransactionType.USER_PAYS_OBJECT:
                     // Alert payer only
-                    actionStr = String.Format("Paying Object: {0}\nOwned By: {1}", txn.PartName, txn.PayeeName);
+                    actionStr = String.Format("Paying Object: {0}", txn.PartName);
                     break;
                 default:
                     // Alert payer and payee
@@ -2868,21 +2910,19 @@ namespace Gloebit.GloebitMoneyModule
                     break;
             }
             
-            // TODO: make these configurable to be turned on or off.
-            string paymentFrom = String.Format("Payment from: {0}", txn.PayerName);
-            string paymentTo = String.Format("Payment to: {0}", txn.PayeeName);
-            string amountStr = String.Format("Amount: {0:n} gloebits", txn.Amount);
-            string descStr = String.Format("Description: {0}", description);
-            string idStr = String.Format("Transaction ID: {0}", txn.TransactionID);
-            string txnDetails = String.Format("Details:\n   {0}\n   {1}\n   {2}", amountStr, descStr, idStr);
-            
             // Alert payer
-            sendTxnStatusToClient(txn, payerClient, String.Format("Submitting transaction request...\n   {0}\n{1}", actionStr, txnDetails));
+            // TODO: remove description once in txn and managed in sendTxnStatusToClient
+            //string baseStatus = String.Format("Submitting transaction request...\n   {0}", actionStr);
+            string baseStatus = String.Format("Submitting transaction request...\n   {0}\nDescription: {1}", actionStr, description);
+            sendTxnStatusToClient(txn, payerClient, baseStatus, showDetailsWithTxnBegun, showIDWithTxnBegun);
             
             // If necessary, alert Payee
             if (messagePayee) {
                 IClientAPI payeeClient = LocateClientObject(txn.PayeeID);
-                sendTxnStatusToClient(txn, payeeClient, String.Format("Submitting transaction request...\n   {0}\n{1}", payeeActionStr, txnDetails));
+                // TODO: remove description once in txn and managed in sendTxnStatusToClient
+                // string payeeBaseStatus = String.Format("Submitting transaction request...\n   {0}", payeeActionStr);
+                string payeeBaseStatus = String.Format("Submitting transaction request...\n   {0}\nDescription: {1}", payeeActionStr, description);
+                sendTxnStatusToClient(txn, payeeClient, payeeBaseStatus, showDetailsWithTxnBegun, showIDWithTxnBegun);
             }
         }
         
@@ -2909,6 +2949,10 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="additionalDetails">String containing additional details to be appended to the alert message.</param>
         private void alertUsersTransactionStageCompleted(GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, string additionalDetails)
         {
+            // TODO: make configurable
+            bool showDetailsWithTxnStage = false;
+            bool showIDWithTxnStage = false;
+            
             string status = String.Empty;
             
             switch (stage) {
@@ -2992,7 +3036,7 @@ namespace Gloebit.GloebitMoneyModule
             
             // for now, we're only giong to send these to the payer.
             IClientAPI payerClient = LocateClientObject(txn.PayerID);
-            sendTxnStatusToClient(txn, payerClient, status);
+            sendTxnStatusToClient(txn, payerClient, status, showDetailsWithTxnStage, showIDWithTxnStage);
         }
         
         /// <summary>
@@ -3005,6 +3049,11 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="additionalFailureDetails">String containing additional details to be appended to the alert message.</param>
         private void alertUsersTransactionFailed(GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure, string additionalFailureDetails)
         {
+            // TODO: make configurable
+            bool showDetailsWithTxnFailed = false;
+            bool showIDWithTxnFailed = true;
+            // TODO: how does this work with instructions?
+            
             // TODO: move these to a string resource at some point.
             // Set up instruction strings which are used mutliple times
             string tryAgainContactOwner = String.Format("Please try again.  If problem persists, contact {0}.", m_contactOwner);
@@ -3167,7 +3216,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // build failure message from temp strings
-            string status = error;
+            string status = String.Format("Transaction FAILED.\n   {0}", error);
             if (!String.IsNullOrEmpty(additionalFailureDetails)) {
                 status = String.Format("{0}\n{1}", status, additionalFailureDetails);
             }
@@ -3177,7 +3226,7 @@ namespace Gloebit.GloebitMoneyModule
             
             // send failure message to payer
             IClientAPI payerClient = LocateClientObject(txn.PayerID);
-            sendTxnStatusToClient(txn, payerClient, status);
+            sendTxnStatusToClient(txn, payerClient, status, showDetailsWithTxnFailed, showIDWithTxnFailed);
             
             // Determine if message needs to be sent to payee and send
             
@@ -3185,9 +3234,10 @@ namespace Gloebit.GloebitMoneyModule
             IClientAPI payeeClient = null;
             bool attemptedToLocatePayee = false;
             if (txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER) {
+                // TODO: is this always a message we want to go to the payee?  what about insufficient funds?  Do we need a special message?
                 payeeClient = LocateClientObject(txn.PayeeID);
                 attemptedToLocatePayee = true;
-                sendTxnStatusToClient(txn, payeeClient, status);
+                sendTxnStatusToClient(txn, payeeClient, status, showDetailsWithTxnFailed, showIDWithTxnFailed);
             }
             if (messagePayee) {
                 if (payeeClient == null && attemptedToLocatePayee == false) {
@@ -3205,19 +3255,21 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="txn">Transaction that succeeded.</param>
         private void alertUsersTransactionSucceeded(GloebitAPI.Transaction txn)
         {
+            // TODO: make configurable
+            bool showDetailsWithTxnSucceeded = false;
+            bool showIDWithTxnSucceeded = false;
+            
             IClientAPI payerClient = LocateClientObject(txn.PayerID);
             IClientAPI payeeClient = LocateClientObject(txn.PayeeID);   // get this regardless of messaging since we'll try to update balance
             
             // send success message to payer
-            sendTxnStatusToClient(txn, payerClient, "Transaction SUCCEEDED.");
+            sendTxnStatusToClient(txn, payerClient, "Transaction SUCCEEDED.", showDetailsWithTxnSucceeded, showIDWithTxnSucceeded);
             
             // If this is a transaction type where we notified the payer the txn started, we should alert to failure as payer may have triggered the txn
             if (txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER) {
-                sendTxnStatusToClient(txn, payeeClient, "Transaction SUCCEEDED.");
+                sendTxnStatusToClient(txn, payeeClient, "Transaction SUCCEEDED.", showDetailsWithTxnSucceeded, showIDWithTxnSucceeded);
             }
             // TODO: consider if we want to send an alert that payee earned money with transaction details for other transaction types
-            
-            // TODO: design system for including txn details if set to display them.
             
             // TODO: should consider updating API to return payee ending balance as well.  Potential privacy issue here if not approved to see balance.
             
