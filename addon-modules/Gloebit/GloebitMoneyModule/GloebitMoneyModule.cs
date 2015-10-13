@@ -2646,13 +2646,13 @@ namespace Gloebit.GloebitMoneyModule
         // AgentAlertMessage w False: top right.  has "OK" button.  Fades away but stays in messages. character limit about 253
         // AgentAlertMessage w True: center. has "OK" button.  Does not fade away.  Requires clicking ok before interacting with anything else. character limit about 250
         
-        private void sendMessageToClient(IClientAPI client, string message)
+        private void sendMessageToClient(IClientAPI client, string message, UUID agentID)
         {
             //payerClient.SendBlueBoxMessage(UUID.Zero, "What is this?", String.Format("BlueBoxMessage: {0}", message));
             //payerClient.SendAgentAlertMessage(String.Format("AgentAlertMessage: {0}", message), false);
             //payerClient.SendAgentAlertMessage(String.Format("AgentAlertMessage True: {0}", message), true);
             //payerClient.SendAlertMessage(String.Format("AlertMessage: {0}", message));
-            
+
             if (client != null) {
                 //string imMessage = String.Format("{0}\n\n{1}", "Gloebit:", message);
                 string imMessage = message;
@@ -2669,8 +2669,18 @@ namespace Gloebit.GloebitMoneyModule
                 client.SendInstantMessage(im);
             } else {
                 // TODO: do we want to send an email or do anything else?
-                // TODO: do we need to hold the client through entire flows to ensure it will not be null if logged out which should be able to send
-                // the message the next time the user logs in?
+                
+                // Attempt to save a message for the offline user.
+                if (agentID != UUID.Zero) {     // Necessary because some txnPrecheckFailures don't currently pass the agentID
+                    // If an OfflineMessageModule is set up and a service is registered at the following, this might work for offline messaging.
+                    // SynchronousRestObjectRequester.MakeRequest<GridInstantMessage, bool>("POST", m_RestURL+"/SaveMessage/", im, 10000)
+                    Scene s = GetAnyScene();
+                    IMessageTransferModule tr = s.RequestModuleInterface<IMessageTransferModule>();
+                    if (tr != null) {
+                        GridInstantMessage im2 = new GridInstantMessage(null, UUID.Zero, "Gloebit", agentID, (byte)InstantMessageDialog.MessageFromAgent, false, message, agentID, true, Vector3.Zero, new byte[0], false);
+                        tr.SendInstantMessage(im2, delegate(bool success) {});
+                    }
+                }
             }
         }
         
@@ -2719,7 +2729,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // Send status string to client
-            sendMessageToClient(client, status);
+            sendMessageToClient(client, status, txn.PayerID);
         }
         
         private void alertUsersSubscriptionTransactionFailedForSubscriptionCreation(UUID payerID, UUID payeeID, int amount, GloebitAPI.Subscription sub)
@@ -2730,11 +2740,11 @@ namespace Gloebit.GloebitMoneyModule
             string failedTxnDetails = String.Format("Failed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment From: {2}\n   Payment To: {3}\n   Amount: {4}", sub.ObjectName, sub.Description, resolveAgentName(payerID), resolveAgentName(payeeID), amount);
             
             // TODO: Need to alert payer whether online or not as action is required.
-            sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  Once created, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails));
+            sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  Once created, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails), payerID);
             
             // TODO: is this message bad if fraudster?
             // Should alert payee if online as might be expecting feedback
-            sendMessageToClient(payeeClient, String.Format("Gloebit: Scripted object attempted payment to you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  If you triggered this transaction with an action, you can retry in a minute.\n\n{0}", failedTxnDetails));
+            sendMessageToClient(payeeClient, String.Format("Gloebit: Scripted object attempted payment to you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  If you triggered this transaction with an action, you can retry in a minute.\n\n{0}", failedTxnDetails), payeeID);
         }
         
         private void alertUsersSubscriptionTransactionFailedForGloebitAuthorization(UUID payerID, UUID payeeID, int amount, GloebitAPI.Subscription sub)
@@ -2745,14 +2755,14 @@ namespace Gloebit.GloebitMoneyModule
             string failedTxnDetails = String.Format("Failed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment From: {2}\n   Payment To: {3}\n   Amount: {4}", sub.ObjectName, sub.Description, resolveAgentName(payerID), resolveAgentName(payeeID), amount);
             
             // TODO: Need to alert payer whether online or not as action is required.
-            sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because you have not authorized this application from Gloebit.  Once you authorize this application, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails));
+            sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because you have not authorized this application from Gloebit.  Once you authorize this application, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails), payerID);
             if (payerClient != null) {
                 m_api.Authorize(payerClient, BaseURI);
             }
             
             // TODO: is this message bad if fraudster?
             // Should alert payee if online as might be expecting feedback
-            sendMessageToClient(payeeClient, String.Format("Gloebit: Scripted object attempted payment to you, but failed because the object owner has not yet authorized this subscription to make recurring, automated payments.  Requesting authorization now.\n\n{0}", failedTxnDetails));
+            sendMessageToClient(payeeClient, String.Format("Gloebit: Scripted object attempted payment to you, but failed because the object owner has not yet authorized this subscription to make recurring, automated payments.  Requesting authorization now.\n\n{0}", failedTxnDetails), payeeID);
         }
         
         /// <summary>
@@ -2841,7 +2851,8 @@ namespace Gloebit.GloebitMoneyModule
             
             // send failure message to client
             // For now, only alert payer for simplicity and since We should only ever get here from an ObjectBuy
-            sendMessageToClient(payerClient, failureMsg);
+            // TODO: fix this and put in place the agentID
+            sendMessageToClient(payerClient, failureMsg, UUID.Zero);
 
         }
         
@@ -3264,7 +3275,7 @@ namespace Gloebit.GloebitMoneyModule
                 if (payeeClient == null && attemptedToLocatePayee == false) {
                     payeeClient = LocateClientObject(txn.PayeeID);
                 }
-                sendMessageToClient(payeeClient, String.Format("{0}\n\n{1}", payeeAlert, payeeInstruction));
+                sendMessageToClient(payeeClient, String.Format("{0}\n\n{1}", payeeAlert, payeeInstruction), txn.PayeeID);
             }
             
         }
