@@ -2653,17 +2653,17 @@ namespace Gloebit.GloebitMoneyModule
             //payerClient.SendAgentAlertMessage(String.Format("AgentAlertMessage True: {0}", message), true);
             //payerClient.SendAlertMessage(String.Format("AlertMessage: {0}", message));
             
-            //string imMessage = String.Format("{0}\n\n{1}", "Gloebit:", message);
-            string imMessage = message;
-            UUID fromID = UUID.Zero;
-            string fromName = String.Empty;
-            UUID toID = client.AgentId;
-            bool isFromGroup = false;
-            UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
-            bool isOffline = true;          // Don't know what this is for.  Should probably try both.
-            bool addTimestamp = false;
-            
             if (client != null) {
+                //string imMessage = String.Format("{0}\n\n{1}", "Gloebit:", message);
+                string imMessage = message;
+                UUID fromID = UUID.Zero;
+                string fromName = String.Empty;
+                UUID toID = client.AgentId;
+                bool isFromGroup = false;
+                UUID imSessionID = toID;        // Don't know what this is used for.  Saw it hacked to agent id in friendship module
+                bool isOffline = true;          // Don't know what this is for.  Should probably try both.
+                bool addTimestamp = false;
+                    
                 // TODO: add alternate MessageFromAgent which includes an ok button and doesn't show up in chat, rather goes to notifications
                 GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.MessageBox, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, new byte[0], addTimestamp);
                 client.SendInstantMessage(im);
