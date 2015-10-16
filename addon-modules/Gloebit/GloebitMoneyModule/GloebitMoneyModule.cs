@@ -1043,8 +1043,7 @@ namespace Gloebit.GloebitMoneyModule
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
             // TODO: should we store "transaction description" with the Transaction?
             
-            IClientAPI payerClient = LocateClientObject(fromID);
-            bool give_result = submitTransaction(txn, description, descMap, payerClient);
+            bool give_result = submitTransaction(txn, description, descMap);
 
             // Commented out as this now happens in the alertUsersTransactionSucceeded call.  Left here until we figure out synchrnous issue below.
             ////BalanceUpdate(fromID, toID, give_result, description);
@@ -1211,17 +1210,16 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
         /// <param name="description">Description of transaction for transaction history reporting.</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, see buildTransactionDescMap helper function.</param>
-        /// <param name="payerClient">Used solely for sending transaction status messages to payer.</param>
         /// <returns>
         /// true if async transactU2U web request was built and submitted successfully; false if failed to submit request.
         /// If true:
         /// --- IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.
         /// --- IAssetCallback processAsset[Enact|Consume|Cancel]Hold may eventually be called dependent upon processing.
         /// </returns>
-        private bool submitTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap, IClientAPI payerClient)
+        private bool submitTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] submitTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
-            alertUsersTransactionBegun(txn, payerClient, description);
+            alertUsersTransactionBegun(txn, description);
             
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
             // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
@@ -2340,8 +2338,7 @@ namespace Gloebit.GloebitMoneyModule
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
             // TODO: should we store "transaction description" with the Transaction?
             
-            IClientAPI payerClient = LocateClientObject(fromID);
-            bool transaction_result = submitTransaction(txn, description, descMap, payerClient);
+            bool transaction_result = submitTransaction(txn, description, descMap);
             
             // TODO - do we need to send any error message to the user if things failed above?`
         }
@@ -2454,7 +2451,7 @@ namespace Gloebit.GloebitMoneyModule
                                                           categoryID: categoryID, localID: localID, saleType: saleType);
             // TODO: should we store "transaction description" with the Transaction?
             
-            bool transaction_result = submitTransaction(txn, description, descMap, remoteClient);
+            bool transaction_result = submitTransaction(txn, description, descMap);
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy Transaction queued {0}", txn.TransactionID.ToString());
         }
@@ -2620,7 +2617,7 @@ namespace Gloebit.GloebitMoneyModule
                 //string imMessage = String.Format("{0}\n\n{1}", "Gloebit:", message);
                 string imMessage = message;
                 UUID fromID = UUID.Zero;
-                string fromName = String.Empty;
+                string fromName = String.Empty; // Left blank as this is not used for the MessageBox message type
                 UUID toID = client.AgentId;
                 bool isFromGroup = false;
                 UUID imSessionID = toID;        // Don't know what this is used for.  Saw it hacked to agent id in friendship module
@@ -2640,7 +2637,7 @@ namespace Gloebit.GloebitMoneyModule
                     Scene s = GetAnyScene();
                     IMessageTransferModule tr = s.RequestModuleInterface<IMessageTransferModule>();
                     if (tr != null) {
-                        GridInstantMessage im2 = new GridInstantMessage(null, UUID.Zero, "Gloebit", agentID, (byte)InstantMessageDialog.MessageFromAgent, false, message, agentID, true, Vector3.Zero, new byte[0], false);
+                        GridInstantMessage im2 = new GridInstantMessage(null, UUID.Zero, "Gloebit", agentID, (byte)InstantMessageDialog.MessageFromAgent, false, message, agentID, true, Vector3.Zero, new byte[0], true);
                         tr.SendInstantMessage(im2, delegate(bool success) {});
                     }
                 }
@@ -2847,9 +2844,8 @@ namespace Gloebit.GloebitMoneyModule
         /// Once this is called, an alert for 1 or more stage status will be received and a transaction completion alert.
         /// </summary>
         /// <param name="txn">Transaction that failed.</param>
-        /// <param name="payerClient">IClientAPI of payer.</param>
         /// <param name="description">String containing txn description since this is not in the Transaction class yet.</param>
-        private void alertUsersTransactionBegun(GloebitAPI.Transaction txn, IClientAPI payerClient, string description)
+        private void alertUsersTransactionBegun(GloebitAPI.Transaction txn, string description)
         {
             // TODO: make user configurable
             bool showDetailsWithTxnBegun = true;
@@ -2883,7 +2879,6 @@ namespace Gloebit.GloebitMoneyModule
                 case TransactionType.OBJECT_PAYS_USER:
                     // Alert payer and payee, as we don't know who triggered it.
                     // This looks like a message for payee, but is sent to payer
-                    ////actionStr = String.Format("User Paid Funds From Object: {0}\nOwned By: {1}", txn.PartName, txn.PayerName);
                     actionStr = String.Format("Auto-debit created by object: {0}", txn.PartName);
                     payeeActionStr = String.Format("Payment to you from object: {0}", txn.PartName);
                     messagePayee = true;
@@ -2904,6 +2899,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // Alert payer
+            IClientAPI payerClient = LocateClientObject(txn.PayerID);
             // TODO: remove description once in txn and managed in sendTxnStatusToClient
             //string baseStatus = String.Format("Submitting transaction request...\n   {0}", actionStr);
             string baseStatus = String.Format("Submitting transaction request...\n   {0}\nDescription: {1}", actionStr, description);
