@@ -34,6 +34,7 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Threading;
+using System.Text;
 using log4net;
 using Nini.Config;
 using Nwc.XmlRpc;
@@ -735,6 +736,9 @@ namespace Gloebit.GloebitMoneyModule
         private string m_gridnick = "unknown_grid";
         private string m_gridname = "unknown_grid_name";
         private Uri m_economyURL;
+        
+        private static string m_contactGloebit = "Gloebit at OpenSimTransactionIssue@gloebit.com";
+        private string m_contactOwner = "region or grid owner";
 
         private IConfigSource m_gConfig;
 
@@ -850,6 +854,14 @@ namespace Gloebit.GloebitMoneyModule
                 m_keyAlias = config.GetString("GLBKeyAlias", null);
                 m_key = config.GetString("GLBKey", null);
                 m_secret = config.GetString("GLBSecret", null);
+                
+                // Get region/grid owner contact details for transaction failure contact instructions.
+                string ownerName = config.GetString("GLBOwnerName", "region or grid owner");
+                string ownerEmail = config.GetString("GLBOwnerEmail", null);
+                m_contactOwner = ownerName;
+                if (!String.IsNullOrEmpty(ownerEmail)) {
+                    m_contactOwner = String.Format("{0} at {1}", ownerName, ownerEmail);
+                }
             }
 
             if (section == "Economy") {
@@ -1002,11 +1014,14 @@ namespace Gloebit.GloebitMoneyModule
             }
             if (sub.SubscriptionID == UUID.Zero) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - SID is ZERO -- calling GloebitAPI Create Subscription");
-                // call api to have Gloebit create
-                m_api.CreateSubscription(sub, m_economyURL);
                 
                 // Message to user that we are creating the subscription.
                 alertUsersSubscriptionTransactionFailedForSubscriptionCreation(fromID, toID, amount, sub);
+                
+                // call api to have Gloebit create
+                m_api.CreateSubscription(sub, m_economyURL);
+                
+                // return false so this the current transaciton terminates and object is alerted to failure
                 return false;
             }
             
@@ -1022,21 +1037,21 @@ namespace Gloebit.GloebitMoneyModule
             
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectGiveMoney", part);
             
-            IClientAPI activeClient = LocateClientObject(toID);
-            string actionStr = String.Format("User Gifted Funds From Object: {0}\nOwned By: {1}", part.Name, resolveAgentName(fromID));
-
-            
             GloebitAPI.Transaction txn = buildTransaction(transactionType: TransactionType.OBJECT_PAYS_USER,
                                                           payerID: fromID, payeeID: toID, amount: amount, subscriptionID: sub.SubscriptionID,
                                                           partID: objectID, partName: part.Name, partDescription: part.Description,
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
             // TODO: should we store "transaction description" with the Transaction?
             
-            bool give_result = submitTransaction(txn, description, descMap, activeClient, actionStr);
+            bool give_result = submitTransaction(txn, description, descMap);
 
-            // TODO - move this to a proper execute callback
-            BalanceUpdate(fromID, toID, give_result, description);
+            // Commented out as this now happens in the alertUsersTransactionSucceeded call.  Left here until we figure out synchrnous issue below.
+            ////BalanceUpdate(fromID, toID, give_result, description);
 
+            // TODO: XXXXXXXXXXXXXXXXX THIS IS PROBLEMATIC!!!!!
+            // I think this sends a "success" response to the script which (in the case of our script) tells the user that payment was successful.
+            // Not sure why this sends the response instead of a "handleMoney" event like with paying an object.
+            // TODO: do we need a synchronous version for this?
             return give_result;
         }
 
@@ -1195,24 +1210,16 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
         /// <param name="description">Description of transaction for transaction history reporting.</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, see buildTransactionDescMap helper function.</param>
-        /// <param name="activeClient">Used solely for sending transaction status messages to OpenSim user who caused the transaction.</param>
-        /// <param name="actionStr">String describing the type of transaction and who/what it is with.  Used solely for sending transaction status messages to OpenSim user who caused the transaction.</param>
         /// <returns>
         /// true if async transactU2U web request was built and submitted successfully; false if failed to submit request.
         /// If true:
         /// --- IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.
         /// --- IAssetCallback processAsset[Enact|Consume|Cancel]Hold may eventually be called dependent upon processing.
         /// </returns>
-        private bool submitTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap, IClientAPI activeClient, string actionStr)
+        private bool submitTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] submitTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
-            
-            if (activeClient != null) {
-                string amountStr = String.Format("Amount: {0} gloebits", txn.Amount);
-                string descStr = String.Format("Description: {0}", description);
-                string idStr = String.Format("Transaction ID: {0}", txn.TransactionID);
-                activeClient.SendAlertMessage(String.Format("Gloebit: Submitting transaction request.\n{0}\n{1}\n{2}\n{3}", actionStr, amountStr, descStr, idStr));
-            }
+            alertUsersTransactionBegun(txn, description);
             
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
             // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
@@ -1221,22 +1228,21 @@ namespace Gloebit.GloebitMoneyModule
             
             if (!result) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] submitTransaction failed to create HttpWebRequest in GloebitAPI.TransactU2U");
-                if (activeClient != null) {
-                    activeClient.SendAlertMessage(String.Format("Gloebit: Transaction Failed.\nRegion Failed to properly create and send request to Gloebit.  Please try again.\nTransaction ID: {0}", txn.TransactionID));
-                }
+                alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.SUBMIT, GloebitAPI.TransactionFailure.SUBMISSION_FAILED, String.Empty);
             } else {
-                if (activeClient != null) {
-                    activeClient.SendAlertMessage(String.Format("Gloebit: Transaction Successfully submitted to Gloebit Service.\nTransaction ID: {0}", txn.TransactionID));
-                }
+                alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.SUBMIT, String.Empty);
             }
             
-            // TODO: Should we be returning true before Transact completes successfully now that this is async???
             return result;
         }
         
 
         /// <summary>
-        /// Sends the the stored money balance to the client
+        /// Requests the agent's balance from Gloebit and sends it to the client
+        /// NOTE:
+        /// --- This is triggered by the OnMoneyBalanceRequest event
+        /// ------ This appears to get called at login and when a user clicks on his/her balance.  The TransactionID is zero in both cases.
+        /// ------ This may get called in other situations, but buying an object does not seem to trigger it.
         /// </summary>
         /// <param name="client"></param>
         /// <param name="agentID"></param>
@@ -1365,7 +1371,7 @@ namespace Gloebit.GloebitMoneyModule
 
             return String.Empty;
         }
-
+/*
         private void BalanceUpdate(UUID senderID, UUID receiverID, bool transactionresult, string description)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] BalanceUpdate from {0} to {1}", senderID, receiverID);
@@ -1387,7 +1393,7 @@ namespace Gloebit.GloebitMoneyModule
                 }
             }
         }
-
+*/
         #region Standalone box enablers only
 
         private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
@@ -1606,8 +1612,9 @@ namespace Gloebit.GloebitMoneyModule
         /**** IAsyncEndpointCallback Interface ****/
         /******************************************/
         
-        public void transactU2UCompleted(OSDMap responseDataMap, GloebitAPI.User sender, GloebitAPI.User recipient, GloebitAPI.Transaction txn) {
-            
+        public void transactU2UCompleted(OSDMap responseDataMap, GloebitAPI.User sender, GloebitAPI.User recipient, GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure)
+        {
+            // TODO: should pass success, reason and status through as arguments.  Should probably check tID in GAPI instead of here.
             bool success = (bool)responseDataMap["success"];
             string reason = responseDataMap["reason"];
             string status = "";
@@ -1620,157 +1627,184 @@ namespace Gloebit.GloebitMoneyModule
             }
             // TODO: verify that tID = txn.TransactionID --- should never be otherwise.
             
-            UUID buyerID = UUID.Parse(sender.PrincipalID);
-            UUID sellerID = UUID.Parse(recipient.PrincipalID);
-            UUID transactionID = UUID.Parse(tID);
-            IClientAPI buyerClient = LocateClientObject(buyerID);
-            IClientAPI sellerClient = LocateClientObject(sellerID);
+            // Only used for sending dialog messages for subscription issues.
+            // TODO: consider getting client directly in dialog.
+            IClientAPI buyerClient = LocateClientObject(txn.PayerID);
+            IClientAPI sellerClient = LocateClientObject(txn.PayeeID);
             
+            
+            // Can/should this be moved to QUEUE with no errors?
             if (success) {
+                // If we get here, queuing and early enact were successful.
+                // When the processor runs this, we are guaranteed that it will call our enact URI eventually, or succeed if no callback-uris were provided.
                 m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted with SUCCESS reason:{0} id:{1}", reason, tID);
                 if (reason == "success") {                                  /* successfully queued, early enacted all non-asset transaction parts */
-                    if (buyerClient != null) {
-                        // TODO: Once txn can't be null, turn this into an asset check.
-                        if (txn == null) {
-                            buyerClient.SendAgentAlertMessage("Gloebit: Transaction successfully completed.", false);
-                        } else {
-                            buyerClient.SendAlertMessage(String.Format("Gloebit: Transaction successfully queued and gloebits transfered.\nTransaction ID: {0}", tID));
-                        }
+                    // TODO: Once txn can't be null, turn this into an asset check.
+                    if (txn == null) {
+                        // TODO: examine the early enact without asset-callbacks code path and see if we need to handle other reasons not handled here.
+                        // TODO: consider moving this alert to be called from the GAPI.
+                        // TODO: we should really provide an interface for checking status or require at least a single callback uri.
+                        alertUsersTransactionSucceeded(txn);
+                    } else {
+                        // Early enact also succeeded, so could add additional details that funds have successfully been transferred.
+                        alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.QUEUE, String.Empty);
                     }
                 } else if (reason == "resubmitted") {                       /* transaction had already been created.  resubmitted to queue */
                     m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted resubmitted transaction  id:{0}", tID);
-                    if (buyerClient != null) {
-                        buyerClient.SendAlertMessage("Gloebit: Transaction resubmitted to queue.");
-                    }
+                    alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.QUEUE, "Transaction resubmitted to queue.");
                 } else {                                                    /* Unhandled success reason */
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted unhandled response reason:{0}  id:{1}", reason, tID);
+                    alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.QUEUE, reason);
                 }
-                
-                // If no asset, consider complete and update balances; else update in consume callback.
-                double balance = responseDataMap["balance"].AsReal();
-                int intBal = (int)balance;
-                // TODO: Once txn can't be null, turn this into an asset check.
-                if (txn == null) {
-                    buyerClient.SendMoneyBalance(transactionID, true, new byte[0], intBal, 0, buyerID, false, sellerID, false, 0, String.Empty);
-                    if (sellerClient != null) {
-                        sellerClient.SendMoneyBalance(transactionID, true, new byte[0], intBal, 0, buyerID, false, sellerID, false, 0, String.Empty);
-                    }
-                }
-                
-            } else if (status == "queued") {                                /* successfully queued.  an early enact failed */
-                m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction successfully queued for processing.  id:{0}", tID);
-                if (buyerClient != null) {
+                return;
+            }
+            
+            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted with FAILURE reason:{0} status:{1} id:{2}", reason, status, tID);
+            
+            // Handle errors
+            switch (stage) {
+                case GloebitAPI.TransactionStage.ENACT_GLOEBIT:
+                    // Placed this first as it is an odd case where early-enact failed.
+                    // Need to understand if this is guaranteed to be a failure.
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction successfully queued for processing, but failed early enact.  id:{0} reason:{1}", tID, reason);
                     // TODO: Once txn can't be null, turn this into an asset check.
                     if (txn != null) {
-                        buyerClient.SendAlertMessage("Gloebit: Transaction successfully queued for processing.");
+                        // TODO: is this success or failure?  This likely means early enact failed.  Could this succeed after queued?
+                        // TODO: why is this only for non-null txn?
+                        alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.QUEUE, String.Empty);
                     }
-                }
-                // TODO: possible we should only handle queued errors here if asset is null
-                if (reason == "insufficient balance") {                     /* permanent failure - actionable by buyer */
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction failed.  Buyer has insufficent funds.  id:{0}", tID);
-                    if (buyerClient != null) {
-                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction failed.  Insufficient funds.  Go to https://www.gloebit.com/purchase to get more gloebits.", false);
-                    }
-                } else if (reason == "pending") {                           /* queue will retry enacts */
-                    // may not be possible.  May only be "pending" if includes a charge part which these will not.
-                } else {                                                    /* perm failure - assumes tp will get same response form part.enact */
-                    // Shouldn't ever get here.
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction failed during processing.  reason:{0} id:{1}", reason, tID);
-                    if (buyerClient != null) {
-                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction failed during processing.  Please retry.  Contact Regoin/Grid owner if failure persists.", false);
-                    }
-                }
-            } else {                                                        /* failure prior to queing.  Something requires fixing */
-                string subscriptionIDStr = String.Empty;
-                string appSubscriptionIDStr = String.Empty;
-                string subscriptionAuthIDStr = String.Empty;
-                UUID subscriptionAuthID = UUID.Zero;
-                if (responseDataMap.ContainsKey("subscription-id")) {
-                    subscriptionIDStr = responseDataMap["subscription-id"];
-                }
-                if (responseDataMap.ContainsKey("app-subscription-id")) {
-                    appSubscriptionIDStr = responseDataMap["app-subscription-id"];
-                }
-                if (responseDataMap.ContainsKey("subscription-authorization-id")) {
-                    subscriptionAuthIDStr = responseDataMap["subscription-authorization-id"];
-                    subscriptionAuthID = UUID.Parse(subscriptionAuthIDStr);
-                }
-                
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted with FAILURE reason:{0} status:{1} id:{2}", reason, status, tID);
-                
-                
-                if (status == "queuing-failed") {                           /* failed to queue.  net or processor error */
-                    if (buyerClient != null) {
-                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed. Queuing error.  Please try again.  If problem persists, contact Gloebit.", false);
-                    }
-                } else if (status == "failed") {                            /* race condition - already queued */
-                    // nothing to tell user.  buyer doesn't need to know it was double submitted
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted race condition.  You double submitted transaction:{0}", tID);
-                } else if (status == "cannot-spend") {                      /* Buyer's gloebit account is locked and not allowed to spend gloebits */
-                    if (buyerClient != null) {
-                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Your Gloebit account is locked.  Please contact Gloebit to resolve any account status issues.", false);
-                    }
-                } else if (status == "cannot-receive") {                    /* Seller's gloebit account can not receive gloebits */
-                    // TODO: should we try to message seller if online?
-                    // TODO: Is it a privacy issue to alert buyer here?
-                    // TODO: research if/when account is in this state.  Only by admin?  All accounts until merchants?
-                    if (buyerClient != null) {
-                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Seller's Gloebit account is unable to receive gloebits.  Please alert seller to this issue if possible and have seller contact Gloebit.", false);
-                    }
-                } else if (status == "unknown-merchant") {                  /* can not identify merchant from params supplied by app */
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit could not identify merchant from params.  transactionID:{0} merchantID:{1}", tID, sender.PrincipalID);
-                    if (buyerClient != null) {
-                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Gloebit can not identify seller from OpenSim account.  Please alert seller to this issue if possible and have seller contact Gloebit.", false);
-                    }
-                } else if (reason == "Transaction with automated-transaction=True is missing subscription-id") {
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Subscription-id missing from transaction marked as unattended/automated transaction.  transactionID:{0}", tID);
-                    // TODO: Do we need to register a subscription, or is this a case we should never end up in?
-                } else if (status == "unknown-subscription") {
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit can not identify subscription from identifier(s).  transactionID:{0}, subscription-id:{1}, app-subscription-id:{2}", tID, subscriptionIDStr, appSubscriptionIDStr);
-                    // TODO: We should wipe this subscription from the DB and re-create it.
-                } else if (status == "unknown-subscription-authorization") {
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit No subscription authorization in place.  transactionID:{0}, subscription-id:{1}, app-subscription-id:{2} BuyerID:{3} BuyerName:{4}", tID, subscriptionIDStr, appSubscriptionIDStr, buyerID, resolveAgentName(buyerID));
-                    // TODO: Should we store auths so we know if we need to create it or just to ask user to auth it again?
-                    // We have a valid subscription, but no subscription auth for this user-id-on-app+token(gloebit_uid) combo
-                    // Ask user if they would like to authorize
-                    // Don't call CreateSubscriptionAuthorization unless they do.  If this is fraud, the user will not want to see a pending auth.
-                    
-                    // TODO: should we use SubscriptionIDStr, validate that they match, or get rid of that?
-                    
-                    if (buyerClient != null) {
-                        Dialog.Send(new CreateSubscriptionAuthorizationDialog(buyerClient, buyerID, resolveAgentName(buyerID), txn.PartID, txn.PartName, txn.PartDescription, transactionID, sellerID, resolveAgentName(sellerID), txn.Amount, txn.SubscriptionID, m_api, m_economyURL));
+                    // TODO: Should we send a failure alert here?  Could transaction enact successfully?  Need to research this
+                    // insufficient-balance; pending probably can't occur; something new?
+                    if (failure == GloebitAPI.TransactionFailure.INSUFFICIENT_FUNDS) {
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction failed.  Buyer has insufficent funds.  id:{0}", tID);
+                        alertUsersTransactionFailed(txn, stage, failure, String.Empty);
                     } else {
-                        // TODO: does the message eventually make it if the user is offline?  Is there a way to send a Dialog to a user the next time they log in?
-                        // Should we just create the subscription_auth in this case?
+                        // unhandled, so pass reason
+                        m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction failed during processing.  reason:{0} id:{1} failure:{2}", reason, tID, failure);
+                        alertUsersTransactionFailed(txn, stage, failure, reason);
+                    }
+                    break;
+                case GloebitAPI.TransactionStage.AUTHENTICATE:
+                    // failed check of OAUTH2 token - currently only one error causes this - invalid token
+                    // Could try a behind the scenes renewal/reauth for expired, and then resubmit, but we don't do that right now, so just fail.
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction failed.  Authentication error.  Invalid token.  id:{0}", tID);
+                    alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                    break;
+                case GloebitAPI.TransactionStage.VALIDATE:
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted transaction failed.  Validation error.  id:{0}", tID);
+                    
+                    // Prepare some variables necessary for log messages for some Validation failures.
+                    string subscriptionIDStr = String.Empty;
+                    string appSubscriptionIDStr = String.Empty;
+                    string subscriptionAuthIDStr = String.Empty;
+                    UUID subscriptionAuthID = UUID.Zero;
+                    if (responseDataMap.ContainsKey("subscription-id")) {
+                        subscriptionIDStr = responseDataMap["subscription-id"];
+                    }
+                    if (responseDataMap.ContainsKey("app-subscription-id")) {
+                        appSubscriptionIDStr = responseDataMap["app-subscription-id"];
+                    }
+                    if (responseDataMap.ContainsKey("subscription-authorization-id")) {
+                        subscriptionAuthIDStr = responseDataMap["subscription-authorization-id"];
+                        subscriptionAuthID = UUID.Parse(subscriptionAuthIDStr);
                     }
                     
-                    
-                } else if (status == "subscription-authorization-pending") {
-                    // User has been asked and chose to auth already.
-                    // Subscription-authorization has already been created.
-                    // User has not yet responded to that request, so send a dialog again to ask for auth and allow reporting of fraud.
-                    
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - status:{0} \n subID:{1} appSubID:{2} apiUrl:{3} ", status, subscriptionIDStr, appSubscriptionIDStr, m_apiUrl);
-                    
-                    // Send request to user again
-                    if (buyerClient != null) {
-                        Dialog.Send(new PendingSubscriptionAuthorizationDialog(buyerClient, buyerID, resolveAgentName(buyerID), txn.PartID, txn.PartName, txn.PartDescription, transactionID, sellerID, resolveAgentName(sellerID), txn.Amount, txn.SubscriptionID, subscriptionAuthID, m_api, m_economyURL));
-                    } else {
-                        // TODO: does the message eventually make it if the user is offline?  Is there a way to send a Dialog to a user the next time they log in?
-                        // Should we just create the subscription_auth in this case?
+                    switch (failure) {
+                        case GloebitAPI.TransactionFailure.FORM_GENERIC_ERROR:                    /* One of many form errors.  something needs fixing.  See reason */
+                            // All form errors are errors the app needs to fix
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Transaction failed.  App needs to fix something. id:{0} failure:{1} reason:{2}", tID, failure, reason);
+                            alertUsersTransactionFailed(txn, stage, failure, reason);
+                            break;
+                        case GloebitAPI.TransactionFailure.FORM_MISSING_SUBSCRIPTION_ID:          /* marked as subscription, but did not include any subscription id */
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Subscription-id missing from transaction marked as unattended/automated transaction.  transactionID:{0}", tID);
+                            // TODO: Do we need to register a subscription, or is this a case we should never end up in?
+                            alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            break;
+                        case GloebitAPI.TransactionFailure.SUBSCRIPTION_NOT_FOUND:                /* No subscription exists under id provided */
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit can not identify subscription from identifier(s).  transactionID:{0}, subscription-id:{1}, app-subscription-id:{2}", tID, subscriptionIDStr, appSubscriptionIDStr);
+                            // TODO: We should wipe this subscription from the DB and re-create it.
+                            alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            break;
+                        case GloebitAPI.TransactionFailure.SUBSCRIPTION_AUTH_NOT_FOUND:           /* No sub_auth has been created for this user for this subscription */
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit No subscription authorization in place.  transactionID:{0}, subscription-id:{1}, app-subscription-id:{2} PayerID:{3} PayerName:{4}", tID, subscriptionIDStr, appSubscriptionIDStr, txn.PayerID, txn.PayerName);
+                            // TODO: Should we store auths so we know if we need to create it or just to ask user to auth it again?
+                            // We have a valid subscription, but no subscription auth for this user-id-on-app+token(gloebit_uid) combo
+                            // Ask user if they would like to authorize
+                            // Don't call CreateSubscriptionAuthorization unless they do.  If this is fraud, the user will not want to see a pending auth.
+                            
+                            // TODO: should we use SubscriptionIDStr, validate that they match, or get rid of that?
+                            
+                            alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            
+                            if (buyerClient != null) {
+                                Dialog.Send(new CreateSubscriptionAuthorizationDialog(buyerClient, txn.PayerID, txn.PayerName, txn.PartID, txn.PartName, txn.PartDescription, txn.TransactionID, txn.PayeeID, txn.PayeeName, txn.Amount, txn.SubscriptionID, m_api, m_economyURL));
+                            } else {
+                                // TODO: does the message eventually make it if the user is offline?  Is there a way to send a Dialog to a user the next time they log in?
+                                // Should we just create the subscription_auth in this case?
+                            }
+                            break;
+                        case GloebitAPI.TransactionFailure.SUBSCRIPTION_AUTH_PENDING:             /* User has not yet approved or declined the authorization for this subscription */
+                            // User has been asked and chose to auth already.
+                            // Subscription-authorization has already been created.
+                            // User has not yet responded to that request, so send a dialog again to ask for auth and allow reporting of fraud.
+                            
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - status:{0} \n subID:{1} appSubID:{2} apiUrl:{3} ", status, subscriptionIDStr, appSubscriptionIDStr, m_apiUrl);
+                            
+                            alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            
+                            // Send request to user again
+                            if (buyerClient != null) {
+                                Dialog.Send(new PendingSubscriptionAuthorizationDialog(buyerClient, txn.PayerID, txn.PayerName, txn.PartID, txn.PartName, txn.PartDescription, txn.TransactionID, txn.PayeeID, txn.PayeeName, txn.Amount, txn.SubscriptionID, subscriptionAuthID, m_api, m_economyURL));
+                            } else {
+                                // TODO: does the message eventually make it if the user is offline?  Is there a way to send a Dialog to a user the next time they log in?
+                                // Should we just create the subscription_auth in this case?
+                            }
+                            break;
+                        case GloebitAPI.TransactionFailure.SUBSCRIPTION_AUTH_DECLINED:            /* User has declined the authorization for this subscription */
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- user declined subscription auth.  id:{0}", tID);
+                            // TODO: should we do something here? -- different type of dialog perhaps
+                            // Send dialog asking user to auth or report --- needs different message.
+                            
+                            alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            break;
+                        case GloebitAPI.TransactionFailure.PAYER_ACCOUNT_LOCKED:                  /* Buyer's gloebit account is locked and not allowed to spend gloebits */
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- payer account locked.  id:{0}", tID);
+                            alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            break;
+                        case GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED:            /* can not identify merchant from params supplied by app */
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit could not identify merchant from params.  transactionID:{0} merchantID:{1}", tID, sender.PrincipalID);
+                            alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            break;
+                        case GloebitAPI.TransactionFailure.PAYEE_CANNOT_RECEIVE:                  /* Seller's gloebit account can not receive gloebits */
+                            // TODO: research if/when account is in this state.  Only by admin?  All accounts until merchants?
+                            alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            break;
+                        default:
+                            // Shouldn't get here.
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted unhandled validation failure:{0}  transactionID:{1}", failure, tID);
+                            alertUsersTransactionFailed(txn, stage, failure, reason);
+                            break;
                     }
-
-
-                } else if (status == "subscription-authorization-declined") {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- user declined subscription auth.");
-                    // TODO: should we do something here? -- different type of dialog perhaps
-                    // Send dialog asking user to auth or report --- needs different message.
-                } else {                                                    /* App issue --- Something needs fixing by app */
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Transaction failed.  App needs to fix something.");
-                    if (buyerClient != null) {
-                        buyerClient.SendAgentAlertMessage("Gloebit: Transaction Failed.  Application provided malformed transaction to Gloebit.  Please retry.  Contact Regoin/Grid owner if failure persists.", false);
+                    break;
+                case GloebitAPI.TransactionStage.QUEUE:
+                    switch (failure) {
+                        case GloebitAPI.TransactionFailure.QUEUEING_FAILED:                     /* failed to queue.  net or processor error */
+                            alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            break;
+                        case GloebitAPI.TransactionFailure.RACE_CONDITION:                      /* race condition - already queued */
+                            // nothing to tell user.  buyer doesn't need to know it was double submitted
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted race condition.  You double submitted transaction:{0}", tID);
+                            break;
+                        default:
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted unhandled queueing failure:{0}  transactionID:{1}", failure, tID);
+                            alertUsersTransactionFailed(txn, stage, failure, reason);
+                            break;
                     }
-                }
+                    break;
+                default:
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted unhandled Transaciton Stage:{0} failure:{1}  transactionID:{2}", stage, failure, tID);
+                    alertUsersTransactionFailed(txn, stage, failure, reason);
+                    break;
             }
             return;
         }
@@ -1780,17 +1814,6 @@ namespace Gloebit.GloebitMoneyModule
             bool success = (bool)responseDataMap["success"];
             string reason = responseDataMap["reason"];
             string status = responseDataMap["status"];
-            
-            //string tID = "";
-            //if (responseDataMap.ContainsKey("id")) {
-            //    tID = responseDataMap["id"];
-            //}
-            
-            //UUID buyerID = UUID.Parse(sender.PrincipalID);
-            //UUID sellerID = UUID.Parse(recipient.PrincipalID);
-            //UUID transactionID = UUID.Parse(tID);
-            //IClientAPI buyerClient = LocateClientObject(buyerID);
-            //IClientAPI sellerClient = LocateClientObject(sellerID);
             
             if (success) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionCompleted with SUCCESS reason:{0} status:{1}", reason, status);
@@ -1889,8 +1912,8 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: this could fail if user logs off right after submission.  Is this what we want?
             // TODO: This basically always fails when you crash opensim and recover during a transaction.  Is this what we want?
             if (buyerClient == null) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverObject FAILED to locate buyer agent");
-                returnMsg = "Can't locate buyer";
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverObject FAILED to locate buyer agent.  Agent may have logged out prior to delivery.");
+                returnMsg = "Can't locate buyer.";
                 return false;
             }
             
@@ -1899,8 +1922,7 @@ namespace Gloebit.GloebitMoneyModule
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
             if (module == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverObject FAILED to access to IBuySellModule");
-                buyerClient.SendAgentAlertMessage("Gloebit: OpenSim Asset delivery failed.  Could not access region IBuySellModule.", false);
-                returnMsg = "Can't access IBuySellModule";
+                returnMsg = "Can't access IBuySellModule.";
                 return false;
             }
             
@@ -1908,11 +1930,9 @@ namespace Gloebit.GloebitMoneyModule
             bool success = module.BuyObject(buyerClient, txn.CategoryID, txn.LocalID, (byte)txn.SaleType, txn.Amount);
             if (!success) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverObject FAILED to deliver asset");
-                buyerClient.SendAgentAlertMessage("Gloebit: OpenSim Asset delivery failed.  IBuySellModule.BuyObject failed.  Please retry your purchase.", false);
-                returnMsg = "object delivery failed";
+                returnMsg = "IBuySellModule.BuyObject failed delivery attempt.";
             } else {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE].deliverObject SUCCESS - delivered asset");
-                buyerClient.SendAlertMessage("Gloebit: OpenSim Asset delivered to inventory successfully.");
                 returnMsg = "object delivery succeeded";
             }
             return success;
@@ -1920,18 +1940,20 @@ namespace Gloebit.GloebitMoneyModule
         
         public bool processAssetEnactHold(GloebitAPI.Transaction txn, out string returnMsg) {
             
-            // Retrieve Payer & Payee agents
-            IClientAPI payerClient = LocateClientObject(txn.PayerID);
-            IClientAPI payeeClient = LocateClientObject(txn.PayeeID);
-            IClientAPI activeClient = payerClient;
+            // If we've gotten this call, then the Gloebit components have enacted successfully
+            // all funds have been transferred.
+            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.ENACT_GLOEBIT, String.Empty);
             
             switch ((TransactionType)txn.TransactionType) {
                 case TransactionType.USER_BUYS_OBJECT:
                     // 5000 - ObjectBuy
                     // Need to deliver the object/contents purchased.
+                    IClientAPI payerClient = LocateClientObject(txn.PayerID);
                     bool delivered = deliverObject(txn, payerClient, out returnMsg);
                     if (!delivered) {
                         returnMsg = String.Format("Asset enact failed: {0}", returnMsg);
+                        // Local Asset Enact failed - inform user
+                        alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.ENACT_ASSET, GloebitAPI.TransactionFailure.ENACTING_ASSET_FAILED, returnMsg);
                         return false;
                     }
                     break;
@@ -1944,14 +1966,16 @@ namespace Gloebit.GloebitMoneyModule
                     // need to alert the object that it has been paid.
                     ObjectPaid handleObjectPaid = OnObjectPaid;
                     if(handleObjectPaid != null) {
-                        //handleObjectPaid(e.receiver, e.sender, e.amount);
                         handleObjectPaid(txn.PartID, txn.PayerID, txn.Amount);
+                    } else {
+                        // This really shouldn't happen, as it would mean that the OpenSim region is not properly set up
+                        // However, we won't fail here as expectation is unclear
+                        m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold - IMoneyModule OnObjectPaid event not properly subscribed.  Object payment may have failed.");
                     }
                     break;
                 case TransactionType.OBJECT_PAYS_USER:
                     // 5009 - ObjectGiveMoney
-                    // need to alert payee, not payer.
-                    activeClient = payeeClient;
+                    // nothing to enact.
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] processAssetEnactHold called on unknown transaction type: {0}", txn.TransactionType);
@@ -1960,9 +1984,9 @@ namespace Gloebit.GloebitMoneyModule
                     break;
             }
             
-            if (activeClient != null) {
-                activeClient.SendAlertMessage(String.Format("Gloebit: Funds transferred successfully.\nTransaction ID: {0}", txn.TransactionID));
-            }
+            // Local Asset Enact completed
+            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.ENACT_ASSET, String.Empty);
+            
             returnMsg = "Asset enact succeeded";
             return true;
         }
@@ -1972,10 +1996,9 @@ namespace Gloebit.GloebitMoneyModule
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetConsumeHold SUCCESS - transaction complete");
             
-            // Retrieve Payer & Payee agents
-            IClientAPI payerClient = LocateClientObject(txn.PayerID);
-            IClientAPI payeeClient = LocateClientObject(txn.PayeeID);
-            IClientAPI activeClient = payerClient;
+            // If we've gotten this call, then the Gloebit components have enacted successfully
+            // all transferred funds have been commited.
+            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.CONSUME_GLOEBIT, String.Empty);
             
             switch ((TransactionType)txn.TransactionType) {
                 case TransactionType.USER_BUYS_OBJECT:
@@ -1992,9 +2015,7 @@ namespace Gloebit.GloebitMoneyModule
                     break;
                 case TransactionType.OBJECT_PAYS_USER:
                     // 5009 - ObjectGiveMoney
-                    // need to alert payee, not payer.
-                    // TODO: really need to think about who we're informing here
-                    activeClient = payeeClient;
+                    // nothing to finalize
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] processAssetConsumeHold called on unknown transaction type: {0}", txn.TransactionType);
@@ -2004,55 +2025,45 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // TODO: really need to think about who we're informing for OBJECT_PAYS_USER
-            if (payerClient == null) {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetConsumeHold FAILED to locate payer agent");
-            } else {
-                if (txn.PayerEndingBalance >= 0) {
-                    payerClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], txn.PayerEndingBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, String.Empty);
-                } else {
-                    // TODO: make gloebit get balance request for user asynchronously.
-                }
-            }
-            if (payeeClient != null) {
-                // TODO: Need to send a reqeust to get sender's balance from Gloebit asynchronously since this is not returned here.
-                //sellerClient.SendMoneyBalance(transactionID, true, new byte[0], balance, asset.SaleType, buyerID, false, sellerID, false, asset.SalePrice, String.Empty);
-            }
             
-            if (activeClient != null) {
-                activeClient.SendAgentAlertMessage(String.Format("Gloebit: Transaction complete.\nTransaction ID: {0}", txn.TransactionID), false);
-            }
+            // Local Asset Consume completed
+            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.CONSUME_ASSET, String.Empty);
+            
+            // TODO: consider moving this alert to be called from the GAPI after we mark this txn consumed.
+            alertUsersTransactionSucceeded(txn);
             
             returnMsg = "Asset consume succeeded";
             return true;
         }
         
+        // This is only called if the the local asset had previously been successfully enacted before the transaction failed.
+        // This really shouldn't happen since the local asset is the final transaction coponent and the transaction
+        // should not be able to fail once it enacts successfully.
         public bool processAssetCancelHold(GloebitAPI.Transaction txn, out string returnMsg) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetCancelHold SUCCESS - transaction rolled back");
             
-            // Retrieve Payer & Payee agents
-            IClientAPI payerClient = LocateClientObject(txn.PayerID);
-            IClientAPI payeeClient = LocateClientObject(txn.PayeeID);
-            IClientAPI activeClient = payerClient;
+            // TODO: should probably move this out of here to GAPI to be reported when cancel is received regardless
+            // of whter enact has already occurred; or set this function up to be called always on first cancel,
+            // and check txn to see if undoing of enact is necessary.
+            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.CANCEL_GLOEBIT, String.Empty);
             
             // nothing to cancel - either enact of asset failed or was never called if we're here.
             switch ((TransactionType)txn.TransactionType) {
                 case TransactionType.USER_BUYS_OBJECT:
                     // 5000 - ObjectBuy
-                    // nothing to finalize
+                    // no mechanism for reversing delivery
                     break;
                 case TransactionType.USER_PAYS_USER:
                     // 5001 - OnMoneyTransfer - Pay User
-                    // nothing to finalize
+                    // nothing to cancel
                     break;
                 case TransactionType.USER_PAYS_OBJECT:
                     // 5008 - OnMoneyTransfer - Pay Object
-                    // nothing to finalize
+                    // no mechanism for notifying object
                     break;
                 case TransactionType.OBJECT_PAYS_USER:
                     // 5009 - ObjectGiveMoney
-                    // need to alert payee, not payer.
-                    // TODO: really need to think about who we're informing here
-                    activeClient = payeeClient;
+                    // nothing to cancel
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] processAssetCancelHold called on unknown transaction type: {0}", txn.TransactionType);
@@ -2061,11 +2072,7 @@ namespace Gloebit.GloebitMoneyModule
                     break;
             }
             
-            if (activeClient == null) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetCancelHold FAILED to locate active agent");
-            } else {
-                activeClient.SendAgentAlertMessage(String.Format("Gloebit: Transaction canceled and rolled back.\nTrasaction ID: {0}", txn.TransactionID), false);
-            }
+            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.CANCEL_ASSET, String.Empty);
             returnMsg = "Asset cancel succeeded";
             return true;
         }
@@ -2264,13 +2271,11 @@ namespace Gloebit.GloebitMoneyModule
             string regionID = s.RegionInfo.RegionID.ToString();
             
             // Decalare variables to be assigned in switch below
-            IClientAPI activeClient = null;
             UUID fromID = UUID.Zero;
             UUID toID = UUID.Zero;
             UUID partID = UUID.Zero;
             string partName = null;
             string partDescription = String.Empty;
-            string actionStr = String.Empty;
             OSDMap descMap = null;
             SceneObjectPart part = null;
             string description;
@@ -2281,7 +2286,6 @@ namespace Gloebit.GloebitMoneyModule
             switch((TransactionType)e.transactiontype) {
                 case TransactionType.USER_PAYS_USER:
                     // 5001 - OnMoneyTransfer - Pay User
-                    
                     fromID = e.sender;
                     toID = e.receiver;
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "PayUser");
@@ -2290,14 +2294,9 @@ namespace Gloebit.GloebitMoneyModule
                     } else {
                         description = String.Format("PayUser: {0}", e.description);
                     }
-                    
-                    activeClient = LocateClientObject(fromID);
-                    actionStr = String.Format("Paying User: {0}", resolveAgentName(toID));
-                    
                     break;
                 case TransactionType.USER_PAYS_OBJECT:
                     // 5008 - OnMoneyTransfer - Pay Object
-                    
                     partID = e.receiver;
                     part = s.GetSceneObjectPart(partID);
                     // TODO: Do we need to verify that part is not null?  can it ever by here?
@@ -2307,10 +2306,6 @@ namespace Gloebit.GloebitMoneyModule
                     toID = part.OwnerID;
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "PayObject", part);
                     description = e.description;
-                    
-                    activeClient = LocateClientObject(fromID);
-                    actionStr = String.Format("Paying Object: {0}\nOwned By: {1}", partName, resolveAgentName(toID));
-                    
                     break;
                 case TransactionType.OBJECT_PAYS_USER:
                     // 5009 - ObjectGiveMoney
@@ -2326,8 +2321,6 @@ namespace Gloebit.GloebitMoneyModule
                     toID = e.receiver;
                     descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectPaysUser", part);
                     description = e.description;
-                    activeClient = LocateClientObject(toID);
-                    actionStr = String.Format("User Gifted Funds From Object: {0}\nOwned By: {1}", partName, resolveAgentName(fromID));
                     */
                     return;
                     break;
@@ -2345,7 +2338,7 @@ namespace Gloebit.GloebitMoneyModule
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
             // TODO: should we store "transaction description" with the Transaction?
             
-            bool transaction_result = submitTransaction(txn, description, descMap, activeClient, actionStr);
+            bool transaction_result = submitTransaction(txn, description, descMap);
             
             // TODO - do we need to send any error message to the user if things failed above?`
         }
@@ -2391,9 +2384,10 @@ namespace Gloebit.GloebitMoneyModule
                 uint localID, byte saleType, int salePrice)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy client:{0}, agentID: {1}", remoteClient.AgentId, agentID);
+            
             if (!m_sellEnabled)
             {
-                remoteClient.SendBlueBoxMessage(UUID.Zero, "", "Buying is not enabled");
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.BUYING_DISABLED, remoteClient);
                 return;
             }
 
@@ -2411,21 +2405,26 @@ namespace Gloebit.GloebitMoneyModule
             SceneObjectPart part = s.GetSceneObjectPart(localID);
             if (part == null)
             {
-                remoteClient.SendAgentAlertMessage("Unable to buy now. The object was not found.", false);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.OBJECT_NOT_FOUND, remoteClient);
                 return;
             }
             
             // Validate that the client sent the price that the object is being sold for 
             if (part.SalePrice != salePrice)
             {
-                remoteClient.SendAgentAlertMessage("Cannot buy at this price. Buy Failed. If you continue to get this relog.", false);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.AMOUNT_MISMATCH, remoteClient);
                 return;
             }
 
-            // Validate that the client sent the proper sale type the object has set 
-            if (part.ObjectSaleType != saleType)
-            {
-                remoteClient.SendAgentAlertMessage("Cannot buy this way. Buy Failed. If you continue to get this relog.", false);
+            // Validate that is the client sent the proper sale type the object has set
+            if (saleType < 1 || saleType > 3) {
+                // Should not get here unless an object purchase is submitted with a bad or new (but unimplemented) saleType.
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] ObjectBuy Unrecognized saleType:{0} --- expected 1,2 or 3 for original, copy, or contents", saleType);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.SALE_TYPE_INVALID, remoteClient);
+                return;
+            }
+            if (part.ObjectSaleType != saleType) {
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.SALE_TYPE_MISMATCH, remoteClient);
                 return;
             }
 
@@ -2433,7 +2432,7 @@ namespace Gloebit.GloebitMoneyModule
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
             if (module == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] ObjectBuy FAILED to access to IBuySellModule");
-                remoteClient.SendAlertMessage("Transaction Failed.  Unable to access IBuySellModule");
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.BUY_SELL_MODULE_INACCESSIBLE, remoteClient);
                 return;
             }
 
@@ -2446,31 +2445,13 @@ namespace Gloebit.GloebitMoneyModule
 
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "ObjectBuy", part);
             
-            string objectStr;
-            switch (saleType) {
-                case 1: // Sell as original (in-place sale)
-                    objectStr = String.Format("Purchase Original: {0}\nFrom: {1}", part.Name, resolveAgentName(part.OwnerID));
-                    break;
-                case 2: // Sell a copy
-                    objectStr = String.Format("Purchase Copy: {0}\nFrom: {1}", part.Name, resolveAgentName(part.OwnerID));
-                    break;
-                case 3: // Sell contents
-                    objectStr = String.Format("Purchase Contents: {0}\nFrom: {1}", part.Name, resolveAgentName(part.OwnerID));
-                    break;
-                default:
-                    // Should not get here unless an object purchase is submitted with a bad or new (but unimplemented here) saleType.
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] ObjectBuy Unrecognized saleType:{0} --- expected 1,2 or 3 for original, copy, or contents", saleType);
-                    remoteClient.SendAlertMessage(String.Format("Can not complete transaction due to unrecognized saleType of {0}.  Please report this error to the region or grid owner.", saleType));
-                    return;
-            }
-            
             GloebitAPI.Transaction txn = buildTransaction(transactionType: TransactionType.USER_BUYS_OBJECT,
                                                           payerID: agentID, payeeID: part.OwnerID, amount: salePrice, subscriptionID: UUID.Zero,
                                                           partID: part.UUID, partName: part.Name, partDescription: part.Description,
                                                           categoryID: categoryID, localID: localID, saleType: saleType);
             // TODO: should we store "transaction description" with the Transaction?
             
-            bool transaction_result = submitTransaction(txn, description, descMap, remoteClient, objectStr);
+            bool transaction_result = submitTransaction(txn, description, descMap);
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy Transaction queued {0}", txn.TransactionID.ToString());
         }
@@ -2609,45 +2590,733 @@ namespace Gloebit.GloebitMoneyModule
              }
         }
         
+        /******************************************/
+        /********* User Messaging Section *********/
+        /******************************************/
+        
+        //**** Notes on OpenSim client messages ***/
+        // AlertMessage: top right.  fades away. also appears in nearby chat (only to intended user). character limit of about 254
+        // BlueBoxMessage: top right. fades away.  slightly darker than AlertMessage in Firestorm.  Also appears in nearby chat (only to intended user). no character limit
+        // AgentAlertMessage w False: top right.  has "OK" button.  Fades away but stays in messages. character limit about 253
+        // AgentAlertMessage w True: center. has "OK" button.  Does not fade away.  Requires clicking ok before interacting with anything else. character limit about 250
+        
+        /// <summary>
+        /// Sends a message to a client.  If user is logged out and OfflineMessageModule is enabled, tries to save message to deliver at next login.
+        /// </summary>
+        /// <param name="client">IClientAPI of user we are messaging.</param>
+        /// <param name="message">String message we are sending to client.</param>
+        /// <param name="agentID">UUID of client we are messaging - only used if user is offline, to attempt saving of message.</param>
+        private void sendMessageToClient(IClientAPI client, string message, UUID agentID)
+        {
+            //payerClient.SendBlueBoxMessage(UUID.Zero, "What is this?", String.Format("BlueBoxMessage: {0}", message));
+            //payerClient.SendAgentAlertMessage(String.Format("AgentAlertMessage: {0}", message), false);
+            //payerClient.SendAgentAlertMessage(String.Format("AgentAlertMessage True: {0}", message), true);
+            //payerClient.SendAlertMessage(String.Format("AlertMessage: {0}", message));
+
+            if (client != null) {
+                //string imMessage = String.Format("{0}\n\n{1}", "Gloebit:", message);
+                string imMessage = message;
+                UUID fromID = UUID.Zero;
+                string fromName = String.Empty; // Left blank as this is not used for the MessageBox message type
+                UUID toID = client.AgentId;
+                bool isFromGroup = false;
+                UUID imSessionID = toID;        // Don't know what this is used for.  Saw it hacked to agent id in friendship module
+                bool isOffline = true;          // Don't know what this is for.  Should probably try both.
+                bool addTimestamp = false;
+                    
+                // TODO: add alternate MessageFromAgent which includes an ok button and doesn't show up in chat, rather goes to notifications
+                GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.MessageBox, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, new byte[0], addTimestamp);
+                client.SendInstantMessage(im);
+            } else {
+                // TODO: do we want to send an email or do anything else?
+                
+                // Attempt to save a message for the offline user.
+                if (agentID != UUID.Zero) {     // Necessary because some txnPrecheckFailures don't currently pass the agentID
+                    // If an OfflineMessageModule is set up and a service is registered at the following, this might work for offline messaging.
+                    // SynchronousRestObjectRequester.MakeRequest<GridInstantMessage, bool>("POST", m_RestURL+"/SaveMessage/", im, 10000)
+                    Scene s = GetAnyScene();
+                    IMessageTransferModule tr = s.RequestModuleInterface<IMessageTransferModule>();
+                    if (tr != null) {
+                        GridInstantMessage im2 = new GridInstantMessage(null, UUID.Zero, "Gloebit", agentID, (byte)InstantMessageDialog.MessageFromAgent, false, message, agentID, true, Vector3.Zero, new byte[0], true);
+                        tr.SendInstantMessage(im2, delegate(bool success) {});
+                    }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Builds a status string and sends it to the client
+        /// Always includes an intro with shortened txn id and a base message.
+        /// May include addtional transaction details and txn id based upon bool arguments and bool overrides.
+        /// </summary>
+        /// <param name="txn">GloebitAPI.Transaction this status is in regards to.</param>
+        /// <param name="client">Client we are messaging.  If null, our sendMessage func will handle properly.</param>
+        /// <param name="baseStatus">String Status message to deliver.</param>
+        /// <param name="showTxnDetails">If true, include txn details in status (can be overriden by global overrides).</param>
+        /// <param name="showTxnID">If true, include full transaction id in status (can be overriden by global overrides).</param>
+        private void sendTxnStatusToClient(GloebitAPI.Transaction txn, IClientAPI client, string baseStatus, bool showTxnDetails, bool showTxnID)
+        {
+            // Determine if we're including Details and ID based on args and overrides
+            bool alwaysShowTxnDetailsOverride = false;
+            bool alwaysShowTxnIDOverride = false;
+            bool neverShowTxnDetailsOverride = false;
+            bool neverShowTxnIDOverride = false;
+            bool includeDetails = (alwaysShowTxnDetailsOverride || (showTxnDetails && !neverShowTxnDetailsOverride));
+            bool includeID = (alwaysShowTxnIDOverride || (showTxnID && !neverShowTxnIDOverride));
+            
+            // Get shortened txn id
+            //int shortenedID = (int)(txn.TransactionID.GetULong() % 10000);
+            string sid = txn.TransactionID.ToString().Substring(0,4).ToUpper();
+            
+            // Build status string
+            string status = String.Format("Gloebit Transaction [{0}]:\n{1}"/*\n"*/, sid, baseStatus);
+            if (includeDetails) {
+                // build txn details string
+                string paymentFrom = String.Format("Payment from: {0}", txn.PayerName);
+                string paymentTo = String.Format("Payment to: {0}", txn.PayeeName);
+                string amountStr = String.Format("Amount: {0:n0} gloebits", txn.Amount);
+                // TODO: add description back in once txn includes it.
+                // string descStr = String.Format("Description: {0}", description);
+                string txnDetails = String.Format("Details:\n   {0}\n   {1}\n   {2}", paymentFrom, paymentTo, amountStr/*, descStr*/);
+                
+                status = String.Format("{0}\n{1}", status, txnDetails);
+            }
+            if (includeID) {
+                // build txn id string
+                string idStr = String.Format("Transaction ID: {0}", txn.TransactionID);
+                
+                status = String.Format("{0}\n{1}", status, idStr);
+            }
+            
+            // Send status string to client
+            sendMessageToClient(client, status, txn.PayerID);
+        }
+        
+        /**** Functions to handle messaging users upon precheck failures in GMM before txn is created ****/
+        
+        /// <summary>
+        /// Inform users of txn precheck failure due to subscription requiring creation.
+        /// Triggered first time an auto-debit transaction comes from an object.
+        /// </summary>
+        /// <param name="payerID">UUID of payer from transaction that triggered this alert.</param>
+        /// <param name="payeeID">UUID of payee from transaction that triggered this alert.</param>
+        /// <param name="amount">Int amount of gloebits from transaction that triggered this alert.</param>
+        /// <param name="sub">GloebitAPI.Subscription being sent to Gloebit for creation.</param>
         private void alertUsersSubscriptionTransactionFailedForSubscriptionCreation(UUID payerID, UUID payeeID, int amount, GloebitAPI.Subscription sub)
         {
             IClientAPI payerClient = LocateClientObject(payerID);
             IClientAPI payeeClient = LocateClientObject(payeeID);
             
-            // Need to alert payer whether online or not as action is required.
-            if (payerClient != null) {
-                payerClient.SendAlertMessage(String.Format("Gloebit: Scripted object attempted payment from you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  Once created, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\nFailed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment To: {2}\n   Amount: {3}", sub.ObjectName, sub.Description, resolveAgentName(payeeID), amount));
-            } else {
-                // TODO: send an email
-            }
+            string failedTxnDetails = String.Format("Failed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment From: {2}\n   Payment To: {3}\n   Amount: {4}", sub.ObjectName, sub.Description, resolveAgentName(payerID), resolveAgentName(payeeID), amount);
+            
+            // TODO: Need to alert payer whether online or not as action is required.
+            sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  Once created, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails), payerID);
             
             // TODO: is this message bad if fraudster?
             // Should alert payee if online as might be expecting feedback
-            if (payeeClient != null) {
-                payeeClient.SendAlertMessage(String.Format("Gloebit: Scripted object attempted payment to you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  If you triggered this transaction with an action, you can retry in a minute.\n\nFailed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Owner: {2}\n   Amount: {3}", sub.ObjectName, sub.Description, resolveAgentName(payerID), amount));
-            }
+            sendMessageToClient(payeeClient, String.Format("Gloebit: Scripted object attempted payment to you, but failed because no subscription exists for this recurring, automated payment.  Creating subscription now.  If you triggered this transaction with an action, you can retry in a minute.\n\n{0}", failedTxnDetails), payeeID);
         }
         
+        /// <summary>
+        /// Inform users of txn precheck failure due to subscription transaction where payee never authorized with Gloebit, or revoked authorization.
+        /// </summary>
+        /// <param name="payerID">UUID of payer from transaction that triggered this alert.</param>
+        /// <param name="payeeID">UUID of payee from transaction that triggered this alert.</param>
+        /// <param name="amount">Int amount of gloebits from transaction that triggered this alert.</param>
+        /// <param name="sub">GloebitAPI.Subscription that triggered this alert.</param>
         private void alertUsersSubscriptionTransactionFailedForGloebitAuthorization(UUID payerID, UUID payeeID, int amount, GloebitAPI.Subscription sub)
         {
             IClientAPI payerClient = LocateClientObject(payerID);
             IClientAPI payeeClient = LocateClientObject(payeeID);
             
-            // Need to alert payer whether online or not as action is required.
+            string failedTxnDetails = String.Format("Failed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment From: {2}\n   Payment To: {3}\n   Amount: {4}", sub.ObjectName, sub.Description, resolveAgentName(payerID), resolveAgentName(payeeID), amount);
+            
+            // TODO: Need to alert payer whether online or not as action is required.
+            sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because you have not authorized this application from Gloebit.  Once you authorize this application, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails), payerID);
             if (payerClient != null) {
-                payerClient.SendAlertMessage(String.Format("Gloebit: Scripted object attempted payment from you, but failed because you have not authorized this application from Gloebit.  Once you authorize this application, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\nFailed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Payment To: {2}\n   Amount: {3}", sub.ObjectName, sub.Description, resolveAgentName(payeeID), amount));
                 m_api.Authorize(payerClient, BaseURI);
-            } else {
-                // TODO: send an email
             }
             
             // TODO: is this message bad if fraudster?
             // Should alert payee if online as might be expecting feedback
-            if (payeeClient != null) {
-                payeeClient.SendAlertMessage(String.Format("Gloebit: Scripted object attempted payment to you, but failed because the object owner has not yet authorized this subscription to make recurring, automated payments.  Requesting authorization now.\n\nFailed Transaction Details:\n   Object Name: {0}\n   Object Description: {1}\n   Owner: {2}\n   Amount: {3}", sub.ObjectName, sub.Description, resolveAgentName(payerID), amount));
+            sendMessageToClient(payeeClient, String.Format("Gloebit: Scripted object attempted payment to you, but failed because the object owner has not yet authorized this subscription to make recurring, automated payments.  Requesting authorization now.\n\n{0}", failedTxnDetails), payeeID);
+        }
+        
+        /// <summary>
+        /// Called when application preparation of a transaction fails before submission to Gloebit is attempted.
+        /// Use to inform users or log issues
+        /// At a minimum, this should inform the user who triggered the transaction of failure so they have feedback.
+        /// This is separated from alertUsersTransactionBegun because there may not be a transaction yet and therefore
+        /// different arguments are needed.
+        /// </summary>
+        /// <param name="typeID">TransactionType that was being prepared.</param>
+        /// <param name="failure">TransactionPrecheckFailure that occurred.</param>
+        /// <param name="payerClient">IClientAPI of payer or null.</param>
+        private void alertUsersTransactionPreparationFailure(TransactionType typeID, TransactionPrecheckFailure failure, IClientAPI payerClient)
+        {
+            // TODO: move these to a string resource at some point.
+            // Set up instruction strings which are used mutliple times
+            string tryAgainRelog = "Please retry your purchase.  If you continue to get this error, relog.";
+            string tryAgainContactOwner = String.Format("Please try again.  If problem persists, contact {0}.", m_contactOwner);
+            string tryAgainContactGloebit = String.Format("Please try again.  If problem persists, contact {0}.", m_contactGloebit);
+            
+            // Set up temp strings to hold failure messages based on transaction type and failure
+            string txnTypeFailure = String.Empty;
+            string precheckFailure = String.Empty;
+            string instruction = String.Empty;
+            
+            // Retrieve failure strings into temp variables based on transaction type and failure
+            switch (typeID) {
+                case TransactionType.USER_BUYS_OBJECT:
+                    // Alert payer only
+                    txnTypeFailure = "Attempt to buy object failed prechecks.";
+                    switch (failure) {
+                        case TransactionPrecheckFailure.BUYING_DISABLED:
+                            precheckFailure = "Buying is not enabled in economy settings.";
+                            instruction = String.Format("If you believe this should be enabled on this region, please contact {0}.", m_contactOwner);
+                            break;
+                        case TransactionPrecheckFailure.OBJECT_NOT_FOUND:
+                            precheckFailure = "Unable to buy now. The object was not found.";
+                            instruction = tryAgainRelog;
+                            break;
+                        case TransactionPrecheckFailure.AMOUNT_MISMATCH:
+                            precheckFailure = "Cannot buy at this price.  Price may have changed.";
+                            instruction = tryAgainRelog;
+                            break;
+                        case TransactionPrecheckFailure.SALE_TYPE_INVALID:
+                            precheckFailure = "Invalid saleType.";
+                            instruction = tryAgainContactOwner;
+                            break;
+                        case TransactionPrecheckFailure.SALE_TYPE_MISMATCH:
+                            precheckFailure = "Sale type mismatch.  Cannot buy this way.  Sale type may have changed.";
+                            instruction = tryAgainRelog;
+                            break;
+                        case TransactionPrecheckFailure.BUY_SELL_MODULE_INACCESSIBLE:
+                            precheckFailure = "Unable to access IBuySellModule necessary for transferring inventory.";
+                            instruction = tryAgainContactOwner;
+                            break;
+                        default:
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented failure TransactionPrecheckFailure [{0}] TransactionType.", failure, typeID);
+                            break;
+                    }
+                    break;
+                case TransactionType.OBJECT_PAYS_USER:
+                    // Alert payer and payee
+                    // never happens currently
+                    // txnTypeFailure = "Attempt by scripted object to pay user failed prechecks.";
+                case TransactionType.USER_PAYS_USER:
+                    // Alert payer only
+                    // never happens currently
+                    // txnTypeFailure = "Attempt to pay user failed prechecks.";
+                case TransactionType.USER_PAYS_OBJECT:
+                    // Alert payer only
+                    // never happens currently
+                    // txnTypeFailure = "Attempt to pay object failed prechecks.";
+                default:
+                    // Alert payer and payee
+                    txnTypeFailure = "Transaction attempt failed prechecks.";
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented failure TransactionType [{0}] Failure [{1}].", typeID, failure);
+                    break;
+            }
+            
+            // build failure message from temp strings
+            string failureDetails = String.Format("Details:\n   {0}", txnTypeFailure);
+            if (!String.IsNullOrEmpty(precheckFailure)) {
+                failureDetails = String.Format("{0}\n   {1}", failureDetails, precheckFailure);
+            }
+            string failureMsg = String.Format("Transaction precheck FAILURE.\n{0}\n\n{1}\n", failureDetails, instruction);
+            
+            // send failure message to client
+            // For now, only alert payer for simplicity and since We should only ever get here from an ObjectBuy
+            // TODO: replace UUID.Zero with the agentID of the payer once we add it to funciton args. -- not vital that these make it to offline user.
+            sendMessageToClient(payerClient, failureMsg, UUID.Zero);
+
+        }
+        
+        /**** Functions to handle messaging transaction status to users (after GloebitAPI.Transaction has been built) ****/
+        
+        /// <summary>
+        /// Called just prior to the application submitting a transaction to Gloebit.
+        /// This function should be used to provide immediate feedback to a user that their request/interaction was received.
+        /// It is assumed that this is almost instantaneous and should be the source of immediate feedback that the user's action
+        /// has resulted in a transaction.  If something added to the application's preparation is likely to delay this, then
+        /// the application may wish to lower the priority of this message in favor of messaging the start of preparation.
+        /// Once this is called, an alert for 1 or more stage status will be received and a transaction completion alert.
+        /// </summary>
+        /// <param name="txn">Transaction that failed.</param>
+        /// <param name="description">String containing txn description since this is not in the Transaction class yet.</param>
+        private void alertUsersTransactionBegun(GloebitAPI.Transaction txn, string description)
+        {
+            // TODO: make user configurable
+            bool showDetailsWithTxnBegun = true;
+            bool showIDWithTxnBegun = false;
+            
+            // TODO: consider using Txn.TransactionTypeString
+            String actionStr = String.Empty;
+            String payeeActionStr = String.Empty;
+            bool messagePayee = false;
+            switch ((TransactionType)txn.TransactionType) {
+                case TransactionType.USER_BUYS_OBJECT:
+                    // Alert payer only; payee will be null
+                    switch (txn.SaleType) {
+                        case 1: // Sell as original (in-place sale)
+                            actionStr = String.Format("Purchase Original: {0}", txn.PartName);
+                            break;
+                        case 2: // Sell a copy
+                            actionStr = String.Format("Purchase Copy: {0}", txn.PartName);
+                            break;
+                        case 3: // Sell contents
+                            actionStr = String.Format("Purchase Contents: {0}", txn.PartName);
+                            break;
+                        default:
+                            // Should not get here as this should fail before transaction is built.
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] Transaction Begun With Unrecognized saleType:{0} --- expected 1,2 or 3 for original, copy, or contents", txn.SaleType);
+                            // TODO: Assert this.
+                            //assert(txn.TransactionType >= 1 && txn.TransactionType <= 3);
+                            break;
+                    }
+                    break;
+                case TransactionType.OBJECT_PAYS_USER:
+                    // Alert payer and payee, as we don't know who triggered it.
+                    // This looks like a message for payee, but is sent to payer
+                    actionStr = String.Format("Auto-debit created by object: {0}", txn.PartName);
+                    payeeActionStr = String.Format("Payment to you from object: {0}", txn.PartName);
+                    messagePayee = true;
+                    break;
+                case TransactionType.USER_PAYS_USER:
+                    // Alert payer only
+                    actionStr = String.Format("Paying User: {0}", txn.PayeeName);
+                    break;
+                case TransactionType.USER_PAYS_OBJECT:
+                    // Alert payer only
+                    actionStr = String.Format("Paying Object: {0}", txn.PartName);
+                    break;
+                default:
+                    // Alert payer and payee
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented TransactionBegun TransactionType [{0}] with description [{1}].", txn.TransactionType, description);
+                    actionStr = "";
+                    break;
+            }
+            
+            // Alert payer
+            IClientAPI payerClient = LocateClientObject(txn.PayerID);
+            // TODO: remove description once in txn and managed in sendTxnStatusToClient
+            //string baseStatus = String.Format("Submitting transaction request...\n   {0}", actionStr);
+            string baseStatus = String.Format("Submitting transaction request...\n   {0}\nDescription: {1}", actionStr, description);
+            sendTxnStatusToClient(txn, payerClient, baseStatus, showDetailsWithTxnBegun, showIDWithTxnBegun);
+            
+            // If necessary, alert Payee
+            if (messagePayee) {
+                IClientAPI payeeClient = LocateClientObject(txn.PayeeID);
+                // TODO: remove description once in txn and managed in sendTxnStatusToClient
+                // string payeeBaseStatus = String.Format("Submitting transaction request...\n   {0}", payeeActionStr);
+                string payeeBaseStatus = String.Format("Submitting transaction request...\n   {0}\nDescription: {1}", payeeActionStr, description);
+                sendTxnStatusToClient(txn, payeeClient, payeeBaseStatus, showDetailsWithTxnBegun, showIDWithTxnBegun);
             }
         }
         
+        /// <summary>
+        /// Called when various stages of the transaction succeed.
+        /// These will never be the final message received, but in failure cases, may provide information that will not be
+        /// contained in the final message, so it is recommended that failure messages make it to at least the user who
+        /// triggered the transaction.
+        /// If desired, the completion of the enaction (asset enacted/delivered) can be used to short circuit to a final success message
+        /// more quickly as the transaction should always eventually succeed after this.
+        /// Stages:
+        /// --- Submitted: TransactU2U call succeeded
+        /// --- Queued: TransactU2U async callback succeeded
+        ///             This will also trigger final success or failure if the transactoin did not include an asset with callback urls.
+        ///             --- currently, this is txn == null which doesn't happen in OpenSim and will eventually switch to using an "asset".
+        /// --- Enacted:
+        /// ------ Funds transferred: AssetEnact started (all Gloebit components of transaction enacted successfully)
+        /// ------ Asset enacted: In Opensim, object delivery or notification of payment completing (local components of transaction enacted successfully)
+        /// --- Consumed: Finalized (notified of successful enact across all components.  commit enacts.  Eventually, all enacts will be consumed/finalized/committed).
+        /// --- Canceled: Probably shouldn't ever get called.  Worth logging.
+        /// </summary>
+        /// <param name="txn">Transaction that failed.</param>
+        /// <param name="stage">TransactionStage which the transaction successfully completed to drive this alert.</param>
+        /// <param name="additionalDetails">String containing additional details to be appended to the alert message.</param>
+        private void alertUsersTransactionStageCompleted(GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, string additionalDetails)
+        {
+            // TODO: make user configurable
+            bool reportAllTxnStagesOverride = false;
+            bool reportNoTxnStagesOverride = false;
+            Dictionary<GloebitAPI.TransactionStage, bool> reportTxnStageMap = new Dictionary<GloebitAPI.TransactionStage, bool>();
+            reportTxnStageMap[GloebitAPI.TransactionStage.ENACT_ASSET] = true;
+            
+            // Determine if we are going to report this stage
+            bool reportThisStage = false;
+            if (reportTxnStageMap.ContainsKey(stage)) {
+                reportThisStage = reportTxnStageMap[stage];
+            }
+            if (!(reportAllTxnStagesOverride || (reportThisStage && !reportNoTxnStagesOverride))) {
+                return;
+            }
+            
+            // TODO: make user configurable
+            bool showDetailsWithTxnStage = false;
+            bool showIDWithTxnStage = false;
+            
+            string status = String.Empty;
+            
+            switch (stage) {
+                case GloebitAPI.TransactionStage.SUBMIT:
+                    status = "Successfully submitted to Gloebit service.";
+                    break;
+                case GloebitAPI.TransactionStage.QUEUE:
+                    // a) queued and gloebits transfered.
+                    // b) resubmitted
+                    // c) queued, but early enact failure
+                    status = "Successfully received by Gloebit and queued for processing.";
+                    break;
+                case GloebitAPI.TransactionStage.ENACT_GLOEBIT:
+                    status = "Successfully transferred gloebits.";
+                    break;
+                case GloebitAPI.TransactionStage.ENACT_ASSET:
+                    switch ((TransactionType)txn.TransactionType) {
+                        case TransactionType.USER_BUYS_OBJECT:
+                            // 5000 - ObjectBuy
+                            // delivered the object/contents purchased.
+                            switch (txn.SaleType) {
+                                case 1: // Sell as original (in-place sale)
+                                    status = "Successfully delivered object.";
+                                    break;
+                                case 2: // Sell a copy
+                                    status = "Successfully delivered copy of object to inventory.";
+                                    break;
+                                case 3: // Sell contents
+                                    status = "Successfully delivered object contents to inventory.";
+                                    break;
+                                default:
+                                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionStageCompleted called on unknown sale type: {0}", txn.SaleType);
+                                    ////status = "Successfully enacted local components of transaction.";
+                                    break;
+                            }
+                            break;
+                        case TransactionType.USER_PAYS_USER:
+                            // 5001 - OnMoneyTransfer - Pay User
+                            // nothing local enacted
+                            ////status = "Successfully enacted local components of transaction.";
+                            break;
+                        case TransactionType.USER_PAYS_OBJECT:
+                            // 5008 - OnMoneyTransfer - Pay Object
+                            // alerted the object that it has been paid.
+                            status = "Successfully notified object of payment.";
+                            break;
+                        case TransactionType.OBJECT_PAYS_USER:
+                            // 5009 - ObjectGiveMoney
+                            // nothing local enacted
+                            ////status = "Successfully enacted local components of transaction.";
+                            break;
+                        default:
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionStageCompleted called on unknown transaction type: {0}", txn.TransactionType);
+                            // TODO: should we throw an exception?  return null?  just continue?
+                            // take no action.
+                            ////status = "Successfully enacted local components of transaction.";
+                            break;
+                    }
+                    break;
+                case GloebitAPI.TransactionStage.CONSUME_GLOEBIT:
+                    status = "Successfully finalized transfer of gloebits.";
+                    break;
+                case GloebitAPI.TransactionStage.CONSUME_ASSET:
+                    status = "Successfully finalized local components of transaction.";
+                    break;
+                case GloebitAPI.TransactionStage.CANCEL_GLOEBIT:
+                    status = "Successfully canceled and rolled back transfer of gloebits.";
+                    break;
+                case GloebitAPI.TransactionStage.CANCEL_ASSET:
+                    status = "Successfully canceled and rolled back local components of transaction.";
+                    break;
+                default:
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionStageCompleted called on unhandled transaction stage : {0}", stage);
+                    // TODO: should we throw an exception?  return null?  just continue?
+                    status = "Successfully completed undefined transaction stage";
+                    break;
+            }
+            
+            // If this is a stage we have not stored a status for, then don't send a message
+            if (String.IsNullOrEmpty(status)) {
+                return;
+            }
+            
+            if (!String.IsNullOrEmpty(additionalDetails)) {
+                status = String.Format("{0}\n{1}", status, additionalDetails);
+            }
+            
+            // for now, we're only giong to send these to the payer.
+            IClientAPI payerClient = LocateClientObject(txn.PayerID);
+            sendTxnStatusToClient(txn, payerClient, status, showDetailsWithTxnStage, showIDWithTxnStage);
+        }
+        
+        /// <summary>
+        /// Called when transaction completes with failure.
+        /// At a minimum, this should always be messaged to the user who triggered the transaction.
+        /// </summary>
+        /// <param name="txn">Transaction that failed.</param>
+        /// <param name="stage">TransactionStage in which the transaction failed to drive this alert.</param>
+        /// <param name="failure">TransactionFailure code providing necessary differentiation on specific failure within a stage.</param>
+        /// <param name="additionalFailureDetails">String containing additional details to be appended to the alert message.</param>
+        private void alertUsersTransactionFailed(GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure, string additionalFailureDetails)
+        {
+            // TODO: make user configurable
+            bool showDetailsWithTxnFailed = false;
+            bool showIDWithTxnFailed = true;
+            // TODO: how does this work with instructions?
+            
+            // TODO: move these to a string resource at some point.
+            // Set up instruction strings which are used mutliple times
+            string tryAgainContactOwner = String.Format("Please try again.  If problem persists, contact {0}.", m_contactOwner);
+            string tryAgainContactGloebit = String.Format("Please try again.  If problem persists, contact {0}.", m_contactGloebit);
+            string subAuthDialogComing = "You will be presented with an additional message instructing you how to approve or deny authorization for future automated transactions for this subscription.";
+            string contactPayee = "Please alert seller/payee to this issue if possible and have seller/payee contact Gloebit.";
+            string contactPayer = "Please alert buyer/payer to this issue.";
+            
+            // Set up temp strings to hold failure messages based on transaction type and failure
+            string error = String.Empty;
+            string instruction = String.Empty;
+            string payeeInstruction = String.Empty;
+            //string payeeAlert = String.Empty;
+            
+            // Separate message for when payee needs an alert whether or not payee knew about transaciton start.
+            bool messagePayee = false;
+            string payeeMessage = String.Empty;
+            
+            // Retrieve failure strings into temp variables based on transaction type and failure
+            switch (stage) {
+                case GloebitAPI.TransactionStage.SUBMIT:
+                    error = "Region failed to propery create and send request to Gloebit.";
+                    instruction = payeeInstruction = tryAgainContactOwner;
+                    break;
+                case GloebitAPI.TransactionStage.AUTHENTICATE:
+                    // Only thing that should cause this right now is an invalid token, so we'll ignore the failure variable.
+                    error = "Payer's authorization of this app has been revoked or expired.";
+                    instruction = "Please re-authenticate with Gloebit.";
+                    // TODO: write a better message.  Also, should we trigger auth message with link?
+                    break;
+                case GloebitAPI.TransactionStage.VALIDATE:
+                    switch (failure) {
+                        // Validate Form
+                        case GloebitAPI.TransactionFailure.FORM_GENERIC_ERROR:                    /* One of many form errors.  something needs fixing.  See reason */
+                            error = "Application provided malformed transaction to Gloebit.";
+                            instruction = payeeInstruction = tryAgainContactOwner;
+                            break;
+                        case GloebitAPI.TransactionFailure.FORM_MISSING_SUBSCRIPTION_ID:          /* marked as subscription, but did not include any subscription id */
+                            error = "Missing subscription-id from transaction marked as subscription payment.";
+                            instruction = payeeInstruction = tryAgainContactOwner;
+                            break;
+                        // Validate Subscription
+                        case GloebitAPI.TransactionFailure.SUBSCRIPTION_NOT_FOUND:              /* No sub found under app + identifiers provided */
+                            error = "Gloebit did not find a subscription with the id provided for this subscription payment.";
+                            instruction = payeeInstruction = tryAgainContactOwner;
+                            break;
+                        // Validate Subscription Authorization
+                        case GloebitAPI.TransactionFailure.SUBSCRIPTION_AUTH_NOT_FOUND:         /* No sub_auth has been created to request authorizaiton yet */
+                            error = "Payer has not authorized payments for this subscription.";
+                            instruction = subAuthDialogComing;
+                            payeeInstruction = contactPayer;
+                            break;
+                        case GloebitAPI.TransactionFailure.SUBSCRIPTION_AUTH_PENDING:
+                            error = "Payer has a pending authorization for this subscription.";
+                            instruction = subAuthDialogComing;
+                            payeeInstruction = contactPayer;
+                            break;
+                        case GloebitAPI.TransactionFailure.SUBSCRIPTION_AUTH_DECLINED:
+                            error = "Payer has declined authorization for this subscription.";
+                            instruction = "There is not currently a method for resetting this authorization request.  If you would like such functionality, please contact Gloebit to request it.";
+                            payeeInstruction = contactPayer;
+                            break;
+                        // Validate Payer
+                        case GloebitAPI.TransactionFailure.PAYER_ACCOUNT_LOCKED:
+                            // TODO: should this message be BUYER ONLY?  Is this a privacy issue?
+                            error = "Payer's Gloebit account is locked.";
+                            instruction = "Please contact Gloebit to resolve any account status issues.";
+                            payeeInstruction = contactPayer;
+                            break;
+                        // Validate Payee
+                        case GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED:
+                            // message payer and payee
+                            error = "Gloebit can not identify payee from OpenSim account.";
+                            instruction = contactPayee;
+                            payeeInstruction = "Please ensure your OpenSim account has an email address, and that you have verified this email address in your Gloebit account.";
+                            messagePayee = true;
+                            payeeMessage = String.Format("Attempt to pay you failed because we cannot identify your Gloebit account from your OpenSim account.\n\n{0}", payeeInstruction);
+                            break;
+                        case GloebitAPI.TransactionFailure.PAYEE_CANNOT_RECEIVE:
+                            // message payer and payee
+                            // TODO: Is it a privacy issue to alert buyer here?
+                            // TODO: research if/when account is in this state.  Only by admin?  All accounts until merchants?
+                            error = "Payee's Gloebit account is unable to receive gloebits.";
+                            instruction = contactPayee;
+                            payeeInstruction = String.Format("Please contact {0} to address this issue", m_contactGloebit);
+                            messagePayee = true;
+                            payeeMessage = String.Format("Attempt to pay you failed because your Gloebit account cannot receive gloebits.\n\n{0}", payeeInstruction);
+                            break;
+                        default:
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionFailed called on unhandled validation failure : {0}", failure);
+                            error = "Validation error.";
+                            instruction = payeeInstruction = tryAgainContactOwner;
+                            break;
+                    }
+                    break;
+                case GloebitAPI.TransactionStage.QUEUE:
+                    // only one error which should make it here right now, and it's generic.
+                    error = "Queuing Error.";
+                    instruction = payeeInstruction = tryAgainContactGloebit;
+                    break;
+                case GloebitAPI.TransactionStage.ENACT_GLOEBIT:
+                    // We get these through early-enact failures via transactU2UCompleted call
+                    error = "Transfer of gloebits failed.";
+                    switch (failure) {
+                        case GloebitAPI.TransactionFailure.INSUFFICIENT_FUNDS:
+                            error = String.Format("{0}  Insufficient funds.", error);
+                            instruction = "Go to https://www.gloebit.com/purchase to get more gloebits.";
+                            payeeInstruction = contactPayer;    // not considering privacy issue since caused by auto-debit and payer would want to know of failure.
+                            break;
+                        default:
+                            error = String.Format("{0}  Failure during processing.", error);
+                            instruction = payeeInstruction = tryAgainContactOwner;
+                            break;
+                    }
+                    break;
+                case GloebitAPI.TransactionStage.ENACT_ASSET:
+                    switch ((TransactionType)txn.TransactionType) {
+                        case TransactionType.USER_BUYS_OBJECT:
+                            // 5000 - ObjectBuy
+                            // delivered the object/contents purchased.
+                            //// additional_details will include one of the following
+                            ////"Can't locate buyer."
+                            ////"Can't access IBuySellModule."
+                            ////"IBuySellModule.BuyObject failed delivery attempt."
+                            switch (txn.SaleType) {
+                                case 1: // Sell as original (in-place sale)
+                                    error = "Delivery of object failed.";
+                                    break;
+                                case 2: // Sell a copy
+                                    error = "Delivery of object copy failed.";
+                                    break;
+                                case 3: // Sell contents
+                                    error = "Delivery of object contents failed.";
+                                    break;
+                                default:
+                                    error = "Enacting of local transaction components failed.";
+                                    break;
+                            }
+                            break;
+                        case TransactionType.USER_PAYS_USER:
+                            // 5001 - OnMoneyTransfer - Pay User
+                            // nothing local enacted
+                            // Currently, shouldn't ever get here.
+                            error = "Enacting of local transaction components failed.";
+                            break;
+                        case TransactionType.USER_PAYS_OBJECT:
+                            // 5008 - OnMoneyTransfer - Pay Object
+                            // alerted the object that it has been paid.
+                            error = "Object payment notification failed.";
+                            break;
+                        case TransactionType.OBJECT_PAYS_USER:
+                            // 5009 - ObjectGiveMoney
+                            // TODO: who to alert payee, or payer.
+                            // Currently, shouldn't ever get here.
+                            error = "Enacting of local transaction components failed.";
+                            break;
+                        default:
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionFailed called on unknown transaction type: {0}", txn.TransactionType);
+                            // TODO: should we throw an exception?  return null?  just continue?
+                            error = "Enacting of local transaction components failed.";
+                            break;
+                    }
+                    break;
+                default:
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionFailed called on unhandled transaction stage : {0}", stage);
+                    // TODO: should we throw an exception?  return null?  just continue?
+                    error = "Unhandled transaction failure.";
+                    break;
+            }
+            
+            // build failure alert from temp strings
+            string status = String.Format("Transaction FAILED.\n   {0}", error);
+            if (!String.IsNullOrEmpty(additionalFailureDetails)) {
+                status = String.Format("{0}\n{1}", status, additionalFailureDetails);
+            }
+            string statusAndInstruction = status;
+            if (!String.IsNullOrEmpty(instruction)) {
+                statusAndInstruction = String.Format("{0}\n{1}", status, instruction);
+            }
+            
+            // send failure alert to payer
+            IClientAPI payerClient = LocateClientObject(txn.PayerID);
+            sendTxnStatusToClient(txn, payerClient, statusAndInstruction, showDetailsWithTxnFailed, showIDWithTxnFailed);
+            
+            // Determine if alert needs to be sent to payee and send
+            IClientAPI payeeClient = null;
+            if (txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER || messagePayee) {
+                // locate payee since we'll need to message
+                payeeClient = LocateClientObject(txn.PayeeID);
+            }
+            // If this is a transaction type where we notified the payer the txn started, we should alert to failure as payer may have triggered the txn
+            if (txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER) {
+                // build failure alert from temp strings
+                statusAndInstruction = status;
+                if (!String.IsNullOrEmpty(payeeInstruction)) {
+                    statusAndInstruction = String.Format("{0}\n{1}", status, payeeInstruction);
+                }
+                sendTxnStatusToClient(txn, payeeClient, statusAndInstruction, showDetailsWithTxnFailed, showIDWithTxnFailed);
+            }
+            
+            // If necessary, send separate message to Payee
+            if (messagePayee) {
+                sendMessageToClient(payeeClient, payeeMessage, txn.PayeeID);
+                // TODO: this message should be delivered to email if client is not online and didn't trigger this message.
+            }
+            
+        }
+        
+        /// <summary>
+        /// Called when a transaction has successfully completed so that necessary notification can be triggered.
+        /// At a minimum, this should notify the user who triggered the transaction.
+        /// </summary>
+        /// <param name="txn">Transaction that succeeded.</param>
+        private void alertUsersTransactionSucceeded(GloebitAPI.Transaction txn)
+        {
+            // TODO: make user configurable
+            bool showDetailsWithTxnSucceeded = false;
+            bool showIDWithTxnSucceeded = false;
+            
+            IClientAPI payerClient = LocateClientObject(txn.PayerID);
+            IClientAPI payeeClient = LocateClientObject(txn.PayeeID);   // get this regardless of messaging since we'll try to update balance
+            
+            // send success message to payer
+            sendTxnStatusToClient(txn, payerClient, "Transaction SUCCEEDED.", showDetailsWithTxnSucceeded, showIDWithTxnSucceeded);
+            
+            // If this is a transaction type where we notified the payer the txn started, we should alert to failure as payer may have triggered the txn
+            if (txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER) {
+                sendTxnStatusToClient(txn, payeeClient, "Transaction SUCCEEDED.", showDetailsWithTxnSucceeded, showIDWithTxnSucceeded);
+            }
+            // TODO: consider if we want to send an alert that payee earned money with transaction details for other transaction types
+            
+            // TODO: should consider updating API to return payee ending balance as well.  Potential privacy issue here if not approved to see balance.
+            
+            // TODO: Once we store description in txn, change 3rd arg in SMB below to Utils.StringToBytes(description)
+            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] XXXXXXXXXXXXXXXXXXXX Log start updating balances after txn:{0}", txn.TransactionID);
+            // Update Payer & Payee balances if still logged in.
+            if (payerClient != null) {
+                if (txn.PayerEndingBalance >= 0) {  /* if -1, got an invalid balance in response.  possible this shouldn't ever happen */
+                    payerClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], txn.PayerEndingBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
+                } else {
+                    // TODO: consider what this delays while it makes non async call GetBalance from GetFundsForAgentID call get balance
+                    int payerBalance = (int)GetFundsForAgentID(txn.PayerID);
+                    payerClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payerBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
+                }
+            }
+            if (payeeClient != null) {
+                // TODO: consider what this delays while it makes non async call GetBalance from GetFundsForAgentID call get balance
+                int payeeBalance = (int)GetFundsForAgentID(txn.PayeeID);
+                payeeClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payeeBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
+            }
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] XXXXXXXXXXXXXXXXXXXX Log finish updating balances after txn:{0}", txn.TransactionID);
+        }
 
         public enum TransactionType : int
         {
@@ -2657,6 +3326,16 @@ namespace Gloebit.GloebitMoneyModule
             USER_PAYS_OBJECT    = 5008,             // comes through OnMoneyTransfer
             OBJECT_PAYS_USER    = 5009,             // script auto debit owner - comes thorugh ObjectGiveMoney
             // USER_BUYS_LAND = 5013,
+        }
+        
+        public enum TransactionPrecheckFailure : int
+        {
+            BUYING_DISABLED,
+            OBJECT_NOT_FOUND,
+            AMOUNT_MISMATCH,
+            SALE_TYPE_INVALID,
+            SALE_TYPE_MISMATCH,
+            BUY_SELL_MODULE_INACCESSIBLE,
         }
         
     }

@@ -50,7 +50,7 @@ namespace Gloebit.GloebitMoneyModule {
         public readonly Uri m_url;
         
         public interface IAsyncEndpointCallback {
-            void transactU2UCompleted (OSDMap responseDataMap, User sender, User recipient, Transaction transaction);
+            void transactU2UCompleted (OSDMap responseDataMap, User sender, User recipient, Transaction transaction, TransactionStage stage, TransactionFailure failure);
             void createSubscriptionCompleted(OSDMap responseDataMap, Subscription subscription);
             void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, Subscription subscription, User sender, IClientAPI client);
         }
@@ -1124,6 +1124,10 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO: if success=false: id, balance, product-count are invalid.  Do not set balance.
                 double balance = responseDataMap["balance"].AsReal();
                 string reason = responseDataMap["reason"];
+                string status = "";
+                if (responseDataMap.ContainsKey("status")) {
+                    status = responseDataMap["status"];
+                }
                 
                 txn.ResponseReceived = true;
                 txn.ResponseSuccess = success;
@@ -1159,9 +1163,87 @@ namespace Gloebit.GloebitMoneyModule {
                             break;
                     }
                 }
+                TransactionStage stage = TransactionStage.BEGIN;
+                TransactionFailure failure = TransactionFailure.NONE;
+                                        
+                // Build Stage & Failure arguments
+                // TODO: eventually, these can be passed directly from server and just converted and passed through to interface func.
+                // TODO: Do we want logs here or in GMM?
+                if (success) {
+                    if (reason == "success") {                          /* successfully queued, early enacted all non-asset transaction parts */
+                        switch (reason) {
+                            case "success":
+                                // TODO: could make a new stage here: EARLY_ENACT
+                            case "resubmitted":
+                            default:
+                                // unhandled response.
+                                stage = TransactionStage.QUEUE;
+                                failure = TransactionFailure.NONE;
+                                break;
+                        }
+                    }
+                } else if (status == "queued") {                                /* successfully queued.  an early enact failed */
+                    // This is a complex error/flow response which we should really consider if there is a better way to handle.
+                    // Is this always a permanent failure?  Could this succeed in queue if user purchased gloebits at same time?
+                    // Can anything other than insufficient funds cause this problem?  Internet Issue?
+                    stage = TransactionStage.ENACT_GLOEBIT;
+                    // TODO: perhaps the stage should be queue here, and early_enact error as this is not being enacted by a transaction processor.
+
+                    if (reason == "insufficient balance") {                     /* permanent failure - actionable by buyer */
+                        failure = TransactionFailure.INSUFFICIENT_FUNDS;
+                    } else if (reason == "pending") {                           /* queue will retry enacts */
+                        // may not be possible.  May only be "pending" if includes a charge part which these will not.
+                        failure = TransactionFailure.ENACTING_GLOEBIT_FAILED;
+                    } else {                                                    /* perm failure - assumes tp will get same response form part.enact */
+                        // Shouldn't ever get here.
+                        failure = TransactionFailure.ENACTING_GLOEBIT_FAILED;
+                    }
+                } else {                                                        /* failure prior to successful queing.  Something requires fixing */
+                    if (reason == "unknown OAuth2 token") {                     /* Invalid Token.  May have been revoked by user or expired */
+                        stage = TransactionStage.AUTHENTICATE;
+                        failure = TransactionFailure.AUTHENTICATION_FAILED;
+                    } else if (status == "queuing-failed") {                    /* failed to queue.  net or processor error */
+                        stage = TransactionStage.QUEUE;
+                        failure = TransactionFailure.QUEUEING_FAILED;
+                    } else if (status == "failed") {                            /* race condition - already queued */
+                        // nothing to tell user.  buyer doesn't need to know it was double submitted
+                        stage = TransactionStage.QUEUE;
+                        failure = TransactionFailure.RACE_CONDITION;
+                    } else if (status == "cannot-spend") {                      /* Buyer's gloebit account is locked and not allowed to spend gloebits */
+                        stage = TransactionStage.VALIDATE;
+                        failure = TransactionFailure.PAYER_ACCOUNT_LOCKED;
+                    } else if (status == "cannot-receive") {                    /* Seller's gloebit account can not receive gloebits */
+                        stage = TransactionStage.VALIDATE;
+                        failure = TransactionFailure.PAYEE_CANNOT_RECEIVE;
+                    } else if (status == "unknown-merchant") {                  /* can not identify merchant from params supplied by app */
+                        stage = TransactionStage.VALIDATE;
+                        failure = TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED;
+                    } else if (reason == "Transaction with automated-transaction=True is missing subscription-id") {
+                        stage = TransactionStage.VALIDATE;
+                        failure = TransactionFailure.FORM_MISSING_SUBSCRIPTION_ID;
+                    } else if (status == "unknown-subscription") {
+                        stage = TransactionStage.VALIDATE;
+                        failure = TransactionFailure.SUBSCRIPTION_NOT_FOUND;
+                    } else if (status == "unknown-subscription-authorization") {
+                        stage = TransactionStage.VALIDATE;
+                        failure = TransactionFailure.SUBSCRIPTION_AUTH_NOT_FOUND;
+                    } else if (status == "subscription-authorization-pending") {
+                        stage = TransactionStage.VALIDATE;
+                        failure = TransactionFailure.SUBSCRIPTION_AUTH_PENDING;
+                    } else if (status == "subscription-authorization-declined") {
+                        stage = TransactionStage.VALIDATE;
+                        failure = TransactionFailure.SUBSCRIPTION_AUTH_DECLINED;
+                    } else {                                                    /* App issue --- Something needs fixing by app */
+                        stage = TransactionStage.VALIDATE;
+                        failure = TransactionFailure.FORM_GENERIC_ERROR;
+                    }
+                }
+                                        
+                // TODO: consider making stage & failure part of the GloebitTransactions table.
+                // still pass explicitly to make sure they can't be modified before callback uses them.
 
                 // TODO - decide if we really want to issue this callback even if the token was invalid
-                m_asyncEndpointCallbacks.transactU2UCompleted(responseDataMap, sender, recipient, txn);
+                m_asyncEndpointCallbacks.transactU2UCompleted(responseDataMap, sender, recipient, txn, stage, failure);
             }));
             
             // Successfully submitted transaction request to Gloebit
@@ -1606,7 +1688,7 @@ namespace Gloebit.GloebitMoneyModule {
             UUID toID = client.AgentId;
             bool isFromGroup = false;
             UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
-            bool isOffline = true;          // Don't know what this is for.  Should probably try both.
+            bool isOffline = true;       // I believe when true, if user is logged out, saves message and delivers it next time the user logs in.
             bool addTimestamp = false;
             GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, Encoding.UTF8.GetBytes(uri.ToString() + "\0"), addTimestamp);
             client.SendInstantMessage(im);
@@ -1635,6 +1717,45 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO: what should we do in this case?  Ideally, Gloebit has also emailed the user when this request was created.
                 // Perhaps, when user is not logged in, add to queue and send when user next logs in.
             }
+        }
+        
+        public enum TransactionStage : int
+        {
+            BEGIN           = 0,    // Not really a stage.  may not need this
+            BUILD           = 100,   // Preparing the transaction locally for submission
+            SUBMIT          = 200,   // Submitting the transaciton to Gloebit via the API Endpoints.
+            AUTHENTICATE    = 300,   // Checking OAuth Token included in header
+            VALIDATE        = 400,   // Validating the txn form submitted to Gloebit -- may need to add in somesubscription specific validations
+            QUEUE           = 500,   // Queing the transaction for processing
+            ENACT_GLOEBIT   = 600,   // perfoming Gloebit components of transaction
+            ENACT_ASSET     = 650,   // performing local components of transaction
+            CONSUME_GLOEBIT = 700,   // committing Gloebit components of transaction
+            CONSUME_ASSET   = 750,   // committing local components of transaction
+            CANCEL_GLOEBIT  = 800,   // canceling gloebit components of transaction
+            CANCEL_ASSET    = 850,   // canceling local components of transaction
+            COMPLETE        = 1000,  // Not really a stage.  May not need this.  Once local asset is consumed, we are complete.
+        }
+        
+        public enum TransactionFailure : int
+        {
+            NONE                            = 0,
+            SUBMISSION_FAILED               = 200,
+            AUTHENTICATION_FAILED           = 300,
+            VALIDATION_FAILED               = 400,
+            FORM_GENERIC_ERROR              = 401,
+            FORM_MISSING_SUBSCRIPTION_ID    = 411,
+            PAYER_ACCOUNT_LOCKED            = 441,
+            PAYEE_CANNOT_BE_IDENTIFIED      = 451,
+            PAYEE_CANNOT_RECEIVE            = 452,
+            SUBSCRIPTION_NOT_FOUND          = 461,
+            SUBSCRIPTION_AUTH_NOT_FOUND     = 471,
+            SUBSCRIPTION_AUTH_PENDING       = 472,
+            SUBSCRIPTION_AUTH_DECLINED      = 473,
+            QUEUEING_FAILED                 = 500,
+            RACE_CONDITION                  = 501,
+            ENACTING_GLOEBIT_FAILED         = 600,
+            INSUFFICIENT_FUNDS              = 601,
+            ENACTING_ASSET_FAILED           = 650
         }
     }
 }
