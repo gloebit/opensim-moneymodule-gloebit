@@ -3250,7 +3250,10 @@ namespace Gloebit.GloebitMoneyModule
             
             // Determine if alert needs to be sent to payee and send
             IClientAPI payeeClient = null;
-            bool attemptedToLocatePayee = false;
+            if (txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER || messagePayee) {
+                // locate payee since we'll need to message
+                payeeClient = LocateClientObject(txn.PayeeID);
+            }
             // If this is a transaction type where we notified the payer the txn started, we should alert to failure as payer may have triggered the txn
             if (txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER) {
                 // build failure alert from temp strings
@@ -3258,16 +3261,11 @@ namespace Gloebit.GloebitMoneyModule
                 if (!String.IsNullOrEmpty(payeeInstruction)) {
                     statusAndInstruction = String.Format("{0}\n{1}", status, payeeInstruction);
                 }
-                payeeClient = LocateClientObject(txn.PayeeID);
-                attemptedToLocatePayee = true;
                 sendTxnStatusToClient(txn, payeeClient, statusAndInstruction, showDetailsWithTxnFailed, showIDWithTxnFailed);
             }
             
             // If necessary, send separate message to Payee
             if (messagePayee) {
-                if (payeeClient == null && attemptedToLocatePayee == false) {
-                    payeeClient = LocateClientObject(txn.PayeeID);
-                }
                 sendMessageToClient(payeeClient, payeeMessage, txn.PayeeID);
                 // TODO: this message should be delivered to email if client is not online and didn't trigger this message.
             }
