@@ -1957,7 +1957,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             EventManager.LandBuyArgs e = m_landAssetMap[txn.TransactionID];
             // Set land buy args that need setting
-            // TODO: do we need to set the e.transactionID?
+            // TODO: should we be creating a new LandBuyArgs and copying the data instead in case anything else subscribes to the LandBuy events and mucked with these?
             e.economyValidated = true;
             e.amountDebited = txn.Amount;
             e.landValidated = false;
@@ -2046,7 +2046,7 @@ namespace Gloebit.GloebitMoneyModule
                         // Local Asset Enact failed - inform user
                         alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.ENACT_ASSET, GloebitAPI.TransactionFailure.ENACTING_ASSET_FAILED, returnMsg);
                         // remove land asset from map since cancel will not get called
-                        // TODO: is this right, or will cancel get called?
+                        // TODO: should we do this here, or adjust ProcessAssetCancelHold to always be called and check state to see if something needs to be undone?
                         if (m_landAssetMap.ContainsKey(txn.TransactionID)) {
                             lock(m_landAssetMap) {
                                 m_landAssetMap.Remove(txn.TransactionID);
@@ -2348,7 +2348,7 @@ namespace Gloebit.GloebitMoneyModule
         // --- TriggerLandBuy: Calls all registered OnLandBuy functions which check the land/economyValidated bools.  If both are true, they proceed and process the land purchase.
         // This system is problematic because the order of validations and process landBuys is unknown, and they lack a middle step to place holds/enact.  Because of this, we need to do a complex integration here.
         // --- In validate, set economyValidated to false to ensure that the LandManager won't process the LandBuy on the first run.
-        // --- In process, if landValidated = true, create and send a u2u transaction for the purchase to Gloebit.  ***Unclear, but likely set transacionID in LandBuyArgs.
+        // --- In process, if landValidated = true, create and send a u2u transaction for the purchase to Gloebit.
         // --- In the asset enact response for the Gloebit Transaction, callTriggerValidateLandBuy.  This time, the GMM can set economyValidated to true.
         // ------ If landValidated is false, return false to enact to cancel transaction.
         // ------ If landValidated is true, call TriggerLandBuy.  GMM shouldn't have to do anything during ProcessLandBuy
@@ -2359,15 +2359,18 @@ namespace Gloebit.GloebitMoneyModule
         /// Called to validate that the monetary portion of a land sale is possible before attempting to process that land sale.
         /// Should set LandBuyArgs.economyValidated to true if/when land sale should proceed.
         /// After all validation functions are called, all process functions are called.
+        /// see also ProcessLandBuy, ProcessAssetEnactHold, and transferLand
         /// </summary>
         /// <param name="osender">Object Scene which sent the request.</param>
         /// <param name="LandBuyArgs">EventManager.LandBuyArgs passed through the event chain
         /// --- agentId: UUID of buyer
-        /// --- groupId: UUID
+        /// --- groupId: UUID of group if being purchased for a group (see LandObject.cs UpdateLandSold)
         /// --- parcelOwnerID: UUID of seller - Set by land validator, so cannot be relied upon in validation.
-        /// ------ ***NOTE*** if group owned, this is a GroupID.  We don't know how to handle this sale yet.
+        /// ------ ***NOTE*** if land is group owned (see LandObject.cs DeedToGroup & UpdateLandSold), this is a GroupID.
+        /// ------ ********** If bought for group, may still be buyers agentID.
+        /// ------ ********** We don't know how to handle sales to or by a group yet.
         /// --- final: bool
-        /// --- groupOwned: bool
+        /// --- groupOwned: bool - whether this is being purchased for a group (see LandObject.cs UpdateLandSold)
         /// --- removeContribution: bool - if true, removes tier contribution if purchase is successful
         /// --- parcelLocalID: int ID of parcel in region
         /// --- parcelArea: int meters square size of parcel
@@ -2375,7 +2378,7 @@ namespace Gloebit.GloebitMoneyModule
         /// --- authenticated: bool - set to false by IClientAPI and ignored.
         /// --- landValidated: bool set by the LandMangementModule during validation
         /// --- economyValidated: bool this validate function should set to true or false
-        /// --- transactionID: int - should probably be set by GMM
+        /// --- transactionID: int - Not used.  Commented out.  Was intended to store auction ID if land was purchased at auction. (see LandObject.cs UpdateLandSold)
         /// --- amountDebited: int - should be set by GMM
         /// </param>
         private void ValidateLandBuy(Object osender, EventManager.LandBuyArgs e)
@@ -2393,32 +2396,9 @@ namespace Gloebit.GloebitMoneyModule
                         e.transactionID = 0;
                     }
                 } else {
-                    //// TODO: consider removing this check as we'll set e.economyValidated to true before this call.
-                    if (e.transactionID == 0) {
-                        // We have a new request that requires a monetary transaction.
-                        // Do nothing for now.
-                        // We could get the user's balance if we'd like and make sure it's >= e.parcelPrice
-                        lock (e)
-                        {
-                            // Should be redundant, but we'll set them anyway.
-                            e.economyValidated = false;
-                            // e.amountDebited = 0;
-                            //// consider: we could set txnID or create the asset here.
-                        }
-                    } else {
-                        // We are on the second Validate call for a land purchase triggered by asset enact after the transfer of funds was successful
-                        // validate that e.amountDebited = e.parcelPrice
-                        // TODO: figure out what else to do here.
-                        lock (e)
-                        {
-                            // Set economy validated to true to ensure that the land processing will occur.
-                            e.economyValidated = true;
-                            //// TODO: possibly do nothing here.  We may set e.economyValidated to true before this is triggered,
-                            //// so this case might be someone else handling the txn.
-                        }
-                    }
-                    
-                    
+                    // We have a new request that requires a monetary transaction.
+                    // Do nothing for now.
+                    //// consider: we could create the asset here.
                 }
             }
         }
@@ -2428,16 +2408,19 @@ namespace Gloebit.GloebitMoneyModule
         /// Called after all validation functions have been called.
         /// Called to process the monetary portion of a land sale.
         /// Should only proceed if LandBuyArgs.economyValidated and LandBuyArgs.landValidated are both true.
-        /// Should set LandBuyArgs.transactionID and LandBuyArgs.amountDebited
+        /// Should set LandBuyArgs.amountDebited
+        /// Also see ValidateLandBuy, ProcessAssetEnactHold and transferLand
         /// </summary>
         /// <param name="osender">Object Scene which sent the request.</param>
         /// <param name="LandBuyArgs">EventManager.LandBuyArgs passed through the event chain
         /// --- agentId: UUID of buyer
-        /// --- groupId: UUID
+        /// --- groupId: UUID of group if being purchased for a group (see LandObject.cs UpdateLandSold)
         /// --- parcelOwnerID: UUID of seller - Set by land validator, so cannot be relied upon in validation.
-        /// ------ ***NOTE*** if group owned, this is a GroupID.  We don't know how to handle this sale yet.
+        /// ------ ***NOTE*** if land is group owned (see LandObject.cs DeedToGroup & UpdateLandSold), this is a GroupID.
+        /// ------ ********** If bought for group, may still be buyers agentID.
+        /// ------ ********** We don't know how to handle sales to or by a group yet.
         /// --- final: bool
-        /// --- groupOwned: bool
+        /// --- groupOwned: bool - whether this is being purchased for a group (see LandObject.cs UpdateLandSold)
         /// --- removeContribution: bool - if true, removes tier contribution if purchase is successful
         /// --- parcelLocalID: int ID of parcel in region
         /// --- parcelArea: int meters square size of parcel
@@ -2445,7 +2428,7 @@ namespace Gloebit.GloebitMoneyModule
         /// --- authenticated: bool - set to false by IClientAPI and ignored.
         /// --- landValidated: bool set by the LandMangementModule during validation
         /// --- economyValidated: bool this validate function should set to true or false
-        /// --- transactionID: int - should probably be set by GMM
+        /// --- transactionID: int - Not used.  Commented out.  Was intended to store auction ID if land was purchased at auction. (see LandObject.cs UpdateLandSold)
         /// --- amountDebited: int - should be set by GMM
         /// </param>
         private void ProcessLandBuy(Object osender, EventManager.LandBuyArgs e)
@@ -2464,7 +2447,8 @@ namespace Gloebit.GloebitMoneyModule
                 } else {
                     // Land is good to go.  Let's submit a transaction
                     //// TODO: verify that e.parcelPrice > 0;
-                    //// TODO: how to make sure this is being handled by us.  Maybe get txn id and find the asset
+                    //// TODO: what if parcelOwnerID is a groupID?
+                    //// TODO: what if isGroupOwned is true and GroupID is not zero?
                     string agentName = resolveAgentName(e.agentId);
                     string ownerName = resolveAgentName(e.parcelOwnerID);
                     Scene s = (Scene) osender;
@@ -2472,13 +2456,9 @@ namespace Gloebit.GloebitMoneyModule
                     string regionID = s.RegionInfo.RegionID.ToString();
                     
                     //// string description = String.Format("{0} object purchased on {1}, {2}", part.Name, regionname, m_gridnick);
-                    string description = String.Format("{0} purchased {1} sq. meters of land with parcel id {2} on {3}, {4} from {5}", agentName, e.parcelArea, e.parcelLocalID, regionname, m_gridnick, ownerName);
+                    string description = String.Format("{0} sq. meters of land with parcel id {1} on {2}, {3}, purchased by {4} from {5}", e.parcelArea, e.parcelLocalID, regionname, m_gridnick, agentName,  ownerName);
                     
                     OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "LandBuy");
-                    
-                    //// TODO: generate random int landTxnID
-                    //// TODO: add landTxnID to descMap
-                    //// TODO: store LandBuyArgs, retrievable by txnID and landTxnID and store landTxnID in txn or asset.
                     
                     GloebitAPI.Transaction txn = buildTransaction(transactionType: TransactionType.USER_BUYS_LAND,
                                                                   payerID: e.agentId, payeeID: e.parcelOwnerID, amount: e.parcelPrice, subscriptionID: UUID.Zero,
@@ -2494,6 +2474,7 @@ namespace Gloebit.GloebitMoneyModule
                         return;
                     } else {
                         // Add LandBuyArgs to dictionary accessible for callback and wait for callback
+                        //// TODO: store scene/region UUID for later retrieval of exact scene.
                         m_landAssetMap[txn.TransactionID] = e;
                         // See TransactU2UCompleted and helper messaging funcs for error messaging on failure - no action required.
                         // See ProcessAssetEnactHold for proceeding with txn on success.
@@ -2509,7 +2490,7 @@ namespace Gloebit.GloebitMoneyModule
                 } else {
                     // Time to complete a transaction
                     // We launched a txn the first time through.
-                    //// TODO: double check and assign any necessary variables.  land will transfer
+                    //// TODO: double check and assign any necessary variables.  if e.landValidated, land has or will transfer.
                 }
             }
                                                  
