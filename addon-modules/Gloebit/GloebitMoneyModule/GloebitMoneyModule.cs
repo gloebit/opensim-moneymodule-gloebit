@@ -749,8 +749,7 @@ namespace Gloebit.GloebitMoneyModule
         
         // TODO: turn this into a data store
         // Store land buy args necessary for completing land transactions
-        // private Dictionary<string, EventManager.LandBuyArgs> m_landAssetMap = new Dictionary<string, EventManager.LandBuyArgs>();
-        private Dictionary<UUID, EventManager.LandBuyArgs> m_landAssetMap = new Dictionary<UUID, EventManager.LandBuyArgs>();
+        private Dictionary<UUID, Object[]> m_landAssetMap = new Dictionary<UUID, Object[]>();
 
         private int ObjectCount = 0;
         private int PriceEnergyUnit = 0;
@@ -1955,7 +1954,9 @@ namespace Gloebit.GloebitMoneyModule
                 returnMsg = "Could not locate land asset for transaction.";
                 return false;
             }
-            EventManager.LandBuyArgs e = m_landAssetMap[txn.TransactionID];
+            Object[] landBuyAsset = m_landAssetMap[txn.TransactionID];
+            UUID regionID = (UUID)landBuyAsset[0];
+            EventManager.LandBuyArgs e = (EventManager.LandBuyArgs)landBuyAsset[1];
             // Set land buy args that need setting
             // TODO: should we be creating a new LandBuyArgs and copying the data instead in case anything else subscribes to the LandBuy events and mucked with these?
             e.economyValidated = true;
@@ -1965,13 +1966,12 @@ namespace Gloebit.GloebitMoneyModule
             //// retrieve client
             IClientAPI sender = LocateClientObject(txn.PayerID);
             if (sender == null) {
+                // TODO: Does it matter if we can't locate the client?  Does this break if sender is null?
                 returnMsg = "Could not locate buyer.";
                 return false;
             }
             //// retrieve scene
-            //// TODO: Get this from the region UUID
-            //Scene s = GetSceneByUUID(UUID.Zero); // Need to store and retrieve UUID for scene
-            Scene s = LocateSceneClientIn(txn.PayerID);
+            Scene s = GetSceneByUUID(regionID);
             if (s == null) {
                 returnMsg = "Could not locate scene.";
                 return false;
@@ -2383,7 +2383,7 @@ namespace Gloebit.GloebitMoneyModule
         /// </param>
         private void ValidateLandBuy(Object osender, EventManager.LandBuyArgs e)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] ValidateLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
+            // m_log.InfoFormat("[GLOEBITMONEYMODULE] ValidateLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
             
             if (e.economyValidated == false) {  /* Don't reValidate if something has said it's ready to go. */
                 if (e.parcelPrice == 0) {
@@ -2433,9 +2433,7 @@ namespace Gloebit.GloebitMoneyModule
         /// </param>
         private void ProcessLandBuy(Object osender, EventManager.LandBuyArgs e)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] ProcessLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
-            
-            
+            // m_log.InfoFormat("[GLOEBITMONEYMODULE] ProcessLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
             
             if (e.economyValidated == false) {  /* first time through */
                 if (!e.landValidated) {
@@ -2449,13 +2447,13 @@ namespace Gloebit.GloebitMoneyModule
                     //// TODO: verify that e.parcelPrice > 0;
                     //// TODO: what if parcelOwnerID is a groupID?
                     //// TODO: what if isGroupOwned is true and GroupID is not zero?
+                    //// We'll have to test this and see if/how it fails when groups are involved.
                     string agentName = resolveAgentName(e.agentId);
                     string ownerName = resolveAgentName(e.parcelOwnerID);
                     Scene s = (Scene) osender;
                     string regionname = s.RegionInfo.RegionName;
                     string regionID = s.RegionInfo.RegionID.ToString();
                     
-                    //// string description = String.Format("{0} object purchased on {1}, {2}", part.Name, regionname, m_gridnick);
                     string description = String.Format("{0} sq. meters of land with parcel id {1} on {2}, {3}, purchased by {4} from {5}", e.parcelArea, e.parcelLocalID, regionname, m_gridnick, agentName,  ownerName);
                     
                     OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "LandBuy");
@@ -2473,27 +2471,23 @@ namespace Gloebit.GloebitMoneyModule
                         //// TODO: message error
                         return;
                     } else {
-                        // Add LandBuyArgs to dictionary accessible for callback and wait for callback
-                        //// TODO: store scene/region UUID for later retrieval of exact scene.
-                        m_landAssetMap[txn.TransactionID] = e;
+                        // Add region UUID and LandBuyArgs to dictionary accessible for callback and wait for callback
+                        m_landAssetMap[txn.TransactionID] = new Object[2]{s.RegionInfo.originRegionID, e};
                         // See TransactU2UCompleted and helper messaging funcs for error messaging on failure - no action required.
                         // See ProcessAssetEnactHold for proceeding with txn on success.
                     }
                 }
-                
             } else {                            /* economy is validated.  Second time through or 0G txn */
                 if (e.parcelPrice == 0) {
                     // Free land.  No economic part.
-                    // might verify that e.transactionID == 0
                     e.amountDebited = 0;
-                    
                 } else {
-                    // Time to complete a transaction
-                    // We launched a txn the first time through.
-                    //// TODO: double check and assign any necessary variables.  if e.landValidated, land has or will transfer.
+                    // Second time through.  Completing a transaction we launched the first time through.
+                    // if e.landValidated, land has or will transfer.
+                    // We can't verify here because the land process may happen after economy, so do nothing here.
+                    // See processAssetEnactHold and transferLand for resolution.
                 }
             }
-                                                 
         }
 
         /// <summary>
