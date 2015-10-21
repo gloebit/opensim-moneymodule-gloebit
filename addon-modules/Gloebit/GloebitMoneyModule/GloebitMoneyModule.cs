@@ -1991,9 +1991,14 @@ namespace Gloebit.GloebitMoneyModule
             
             //// Trigger process
             s.EventManager.TriggerLandBuy(sender, e);
-            //// TODO: verify that land transferred successfully
-            //// --- if not, return false so txn is canceled and rolled back
-            //// --- if true, return true so txn will be consumed.
+            // Verify that land transferred successfully - sad that we have to check this.
+            ILandObject parcel = s.LandChannel.GetLandObject(e.parcelLocalID);
+            UUID newOwnerID = parcel.LandData.OwnerID;
+            if (newOwnerID != txn.PayerID) {
+                // This should only happen if due to race condition.  Unclear if possible or result.
+                returnMsg = "Land transfer failed.  Owner is not buyer.";
+                return false;
+            }
             returnMsg = "Transfer of land succeeded.";
             return true;
         }
