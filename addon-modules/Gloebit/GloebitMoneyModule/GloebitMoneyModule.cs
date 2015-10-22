@@ -746,6 +746,10 @@ namespace Gloebit.GloebitMoneyModule
         /// Scenes by Region Handle
         /// </summary>
         private Dictionary<ulong, Scene> m_scenel = new Dictionary<ulong, Scene>();
+        
+        // TODO: turn this into a data store
+        // Store land buy args necessary for completing land transactions
+        private Dictionary<UUID, Object[]> m_landAssetMap = new Dictionary<UUID, Object[]>();
 
         private int ObjectCount = 0;
         private int PriceEnergyUnit = 0;
@@ -948,7 +952,7 @@ namespace Gloebit.GloebitMoneyModule
                 scene.EventManager.OnAvatarEnteringNewParcel += AvatarEnteringParcel;
                 scene.EventManager.OnMakeChildAgent += MakeChildAgent;
                 scene.EventManager.OnValidateLandBuy += ValidateLandBuy;
-                scene.EventManager.OnLandBuy += processLandBuy;
+                scene.EventManager.OnLandBuy += ProcessLandBuy;
                 
             }
         }
@@ -1190,6 +1194,10 @@ namespace Gloebit.GloebitMoneyModule
                     isSubscriptionDebit = true;
                     // TODO: should I get the subscription ID here instead of passing it in?
                     // TODO: what to do if subscriptionID is zero?
+                    break;
+                case TransactionType.USER_BUYS_LAND:
+                    // 5013 - OnLandBuy
+                    transactionTypeString = "User Buys Land";
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] buildTransaction failed --- unknown transaction type: {0}", transactionType);
@@ -1918,7 +1926,8 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // Retrieve BuySellModule used for dilivering this asset
-            Scene s = LocateSceneClientIn(buyerClient.AgentId);    // TODO: should we be locating the scene the part is in instead of the agent in case the agent moved?
+            Scene s = LocateSceneClientIn(buyerClient.AgentId);
+            // TODO: we should be locating the scene the part is in instead of the agent in case the agent moved (to a non Gloebit region) -- maybe store scene ID in asset -- see processLandBuy?
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
             if (module == null) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverObject FAILED to access to IBuySellModule");
@@ -1936,6 +1945,62 @@ namespace Gloebit.GloebitMoneyModule
                 returnMsg = "object delivery succeeded";
             }
             return success;
+        }
+        
+        private bool transferLand(GloebitAPI.Transaction txn, out string returnMsg) {
+            //// retrieve LandBuyArgs from assetMap
+            bool foundArgs = m_landAssetMap.ContainsKey(txn.TransactionID);
+            if (!foundArgs) {
+                returnMsg = "Could not locate land asset for transaction.";
+                return false;
+            }
+            Object[] landBuyAsset = m_landAssetMap[txn.TransactionID];
+            UUID regionID = (UUID)landBuyAsset[0];
+            EventManager.LandBuyArgs e = (EventManager.LandBuyArgs)landBuyAsset[1];
+            // Set land buy args that need setting
+            // TODO: should we be creating a new LandBuyArgs and copying the data instead in case anything else subscribes to the LandBuy events and mucked with these?
+            e.economyValidated = true;
+            e.amountDebited = txn.Amount;
+            e.landValidated = false;
+            
+            //// retrieve client
+            IClientAPI sender = LocateClientObject(txn.PayerID);
+            if (sender == null) {
+                // TODO: Does it matter if we can't locate the client?  Does this break if sender is null?
+                returnMsg = "Could not locate buyer.";
+                return false;
+            }
+            //// retrieve scene
+            Scene s = GetSceneByUUID(regionID);
+            if (s == null) {
+                returnMsg = "Could not locate scene.";
+                return false;
+            }
+            
+            //// Trigger validate
+            s.EventManager.TriggerValidateLandBuy(sender, e);
+            // Check land validation
+            if (!e.landValidated) {
+                returnMsg = "Land validation failed.";
+                return false;
+            }
+            if (e.parcelOwnerID != txn.PayeeID) {
+                returnMsg = "Parcel owner changed.";
+                return false;
+            }
+            
+            //// Trigger process
+            s.EventManager.TriggerLandBuy(sender, e);
+            // Verify that land transferred successfully - sad that we have to check this.
+            ILandObject parcel = s.LandChannel.GetLandObject(e.parcelLocalID);
+            UUID newOwnerID = parcel.LandData.OwnerID;
+            if (newOwnerID != txn.PayerID) {
+                // This should only happen if due to race condition.  Unclear if possible or result.
+                returnMsg = "Land transfer failed.  Owner is not buyer.";
+                return false;
+            }
+            returnMsg = "Transfer of land succeeded.";
+            return true;
         }
         
         public bool processAssetEnactHold(GloebitAPI.Transaction txn, out string returnMsg) {
@@ -1977,6 +2042,22 @@ namespace Gloebit.GloebitMoneyModule
                     // 5009 - ObjectGiveMoney
                     // nothing to enact.
                     break;
+                case TransactionType.USER_BUYS_LAND:
+                    // 5013 - OnLandBuy
+                    // Need to transfer land
+                    bool transferred = transferLand(txn, out returnMsg);
+                    if (!transferred) {
+                        returnMsg = String.Format("Asset enact failed: {0}", returnMsg);
+                        // Local Asset Enact failed - inform user
+                        alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.ENACT_ASSET, GloebitAPI.TransactionFailure.ENACTING_ASSET_FAILED, returnMsg);
+                        // remove land asset from map since cancel will not get called
+                        // TODO: should we do this here, or adjust ProcessAssetCancelHold to always be called and check state to see if something needs to be undone?
+                        lock(m_landAssetMap) {
+                            m_landAssetMap.Remove(txn.TransactionID);
+                        }
+                        return false;
+                    }
+                    break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] processAssetEnactHold called on unknown transaction type: {0}", txn.TransactionType);
                     // TODO: should we throw an exception?  return null?  just continue?
@@ -2016,6 +2097,13 @@ namespace Gloebit.GloebitMoneyModule
                 case TransactionType.OBJECT_PAYS_USER:
                     // 5009 - ObjectGiveMoney
                     // nothing to finalize
+                    break;
+                case TransactionType.USER_BUYS_LAND:
+                    // 5013 - OnLandBuy
+                    // Remove land asset from map
+                    lock(m_landAssetMap) {
+                        m_landAssetMap.Remove(txn.TransactionID);
+                    }
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] processAssetConsumeHold called on unknown transaction type: {0}", txn.TransactionType);
@@ -2064,6 +2152,10 @@ namespace Gloebit.GloebitMoneyModule
                 case TransactionType.OBJECT_PAYS_USER:
                     // 5009 - ObjectGiveMoney
                     // nothing to cancel
+                    break;
+                case TransactionType.USER_BUYS_LAND:
+                    // 5013 - OnLandBuy
+                    // nothing to cancel, if we're here, it is because land was not transferred successfully.
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] processAssetCancelHold called on unknown transaction type: {0}", txn.TransactionType);
@@ -2240,21 +2332,160 @@ namespace Gloebit.GloebitMoneyModule
                                  TeleportMinPrice, TeleportPriceExponent);
         }
 
+        /*********************************/
+        /*** Land Purchasing Functions ***/
+        /*********************************/
+        
+        // NOTE:
+        // This system first calls the preflightBuyLandPrep XMLRPC function to run some checks and produce some info for the buyer.  If this is not implemented, land purchasing will not proceed.
+        // When a user click's buy, this sends an event to the server which triggers the IClientAPI's HandleParcelBuyRequest function.
+        // --- validates the agentID and sessionID
+        // --- sets agentID, groupID, final, groupOwned, removeContribution, parcelLocalID, parcelArea, and parcelPrice to the packet data and authenticated to false.
+        // ------ authenticated should probably be true since this is what the IClientAPI does, but it is set to false and ignored.
+        // --- Calls all registered OnParcelBuy events, one (and maybe the only) of which is the Scene's ProcessParcelBuy function.
+        // Scene's ProcessParcelBuy func in Scene.PacketHandlers.cs
+        // This function creates the LandBuyArgs and then calls two EventManager functions in succession:
+        // --- TriggerValidateLandBuy: Calls all registered OnValidateLandBuy functions.  These are expected to set some variables, run some checks, and set the landValidated and economyValidated bools.
+        // --- TriggerLandBuy: Calls all registered OnLandBuy functions which check the land/economyValidated bools.  If both are true, they proceed and process the land purchase.
+        // This system is problematic because the order of validations and process landBuys is unknown, and they lack a middle step to place holds/enact.  Because of this, we need to do a complex integration here.
+        // --- In validate, set economyValidated to false to ensure that the LandManager won't process the LandBuy on the first run.
+        // --- In process, if landValidated = true, create and send a u2u transaction for the purchase to Gloebit.
+        // --- In the asset enact response for the Gloebit Transaction, callTriggerValidateLandBuy.  This time, the GMM can set economyValidated to true.
+        // ------ If landValidated is false, return false to enact to cancel transaction.
+        // ------ If landValidated is true, call TriggerLandBuy.  GMM shouldn't have to do anything during ProcessLandBuy
+        // --------- Ideally, we can verify that the land transferred.  If not, return false to cancel txn.  If true, return true to signal enacted so that txn will be consumed.
+        
+        /// <summary>
+        /// Event triggered when a client chooses to purchase land.
+        /// Called to validate that the monetary portion of a land sale is possible before attempting to process that land sale.
+        /// Should set LandBuyArgs.economyValidated to true if/when land sale should proceed.
+        /// After all validation functions are called, all process functions are called.
+        /// see also ProcessLandBuy, ProcessAssetEnactHold, and transferLand
+        /// </summary>
+        /// <param name="osender">Object Scene which sent the request.</param>
+        /// <param name="LandBuyArgs">EventManager.LandBuyArgs passed through the event chain
+        /// --- agentId: UUID of buyer
+        /// --- groupId: UUID of group if being purchased for a group (see LandObject.cs UpdateLandSold)
+        /// --- parcelOwnerID: UUID of seller - Set by land validator, so cannot be relied upon in validation.
+        /// ------ ***NOTE*** if land is group owned (see LandObject.cs DeedToGroup & UpdateLandSold), this is a GroupID.
+        /// ------ ********** If bought for group, may still be buyers agentID.
+        /// ------ ********** We don't know how to handle sales to or by a group yet.
+        /// --- final: bool
+        /// --- groupOwned: bool - whether this is being purchased for a group (see LandObject.cs UpdateLandSold)
+        /// --- removeContribution: bool - if true, removes tier contribution if purchase is successful
+        /// --- parcelLocalID: int ID of parcel in region
+        /// --- parcelArea: int meters square size of parcel
+        /// --- parcelPrice: int price buyer will pay
+        /// --- authenticated: bool - set to false by IClientAPI and ignored.
+        /// --- landValidated: bool set by the LandMangementModule during validation
+        /// --- economyValidated: bool this validate function should set to true or false
+        /// --- transactionID: int - Not used.  Commented out.  Was intended to store auction ID if land was purchased at auction. (see LandObject.cs UpdateLandSold)
+        /// --- amountDebited: int - should be set by GMM
+        /// </param>
         private void ValidateLandBuy(Object osender, EventManager.LandBuyArgs e)
         {
+            // m_log.InfoFormat("[GLOEBITMONEYMODULE] ValidateLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
             
-            
-            lock (e)
-            {
-                e.economyValidated = true;
+            if (e.economyValidated == false) {  /* Don't reValidate if something has said it's ready to go. */
+                if (e.parcelPrice == 0) {
+                    // No monetary component, so we can just approve this.
+                    e.economyValidated = true;
+                    // Should be redundant, but we'll set them anyway.
+                    e.amountDebited = 0;
+                    e.transactionID = 0;
+                } else {
+                    // We have a new request that requires a monetary transaction.
+                    // Do nothing for now.
+                    //// consider: we could create the asset here.
+                }
             }
-       
-            
         }
 
-        private void processLandBuy(Object osender, EventManager.LandBuyArgs e)
+        /// <summary>
+        /// Event triggered when a client chooses to purchase land.
+        /// Called after all validation functions have been called.
+        /// Called to process the monetary portion of a land sale.
+        /// Should only proceed if LandBuyArgs.economyValidated and LandBuyArgs.landValidated are both true.
+        /// Should set LandBuyArgs.amountDebited
+        /// Also see ValidateLandBuy, ProcessAssetEnactHold and transferLand
+        /// </summary>
+        /// <param name="osender">Object Scene which sent the request.</param>
+        /// <param name="LandBuyArgs">EventManager.LandBuyArgs passed through the event chain
+        /// --- agentId: UUID of buyer
+        /// --- groupId: UUID of group if being purchased for a group (see LandObject.cs UpdateLandSold)
+        /// --- parcelOwnerID: UUID of seller - Set by land validator, so cannot be relied upon in validation.
+        /// ------ ***NOTE*** if land is group owned (see LandObject.cs DeedToGroup & UpdateLandSold), this is a GroupID.
+        /// ------ ********** If bought for group, may still be buyers agentID.
+        /// ------ ********** We don't know how to handle sales to or by a group yet.
+        /// --- final: bool
+        /// --- groupOwned: bool - whether this is being purchased for a group (see LandObject.cs UpdateLandSold)
+        /// --- removeContribution: bool - if true, removes tier contribution if purchase is successful
+        /// --- parcelLocalID: int ID of parcel in region
+        /// --- parcelArea: int meters square size of parcel
+        /// --- parcelPrice: int price buyer will pay
+        /// --- authenticated: bool - set to false by IClientAPI and ignored.
+        /// --- landValidated: bool set by the LandMangementModule during validation
+        /// --- economyValidated: bool this validate function should set to true or false
+        /// --- transactionID: int - Not used.  Commented out.  Was intended to store auction ID if land was purchased at auction. (see LandObject.cs UpdateLandSold)
+        /// --- amountDebited: int - should be set by GMM
+        /// </param>
+        private void ProcessLandBuy(Object osender, EventManager.LandBuyArgs e)
         {
+            // m_log.InfoFormat("[GLOEBITMONEYMODULE] ProcessLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
             
+            if (e.economyValidated == false) {  /* first time through */
+                if (!e.landValidated) {
+                    // Something's wrong with the land, can't continue
+                    // Ideally, the land system would message this error, but they don't, so we will.
+                    IClientAPI payerClient = LocateClientObject(e.agentId);
+                    alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LAND, TransactionPrecheckFailure.LAND_VALIDATION_FAILED, payerClient);
+                    return;
+                } else {
+                    // Land is good to go.  Let's submit a transaction
+                    //// TODO: verify that e.parcelPrice > 0;
+                    //// TODO: what if parcelOwnerID is a groupID?
+                    //// TODO: what if isGroupOwned is true and GroupID is not zero?
+                    //// We'll have to test this and see if/how it fails when groups are involved.
+                    string agentName = resolveAgentName(e.agentId);
+                    string ownerName = resolveAgentName(e.parcelOwnerID);
+                    Scene s = (Scene) osender;
+                    string regionname = s.RegionInfo.RegionName;
+                    string regionID = s.RegionInfo.RegionID.ToString();
+                    
+                    string description = String.Format("{0} sq. meters of land with parcel id {1} on {2}, {3}, purchased by {4} from {5}", e.parcelArea, e.parcelLocalID, regionname, m_gridnick, agentName,  ownerName);
+                    
+                    OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "LandBuy");
+                    
+                    GloebitAPI.Transaction txn = buildTransaction(transactionType: TransactionType.USER_BUYS_LAND,
+                                                                  payerID: e.agentId, payeeID: e.parcelOwnerID, amount: e.parcelPrice, subscriptionID: UUID.Zero,
+                                                                  partID: UUID.Zero, partName: null, partDescription: String.Empty,
+                                                                  categoryID: UUID.Zero, localID: 0, saleType: 0);
+                    // TODO: should we store "transaction description" with the Transaction?
+                    
+                    bool submission_result = submitTransaction(txn, description, descMap);
+                    
+                    if (!submission_result) {
+                        // payment failed.  message user and halt attempt to transfer land
+                        //// TODO: message error
+                        return;
+                    } else {
+                        // Add region UUID and LandBuyArgs to dictionary accessible for callback and wait for callback
+                        m_landAssetMap[txn.TransactionID] = new Object[2]{s.RegionInfo.originRegionID, e};
+                        // See TransactU2UCompleted and helper messaging funcs for error messaging on failure - no action required.
+                        // See ProcessAssetEnactHold for proceeding with txn on success.
+                    }
+                }
+            } else {                            /* economy is validated.  Second time through or 0G txn */
+                if (e.parcelPrice == 0) {
+                    // Free land.  No economic part.
+                    e.amountDebited = 0;
+                } else {
+                    // Second time through.  Completing a transaction we launched the first time through.
+                    // if e.landValidated, land has or will transfer.
+                    // We can't verify here because the land process may happen after economy, so do nothing here.
+                    // See processAssetEnactHold and transferLand for resolution.
+                }
+            }
         }
 
         /// <summary>
@@ -2492,6 +2723,7 @@ namespace Gloebit.GloebitMoneyModule
             addDescMapEntry(descMap, "location", "region-id", regionID);
             
             // Add base transaction details
+            //// TODO: change arg to toke a TxnTypeID, add that here, and create func to get the string name from a txnTypeId
             addDescMapEntry(descMap, "transaction", "transaction-type", txnType);
             
             return descMap;
@@ -2800,6 +3032,12 @@ namespace Gloebit.GloebitMoneyModule
                             break;
                     }
                     break;
+                case TransactionType.USER_BUYS_LAND:
+                    // Alert payer only as payer triggered txn
+                    txnTypeFailure = "Attempt to buy land failed prechecks.";
+                    precheckFailure = "Validation of parcel ownership and sale parameters failed.";
+                    instruction = tryAgainRelog;
+                    break;
                 case TransactionType.OBJECT_PAYS_USER:
                     // Alert payer and payee
                     // never happens currently
@@ -2890,6 +3128,10 @@ namespace Gloebit.GloebitMoneyModule
                 case TransactionType.USER_PAYS_OBJECT:
                     // Alert payer only
                     actionStr = String.Format("Paying Object: {0}", txn.PartName);
+                    break;
+                case TransactionType.USER_BUYS_LAND:
+                    // Alert payer only
+                    actionStr = "Purchase Land.";
                     break;
                 default:
                     // Alert payer and payee
@@ -3007,6 +3249,11 @@ namespace Gloebit.GloebitMoneyModule
                             // 5009 - ObjectGiveMoney
                             // nothing local enacted
                             ////status = "Successfully enacted local components of transaction.";
+                            break;
+                        case TransactionType.USER_BUYS_LAND:
+                            // 5013 - OnLandBuy
+                            // land transferred
+                            status = "Successfully transferred parcel to new owner.";
                             break;
                         default:
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionStageCompleted called on unknown transaction type: {0}", txn.TransactionType);
@@ -3220,6 +3467,12 @@ namespace Gloebit.GloebitMoneyModule
                             // Currently, shouldn't ever get here.
                             error = "Enacting of local transaction components failed.";
                             break;
+                        case TransactionType.USER_BUYS_LAND:
+                            // 5013 - OnLandBuy
+                            // land transfer failed
+                            error = "Transfer of parcel to new owner failed.";
+                            instruction = tryAgainContactOwner;
+                            break;
                         default:
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionFailed called on unknown transaction type: {0}", txn.TransactionType);
                             // TODO: should we throw an exception?  return null?  just continue?
@@ -3325,7 +3578,7 @@ namespace Gloebit.GloebitMoneyModule
             REFUND              = 5005,             // not yet implemented
             USER_PAYS_OBJECT    = 5008,             // comes through OnMoneyTransfer
             OBJECT_PAYS_USER    = 5009,             // script auto debit owner - comes thorugh ObjectGiveMoney
-            // USER_BUYS_LAND = 5013,
+            USER_BUYS_LAND      = 5013,             // comes through scene events OnValidateLandBuy and OnLandBuy
         }
         
         public enum TransactionPrecheckFailure : int
@@ -3336,6 +3589,7 @@ namespace Gloebit.GloebitMoneyModule
             SALE_TYPE_INVALID,
             SALE_TYPE_MISMATCH,
             BUY_SELL_MODULE_INACCESSIBLE,
+            LAND_VALIDATION_FAILED,
         }
         
     }
