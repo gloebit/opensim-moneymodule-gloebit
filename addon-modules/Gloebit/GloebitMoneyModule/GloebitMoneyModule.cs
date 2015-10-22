@@ -2052,10 +2052,8 @@ namespace Gloebit.GloebitMoneyModule
                         alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.ENACT_ASSET, GloebitAPI.TransactionFailure.ENACTING_ASSET_FAILED, returnMsg);
                         // remove land asset from map since cancel will not get called
                         // TODO: should we do this here, or adjust ProcessAssetCancelHold to always be called and check state to see if something needs to be undone?
-                        if (m_landAssetMap.ContainsKey(txn.TransactionID)) {
-                            lock(m_landAssetMap) {
-                                m_landAssetMap.Remove(txn.TransactionID);
-                            }
+                        lock(m_landAssetMap) {
+                            m_landAssetMap.Remove(txn.TransactionID);
                         }
                         return false;
                     }
@@ -2103,10 +2101,8 @@ namespace Gloebit.GloebitMoneyModule
                 case TransactionType.USER_BUYS_LAND:
                     // 5013 - OnLandBuy
                     // Remove land asset from map
-                    if (m_landAssetMap.ContainsKey(txn.TransactionID)) {
-                        lock(m_landAssetMap) {
-                            m_landAssetMap.Remove(txn.TransactionID);
-                        }
+                    lock(m_landAssetMap) {
+                        m_landAssetMap.Remove(txn.TransactionID);
                     }
                     break;
                 default:
@@ -2393,13 +2389,10 @@ namespace Gloebit.GloebitMoneyModule
             if (e.economyValidated == false) {  /* Don't reValidate if something has said it's ready to go. */
                 if (e.parcelPrice == 0) {
                     // No monetary component, so we can just approve this.
-                    lock (e)
-                    {
-                        e.economyValidated = true;
-                        // Should be redundant, but we'll set them anyway.
-                        e.amountDebited = 0;
-                        e.transactionID = 0;
-                    }
+                    e.economyValidated = true;
+                    // Should be redundant, but we'll set them anyway.
+                    e.amountDebited = 0;
+                    e.transactionID = 0;
                 } else {
                     // We have a new request that requires a monetary transaction.
                     // Do nothing for now.
