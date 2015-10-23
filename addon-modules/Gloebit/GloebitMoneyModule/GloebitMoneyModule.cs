@@ -1232,7 +1232,7 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
             // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
             //       but could make it easier for app to force synchronicity if desired.
-            bool result = m_api.TransactU2U(GloebitAPI.User.Get(txn.PayerID), txn.PayerName, GloebitAPI.User.Get(txn.PayeeID), txn.PayeeName, resolveAgentEmail(txn.PayeeID), txn.Amount, description, txn, txn.TransactionID, descMap, BaseURI);
+            bool result = m_api.TransactU2U(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
             
             if (!result) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] submitTransaction failed to create HttpWebRequest in GloebitAPI.TransactU2U");
