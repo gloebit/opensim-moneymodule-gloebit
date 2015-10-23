@@ -1045,17 +1045,11 @@ namespace Gloebit.GloebitMoneyModule
                                                           payerID: fromID, payeeID: toID, amount: amount, subscriptionID: sub.SubscriptionID,
                                                           partID: objectID, partName: part.Name, partDescription: part.Description,
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
-            // TODO: should we store "transaction description" with the Transaction?
             
-            bool give_result = submitTransaction(txn, description, descMap);
+            // This needs to be a sync txn because the object recieves the bool response and uses it as txn success or failure.
+            // Todo: remove callbacks from this transaction since we don't use them.
+            bool give_result = submitSyncTransaction(txn, description, descMap);
 
-            // Commented out as this now happens in the alertUsersTransactionSucceeded call.  Left here until we figure out synchrnous issue below.
-            ////BalanceUpdate(fromID, toID, give_result, description);
-
-            // TODO: XXXXXXXXXXXXXXXXX THIS IS PROBLEMATIC!!!!!
-            // I think this sends a "success" response to the script which (in the case of our script) tells the user that payment was successful.
-            // Not sure why this sends the response instead of a "handleMoney" event like with paying an object.
-            // TODO: do we need a synchronous version for this?
             return give_result;
         }
 
@@ -1161,6 +1155,8 @@ namespace Gloebit.GloebitMoneyModule
         /// <returns>GloebitAPI.Transaction created. if successful.</returns>
         private GloebitAPI.Transaction buildTransaction(TransactionType transactionType, UUID payerID, UUID payeeID, int amount, UUID subscriptionID, UUID partID, string partName, string partDescription, UUID categoryID, uint localID, int saleType)
         {
+            // TODO: we should store "transaction description" with the Transaction?
+            
             // Create a transaction ID
             UUID transactionID = UUID.Random();
             
@@ -1209,11 +1205,47 @@ namespace Gloebit.GloebitMoneyModule
             return txn;
         }
         
+        /// <summary>
+        /// Submits a GloebitAPI.Transaction usings synchronous web requests to gloebit for processing and provides any necessary feedback to user/platform.
+        /// Rather than solely receiving a "submission" response, TransactU2UCallback happens during request, and receives transaction success/failure response.
+        /// --- Must call buildTransaction() to create argument 1.
+        /// --- Must call buildBaseTransactionDescMap() to create argument 3.
+        /// </summary>
+        /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
+        /// <param name="description">Description of transaction for transaction history reporting.</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, see buildTransactionDescMap helper function.</param>
+        /// <returns>
+        /// true if sync transactU2U web request was built and submitted successfully and Gloebit components of transaction were enacted successfully.
+        /// false if failed to submit request or if txn failed at any stage prior to successfully enacting Gloebit txn components.
+        /// If true:
+        /// --- IAsyncEndpointCallback transactU2UCompleted has already been called with additional details on state of request.
+        /// --- IAssetCallback processAsset[Enact|Consume|Cancel]Hold will eventually be called by the transaction processor if txn included callbacks.
+        /// </returns>
+        private bool submitSyncTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap)
+        {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] submitTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
+            alertUsersTransactionBegun(txn, description);
+            
+            // TODO: Should we wrap TransactU2U or request.GetResponse in Try/Catch?
+            bool result = m_api.TransactU2USync(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
+            
+            // TODO: determine how to handle this.
+            /*
+            if (!result) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] submitTransaction failed to create HttpWebRequest in GloebitAPI.TransactU2U");
+                alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.SUBMIT, GloebitAPI.TransactionFailure.SUBMISSION_FAILED, String.Empty);
+            } else {
+                alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.SUBMIT, String.Empty);
+            }
+            */
+            return result;
+        }
+        
         
         /// <summary>
         /// Submits a GloebitAPI.Transaction to gloebit for processing and provides any necessary feedback to user/platform.
         /// --- Must call buildTransaction() to create argument 1.
-        /// --- Must call buildBaseTransactionDescMap() to create argument 2.
+        /// --- Must call buildBaseTransactionDescMap() to create argument 3.
         /// </summary>
         /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
         /// <param name="description">Description of transaction for transaction history reporting.</param>
@@ -1230,8 +1262,6 @@ namespace Gloebit.GloebitMoneyModule
             alertUsersTransactionBegun(txn, description);
             
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
-            // TODO: Should we return IAsyncResult in addition to bool on success?  May not be necessary since we've created an asyncCallback interface,
-            //       but could make it easier for app to force synchronicity if desired.
             bool result = m_api.TransactU2U(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
             
             if (!result) {
@@ -2460,7 +2490,6 @@ namespace Gloebit.GloebitMoneyModule
                                                                   payerID: e.agentId, payeeID: e.parcelOwnerID, amount: e.parcelPrice, subscriptionID: UUID.Zero,
                                                                   partID: UUID.Zero, partName: null, partDescription: String.Empty,
                                                                   categoryID: UUID.Zero, localID: 0, saleType: 0);
-                    // TODO: should we store "transaction description" with the Transaction?
                     
                     bool submission_result = submitTransaction(txn, description, descMap);
                     
@@ -2567,7 +2596,6 @@ namespace Gloebit.GloebitMoneyModule
                                                           payerID: fromID, payeeID: toID, amount: e.amount, subscriptionID: UUID.Zero,
                                                           partID: partID, partName: partName, partDescription: partDescription,
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
-            // TODO: should we store "transaction description" with the Transaction?
             
             bool transaction_result = submitTransaction(txn, description, descMap);
             
@@ -2680,7 +2708,6 @@ namespace Gloebit.GloebitMoneyModule
                                                           payerID: agentID, payeeID: part.OwnerID, amount: salePrice, subscriptionID: UUID.Zero,
                                                           partID: part.UUID, partName: part.Name, partDescription: part.Description,
                                                           categoryID: categoryID, localID: localID, saleType: saleType);
-            // TODO: should we store "transaction description" with the Transaction?
             
             bool transaction_result = submitTransaction(txn, description, descMap);
             

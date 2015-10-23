@@ -1109,6 +1109,7 @@ namespace Gloebit.GloebitMoneyModule {
                         case "success":
                             // TODO: could make a new stage here: EARLY_ENACT, or more accurately, ENACT_GLOEBIT is complete.
                         case "resubmitted":
+                            // TODO: this is truly only queued.  see transaction processor.  Early-enact not tried.
                         default:
                             // unhandled response.
                             stage = TransactionStage.QUEUE;
@@ -1284,6 +1285,93 @@ namespace Gloebit.GloebitMoneyModule {
             GloebitTransactionData.Instance.Store(txn);
             return true;
         }
+        
+        public bool TransactU2USync(Transaction txn, string description, OSDMap descMap, User sender, User recipient, string recipientEmail, Uri baseURI)
+        {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURI:{7}", sender.PrincipalID, txn.PayerName, recipient.PrincipalID, txn.PayeeName, recipientEmail, txn.Amount, description, baseURI);
+            
+            // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
+            // TODO: How do we identify recipient?  Get email from profile from OpenSim UUID?
+            // TODO: If we use emails, we may need to make sure account merging works for email/3rd party providers.
+            // TODO: If we allow anyone to receive, need to ensure that gloebits received are locked down until user authenticates as merchant.
+            
+            // ************ BUILD AND SEND TRANSACT U2U POST REQUEST ******** //
+            
+            // TODO: Assert that txn != null
+            // TODO: Assert that transactionId != UUID.Zero
+            
+            // TODO: move away from OSDMap to a standard C# dictionary
+            OSDMap transact_params = new OSDMap();
+            PopulateTransactParams(transact_params, txn, description, recipientEmail, recipient.GloebitID, descMap, baseURI);
+            
+            HttpWebRequest request = BuildGloebitRequest("transact-u2u", "POST", sender, "application/json", transact_params);
+            if (request == null) {
+                // ERROR
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync failed to create HttpWebRequest");
+                return false;
+                // TODO once we return, return error value
+                
+                // TODO: may want to set stage to BUILD and some failure here.
+                // TODO: how does calling function know what error was here?
+                // TODO: something here needs to trigger a txn failure message.
+            }
+            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync about to GetResponse");
+            // **** Synchronously make web request **** //
+            HttpWebResponse response = (HttpWebResponse) request.GetResponse();
+            string status = response.StatusDescription;
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync status:{0}", status);
+            // TODO: think we should set submitted here to status
+            if (response.StatusCode == HttpStatusCode.OK) {
+                // Successfully submitted transaction request to Gloebit
+                txn.Submitted = true;
+                // TODO: if we add stage to txn, we should set it to TransactionStage.SUBMIT here.
+                GloebitTransactionData.Instance.Store(txn);
+                // TODO: should this alert that submission was successful?
+            } else {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync status not OK.  How to handle?");
+                // TODO: something here needs to trigger a txn failure message.
+            }
+            
+            
+            
+            using(StreamReader response_stream = new StreamReader(response.GetResponseStream())) {
+                string response_str = response_stream.ReadToEnd();
+                
+                OSDMap responseDataMap = (OSDMap)OSDParser.DeserializeJson(response_str);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync responseData:{0}", responseDataMap.ToString());
+                
+                //************ PARSE AND HANDLE TRANSACT-U2U RESPONSE *********//
+                
+                // read response and store in txn
+                PopulateTransactResponse(txn, responseDataMap);
+                
+                // Build Stage & Failure arguments
+                TransactionStage stage = TransactionStage.BEGIN;
+                TransactionFailure failure = TransactionFailure.NONE;
+                // TODO: should we pass the txn instead of the individual string args here?
+                PopulateTransactStageAndFailure(out stage, out failure, txn.ResponseSuccess, txn.ResponseStatus, txn.ResponseReason);
+                // TODO: consider making stage & failure part of the GloebitTransactions table.
+                // still pass explicitly to make sure they can't be modified before callback uses them.
+                
+                // Handle any necessary functional adjustments based on failures
+                ProcessTransactFailure(txn, failure, sender);
+                
+                // TODO - decide if we really want to issue this callback even if the token was invalid
+                m_asyncEndpointCallbacks.transactU2UCompleted(responseDataMap, sender, recipient, txn, stage, failure);
+                
+                if (failure == TransactionFailure.NONE) {
+                    // success.  could also check txn.ResponseSuccess
+                    return true;
+                } else {
+                    // failure.
+                    return false;
+                }
+                
+            }
+            
+        }
+        
         
         /// <summary>
         /// Request a new subscription be created by Gloebit for this app.
