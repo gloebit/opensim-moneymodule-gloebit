@@ -1048,7 +1048,7 @@ namespace Gloebit.GloebitMoneyModule
             
             // This needs to be a sync txn because the object recieves the bool response and uses it as txn success or failure.
             // Todo: remove callbacks from this transaction since we don't use them.
-            bool give_result = submitSyncTransaction(txn, description, descMap);
+            bool give_result = SubmitSyncTransaction(txn, description, descMap);
 
             return give_result;
         }
@@ -1137,7 +1137,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <summary>
         /// Build a GloebitAPI.Transaction for a specific TransactionType.  This Transaction will be:
         /// --- persistently stored
-        /// --- used for submitting to Gloebit via the TransactU2U endpoint via submitTransaction(),
+        /// --- used for submitting to Gloebit via the TransactU2U endpoint via <see cref="SubmitTransaction"/> and <see cref="SubmitSyncTransaction"/> functions,
         /// --- used for processing transact enact/consume/cancel callbacks to handle any other OpenSim components of the transaction(such as object delivery),
         /// --- used for tracking/reporting/analysis
         /// </summary>
@@ -1206,24 +1206,60 @@ namespace Gloebit.GloebitMoneyModule
         }
         
         /// <summary>
-        /// Submits a GloebitAPI.Transaction usings synchronous web requests to gloebit for processing and provides any necessary feedback to user/platform.
-        /// Rather than solely receiving a "submission" response, TransactU2UCallback happens during request, and receives transaction success/failure response.
+        /// Submits a GloebitAPI.Transaction to gloebit for processing and provides any necessary feedback to user/platform.
         /// --- Must call buildTransaction() to create argument 1.
         /// --- Must call buildBaseTransactionDescMap() to create argument 3.
         /// </summary>
         /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
         /// <param name="description">Description of transaction for transaction history reporting.</param>
-        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, see buildTransactionDescMap helper function.</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
+        /// <returns>
+        /// true if async transactU2U web request was built and submitted successfully; false if failed to submit request.
+        /// If true:
+        /// --- IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.
+        /// --- IAssetCallback processAsset[Enact|Consume|Cancel]Hold may eventually be called dependent upon processing.
+        /// </returns>
+        private bool SubmitTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap)
+        {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] SubmitTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
+            alertUsersTransactionBegun(txn, description);
+            
+            // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
+            bool result = m_api.TransactU2U(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
+            
+            if (!result) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] SubmitTransaction failed to create HttpWebRequest in GloebitAPI.TransactU2U");
+                alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.SUBMIT, GloebitAPI.TransactionFailure.SUBMISSION_FAILED, String.Empty);
+            } else {
+                alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.SUBMIT, String.Empty);
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// Submits a GloebitAPI.Transaction usings synchronous web requests to gloebit for processing and provides any necessary feedback to user/platform.
+        /// Rather than solely receiving a "submission" response, TransactU2UCallback happens during request, and receives transaction success/failure response.
+        /// --- Must call buildTransaction() to create argument 1.
+        /// --- Must call buildBaseTransactionDescMap() to create argument 3.
+        /// *** NOTE *** Only use this function if you need a synchronous transaction success response.  Use SubmitTransaction Otherwise.
+        /// </summary>
+        /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
+        /// <param name="description">Description of transaction for transaction history reporting.</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
         /// <returns>
         /// true if sync transactU2U web request was built and submitted successfully and Gloebit components of transaction were enacted successfully.
         /// false if failed to submit request or if txn failed at any stage prior to successfully enacting Gloebit txn components.
         /// If true:
         /// --- IAsyncEndpointCallback transactU2UCompleted has already been called with additional details on state of request.
         /// --- IAssetCallback processAsset[Enact|Consume|Cancel]Hold will eventually be called by the transaction processor if txn included callbacks.
+        /// If false:
+        /// --- If stage is any stage after SUBMIT, errors are handled by TransactU2UCompleted callback which was already called.
+        /// --- If stage is SUBMIT, errors must be handled by this function
         /// </returns>
-        private bool submitSyncTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap)
+        private bool SubmitSyncTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] submitTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] SubmitSyncTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
             alertUsersTransactionBegun(txn, description);
             
             // TODO: Should we wrap TransactU2U or request.GetResponse in Try/Catch?
@@ -1232,7 +1268,7 @@ namespace Gloebit.GloebitMoneyModule
             bool result = m_api.TransactU2USync(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI, out stage, out failure);
             
             if (!result) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] submitSyncTransaction failed in stage: {0} with failure: {1}", stage, failure);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] SubmitSyncTransaction failed in stage: {0} with failure: {1}", stage, failure);
                 if (stage == GloebitAPI.TransactionStage.SUBMIT) {
                     // currently need to handle these errors here as the TransactU2UCallback is not called unless sumission is successful and we receive a response
                     alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.SUBMIT, failure, String.Empty);
@@ -1241,39 +1277,6 @@ namespace Gloebit.GloebitMoneyModule
                 // TODO: figure out how/where to send this alert in a synchronous transaction.  Maybe it should always come from the API.
                 // alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.SUBMIT, String.Empty);
             }
-            return result;
-        }
-        
-        
-        /// <summary>
-        /// Submits a GloebitAPI.Transaction to gloebit for processing and provides any necessary feedback to user/platform.
-        /// --- Must call buildTransaction() to create argument 1.
-        /// --- Must call buildBaseTransactionDescMap() to create argument 3.
-        /// </summary>
-        /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
-        /// <param name="description">Description of transaction for transaction history reporting.</param>
-        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, see buildTransactionDescMap helper function.</param>
-        /// <returns>
-        /// true if async transactU2U web request was built and submitted successfully; false if failed to submit request.
-        /// If true:
-        /// --- IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.
-        /// --- IAssetCallback processAsset[Enact|Consume|Cancel]Hold may eventually be called dependent upon processing.
-        /// </returns>
-        private bool submitTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap)
-        {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] submitTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
-            alertUsersTransactionBegun(txn, description);
-            
-            // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
-            bool result = m_api.TransactU2U(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
-            
-            if (!result) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] submitTransaction failed to create HttpWebRequest in GloebitAPI.TransactU2U");
-                alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.SUBMIT, GloebitAPI.TransactionFailure.SUBMISSION_FAILED, String.Empty);
-            } else {
-                alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.SUBMIT, String.Empty);
-            }
-            
             return result;
         }
         
@@ -2494,7 +2497,7 @@ namespace Gloebit.GloebitMoneyModule
                                                                   partID: UUID.Zero, partName: null, partDescription: String.Empty,
                                                                   categoryID: UUID.Zero, localID: 0, saleType: 0);
                     
-                    bool submission_result = submitTransaction(txn, description, descMap);
+                    bool submission_result = SubmitTransaction(txn, description, descMap);
                     
                     if (!submission_result) {
                         // payment failed.  message user and halt attempt to transfer land
@@ -2600,7 +2603,7 @@ namespace Gloebit.GloebitMoneyModule
                                                           partID: partID, partName: partName, partDescription: partDescription,
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
             
-            bool transaction_result = submitTransaction(txn, description, descMap);
+            bool transaction_result = SubmitTransaction(txn, description, descMap);
             
             // TODO - do we need to send any error message to the user if things failed above?`
         }
@@ -2712,7 +2715,7 @@ namespace Gloebit.GloebitMoneyModule
                                                           partID: part.UUID, partName: part.Name, partDescription: part.Description,
                                                           categoryID: categoryID, localID: localID, saleType: saleType);
             
-            bool transaction_result = submitTransaction(txn, description, descMap);
+            bool transaction_result = SubmitTransaction(txn, description, descMap);
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy Transaction queued {0}", txn.TransactionID.ToString());
         }
@@ -3178,7 +3181,7 @@ namespace Gloebit.GloebitMoneyModule
             sendTxnStatusToClient(txn, payerClient, baseStatus, showDetailsWithTxnBegun, showIDWithTxnBegun);
             
             // If necessary, alert Payee
-            if (messagePayee) {
+            if (messagePayee && (txn.PayerID != txn.PayeeID)) {
                 IClientAPI payeeClient = LocateClientObject(txn.PayeeID);
                 // TODO: remove description once in txn and managed in sendTxnStatusToClient
                 // string payeeBaseStatus = String.Format("Submitting transaction request...\n   {0}", payeeActionStr);
@@ -3417,7 +3420,7 @@ namespace Gloebit.GloebitMoneyModule
                             instruction = contactPayee;
                             payeeInstruction = "Please ensure your OpenSim account has an email address, and that you have verified this email address in your Gloebit account.";
                             messagePayee = true;
-                            payeeMessage = String.Format("Attempt to pay you failed because we cannot identify your Gloebit account from your OpenSim account.\n\n{0}", payeeInstruction);
+                            payeeMessage = String.Format("Gloebit:\nAttempt to pay you failed because we cannot identify your Gloebit account from your OpenSim account.\n\n{0}", payeeInstruction);
                             break;
                         case GloebitAPI.TransactionFailure.PAYEE_CANNOT_RECEIVE:
                             // message payer and payee
@@ -3427,7 +3430,7 @@ namespace Gloebit.GloebitMoneyModule
                             instruction = contactPayee;
                             payeeInstruction = String.Format("Please contact {0} to address this issue", m_contactGloebit);
                             messagePayee = true;
-                            payeeMessage = String.Format("Attempt to pay you failed because your Gloebit account cannot receive gloebits.\n\n{0}", payeeInstruction);
+                            payeeMessage = String.Format("Gloebit:\nAttempt to pay you failed because your Gloebit account cannot receive gloebits.\n\n{0}", payeeInstruction);
                             break;
                         default:
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionFailed called on unhandled validation failure : {0}", failure);
@@ -3572,8 +3575,8 @@ namespace Gloebit.GloebitMoneyModule
             // send success message to payer
             sendTxnStatusToClient(txn, payerClient, "Transaction SUCCEEDED.", showDetailsWithTxnSucceeded, showIDWithTxnSucceeded);
             
-            // If this is a transaction type where we notified the payer the txn started, we should alert to failure as payer may have triggered the txn
-            if (txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER) {
+            // If this is a transaction type where we notified the payee the txn started, we should alert to successful completion
+            if ((txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER) && (txn.PayerID != txn.PayeeID)) {
                 sendTxnStatusToClient(txn, payeeClient, "Transaction SUCCEEDED.", showDetailsWithTxnSucceeded, showIDWithTxnSucceeded);
             }
             // TODO: consider if we want to send an alert that payee earned money with transaction details for other transaction types
@@ -3593,7 +3596,7 @@ namespace Gloebit.GloebitMoneyModule
                     payerClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payerBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
                 }
             }
-            if (payeeClient != null) {
+            if ((payeeClient != null) && (txn.PayerID != txn.PayeeID)) {
                 // TODO: consider what this delays while it makes non async call GetBalance from GetFundsForAgentID call get balance
                 int payeeBalance = (int)GetFundsForAgentID(txn.PayeeID);
                 payeeClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payeeBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
