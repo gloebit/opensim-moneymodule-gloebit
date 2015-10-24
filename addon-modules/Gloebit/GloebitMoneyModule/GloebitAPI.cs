@@ -1265,8 +1265,8 @@ namespace Gloebit.GloebitMoneyModule {
                 PopulateTransactResponse(txn, responseDataMap);
                                         
                 // Build Stage & Failure arguments
-                TransactionStage stage = TransactionStage.BEGIN;
-                TransactionFailure failure = TransactionFailure.NONE;
+                 TransactionStage stage = TransactionStage.BEGIN;
+                 TransactionFailure failure = TransactionFailure.NONE;
                 // TODO: should we pass the txn instead of the individual string args here?
                 PopulateTransactStageAndFailure(out stage, out failure, txn.ResponseSuccess, txn.ResponseStatus, txn.ResponseReason);
                 // TODO: consider making stage & failure part of the GloebitTransactions table.
@@ -1286,7 +1286,7 @@ namespace Gloebit.GloebitMoneyModule {
             return true;
         }
         
-        public bool TransactU2USync(Transaction txn, string description, OSDMap descMap, User sender, User recipient, string recipientEmail, Uri baseURI)
+        public bool TransactU2USync(Transaction txn, string description, OSDMap descMap, User sender, User recipient, string recipientEmail, Uri baseURI, out TransactionStage stage, out TransactionFailure failure)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURI:{7}", sender.PrincipalID, txn.PayerName, recipient.PrincipalID, txn.PayeeName, recipientEmail, txn.Amount, description, baseURI);
             
@@ -1308,12 +1308,9 @@ namespace Gloebit.GloebitMoneyModule {
             if (request == null) {
                 // ERROR
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync failed to create HttpWebRequest");
+                stage = TransactionStage.SUBMIT;
+                failure = TransactionFailure.BUILD_WEB_REQUEST_FAILED;
                 return false;
-                // TODO once we return, return error value
-                
-                // TODO: may want to set stage to BUILD and some failure here.
-                // TODO: how does calling function know what error was here?
-                // TODO: something here needs to trigger a txn failure message.
             }
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync about to GetResponse");
@@ -1330,7 +1327,9 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO: should this alert that submission was successful?
             } else {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync status not OK.  How to handle?");
-                // TODO: something here needs to trigger a txn failure message.
+                stage = TransactionStage.SUBMIT;
+                failure = TransactionFailure.SUBMISSION_FAILED;
+                return false;
             }
             
             
@@ -1346,9 +1345,7 @@ namespace Gloebit.GloebitMoneyModule {
                 // read response and store in txn
                 PopulateTransactResponse(txn, responseDataMap);
                 
-                // Build Stage & Failure arguments
-                TransactionStage stage = TransactionStage.BEGIN;
-                TransactionFailure failure = TransactionFailure.NONE;
+                // Populate Stage & Failure arguments based on response
                 // TODO: should we pass the txn instead of the individual string args here?
                 PopulateTransactStageAndFailure(out stage, out failure, txn.ResponseSuccess, txn.ResponseStatus, txn.ResponseReason);
                 // TODO: consider making stage & failure part of the GloebitTransactions table.
@@ -1861,6 +1858,7 @@ namespace Gloebit.GloebitMoneyModule {
         {
             NONE                            = 0,
             SUBMISSION_FAILED               = 200,
+            BUILD_WEB_REQUEST_FAILED        = 201,
             AUTHENTICATION_FAILED           = 300,
             VALIDATION_FAILED               = 400,
             FORM_GENERIC_ERROR              = 401,

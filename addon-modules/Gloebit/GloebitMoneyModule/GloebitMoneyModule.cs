@@ -1227,17 +1227,20 @@ namespace Gloebit.GloebitMoneyModule
             alertUsersTransactionBegun(txn, description);
             
             // TODO: Should we wrap TransactU2U or request.GetResponse in Try/Catch?
-            bool result = m_api.TransactU2USync(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
+            GloebitAPI.TransactionStage stage = GloebitAPI.TransactionStage.BUILD;
+            GloebitAPI.TransactionFailure failure = GloebitAPI.TransactionFailure.NONE;
+            bool result = m_api.TransactU2USync(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI, out stage, out failure);
             
-            // TODO: determine how to handle this.
-            /*
             if (!result) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] submitTransaction failed to create HttpWebRequest in GloebitAPI.TransactU2U");
-                alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.SUBMIT, GloebitAPI.TransactionFailure.SUBMISSION_FAILED, String.Empty);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] submitSyncTransaction failed in stage: {0} with failure: {1}", stage, failure);
+                if (stage == GloebitAPI.TransactionStage.SUBMIT) {
+                    // currently need to handle these errors here as the TransactU2UCallback is not called unless sumission is successful and we receive a response
+                    alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.SUBMIT, failure, String.Empty);
+                }
             } else {
-                alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.SUBMIT, String.Empty);
+                // TODO: figure out how/where to send this alert in a synchronous transaction.  Maybe it should always come from the API.
+                // alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.SUBMIT, String.Empty);
             }
-            */
             return result;
         }
         
