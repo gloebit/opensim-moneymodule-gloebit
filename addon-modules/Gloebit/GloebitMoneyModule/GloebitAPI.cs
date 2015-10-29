@@ -69,9 +69,37 @@ namespace Gloebit.GloebitMoneyModule {
             public string PrincipalID;
             public string GloebitID;
             public string GloebitToken;
+            
+            // TODO: move these hacks to a class inheriting from User but in GMM
+            private bool m_IgnoreNextBalanceRequest = false;
+            private DateTime m_IgnoreTime = DateTime.UtcNow;
+            public bool IgnoreNextBalanceRequestHack
+            {
+                get {
+                    //if (m_IgnoreNextBalanceRequest == true && (m_IgnoreTime.CompareTo(DateTime.UtcNow.AddSeconds(-10)) < 0)) {
+                    if (m_IgnoreNextBalanceRequest) {
+                        m_IgnoreNextBalanceRequest = false;
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] User INBRH get returning true");
+                        return true;
+                    }
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] User INBRH get returning false");
+                    return false;
+                }
+                set {
+                    if (value) {
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] User INBRH set true");
+                        m_IgnoreNextBalanceRequest = true;
+                        m_IgnoreTime = DateTime.UtcNow;
+                    } else {
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] User INBRH set false");
+                        m_IgnoreNextBalanceRequest = false;
+                    }
+                }
+            }
 
             // TODO - update tokenMap to be a proper LRU Cache and hold User objects
-            private static Dictionary<string,string> s_tokenMap = new Dictionary<string, string>();
+            //// private static Dictionary<string,string> s_tokenMap = new Dictionary<string, string>();
+            private static Dictionary<string, User> s_userMap = new Dictionary<string, User>();
 
             public User() {
             }
@@ -80,47 +108,69 @@ namespace Gloebit.GloebitMoneyModule {
                 this.PrincipalID = principalID;
                 this.GloebitID = gloebitID;
                 this.GloebitToken = token;
+                
+                this.m_IgnoreNextBalanceRequest = false;
+                this.m_IgnoreTime = DateTime.UtcNow;
             }
 
             public static User Get(UUID agentID) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] in User.Get");
                 string agentIdStr = agentID.ToString();
-                string token;
+                /* string token;
                 lock(s_tokenMap) {
                     s_tokenMap.TryGetValue(agentIdStr, out token);
+                }*/
+                User u;
+                lock(s_userMap) {
+                    s_userMap.TryGetValue(agentIdStr, out u);
                 }
-
-                if(token == null) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior token for {0}", agentIdStr);
+                
+                if (u != null) {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] User Get found user");
+                    //return user;
+                } else {
+                //// if(token == null) {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior user for {0}", agentIdStr);
                     User[] users = GloebitUserData.Instance.Get("PrincipalID", agentIdStr);
 
                     switch(users.Length) {
                         case 1:
-                            User u = users[0];
+                            u = users[0];
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken));
-                            return u;
+                            /*lock(s_userMap) {
+                                s_userMap[agentIdStr] = u;
+                            }
+                            return u;*/
+                            break;
                         case 0:
-                            return new User(agentIdStr, String.Empty, token);
+                            u = new User(agentIdStr, String.Empty, null);
+                            break;
                         default:
                            throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one prior token for {0}", agentIdStr));
                     }
                     // TODO - use the Gloebit identity service for userId
                 }
 
-                //return null;
-                return new User (agentIdStr, String.Empty, token);
+                // Store in map and return
+                lock(s_userMap) {
+                    s_userMap[agentIdStr] = u;
+                }
+                return u;
             }
 
             public static User Init(UUID agentId, string token) {
                 string agentIdStr = agentId.ToString();
-                lock(s_tokenMap) {
+                /*lock(s_tokenMap) {
                     s_tokenMap[agentIdStr] = token;
-                }
+                }*/
 
                 // TODO: properly store GloebitID when we get it.
                 //User u = new User(agentIdStr, UUID.Zero.ToString(), token);
                 User u = new User(agentIdStr, String.Empty, token);
                 GloebitUserData.Instance.Store(u);
+                lock(s_userMap) {
+                    s_userMap[agentIdStr] = u;
+                }
                 return u;
             }
 
@@ -128,9 +178,9 @@ namespace Gloebit.GloebitMoneyModule {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.InvalidateToken() {0}, valid token? {1}", PrincipalID, !String.IsNullOrEmpty(GloebitToken)); 
                 if(!String.IsNullOrEmpty(GloebitToken)) {
                     GloebitToken = String.Empty;
-                    lock(s_tokenMap) {
+                    /*lock(s_tokenMap) {
                         s_tokenMap.Remove(PrincipalID);
-                    }
+                    }*/
                     GloebitUserData.Instance.Store(this);
                 }
             }
@@ -813,7 +863,7 @@ namespace Gloebit.GloebitMoneyModule {
             OSDMap auth_params = new OSDMap();
 
             auth_params["client_id"] = m_key;
-            if(m_keyAlias != null && m_keyAlias != "") {
+            if(!String.IsNullOrEmpty(m_keyAlias)) {
                 auth_params["r"] = m_keyAlias;
             }
 
@@ -836,6 +886,7 @@ namespace Gloebit.GloebitMoneyModule {
             //*********** SEND AUTHORIZE REQUEST URI TO USER ***********//
             // currently can not launch browser directly for user, so send in message
             
+            // TODO: move this to GMM interface.
             // TODO: Shouldn't this be an interface function from the GMM since launching a web page will be specific to the integration?
             SendUrlToClient(user, "AUTHORIZE GLOEBIT", "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:", request_uri);
 
