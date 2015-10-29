@@ -1130,18 +1130,8 @@ namespace Gloebit.GloebitMoneyModule
             
             // This call is the reason GetAgentBalance requires a client arg.
             // If we try to LocateClientObject at thist time, it will return null for this AgentId
-            double agentBalance = GetAgentBalance(client.AgentId, client);
+            double agentBalance = GetAgentBalance(client.AgentId, client, true);
             client.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)agentBalance, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
-
-            /*
-            GloebitAPI.User user = GloebitAPI.User.Get(client.AgentId);
-            if(user != null && !String.IsNullOrEmpty(user.GloebitToken)) {
-                m_api.GetBalance(user);
-            } else {
-                m_api.Authorize(client, BaseURI);
-            }
-            */
-            // TODO: send balance to client.
         }
         
         private void OnClientLogin(IClientAPI client)
@@ -1325,8 +1315,6 @@ namespace Gloebit.GloebitMoneyModule
                 // HACK to ignore request when this is just after we delivered the balance at login
                 GloebitAPI.User u = GloebitAPI.User.Get(agentID);
                 if (u.IgnoreNextBalanceRequestHack) {
-                    // store and get login balance
-                    // client.SendMoneyBalance(TransactionID, true, new byte[0], returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
                     return;
                 }
                 
@@ -1335,7 +1323,7 @@ namespace Gloebit.GloebitMoneyModule
 
                 try
                 {
-                    realBal = GetAgentBalance(agentID, client);
+                    realBal = GetAgentBalance(agentID, client, true);
                 }
                 catch (Exception e)
                 {
@@ -1675,7 +1663,7 @@ namespace Gloebit.GloebitMoneyModule
             
             //// GloebitAPI.User u = GloebitAPI.User.Get(agentId);
             //// double balance = m_api.GetBalance(u);
-            double balance = GetAgentBalance(agentId, client);
+            double balance = GetAgentBalance(agentId, client, true);
             
             client.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)balance, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
 
@@ -2249,23 +2237,28 @@ namespace Gloebit.GloebitMoneyModule
         /// </summary>
         /// <param name="AgentID">OpenSim AgentID for the user whose balance is being requested</param>
         /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
-        private double GetAgentBalance(UUID agentID, IClientAPI client)
+        private double GetAgentBalance(UUID agentID, IClientAPI client, bool forceAuthOnInvalidToken)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GetAgentBalance AgentID:{0}", agentID);
             ////GloebitAPI.User user = GloebitAPI.User.Get(agentID);
             ////m_log.InfoFormat("[GLOEBITMONEYMODULE] GetFundsForAgentID User:{0}", user);
             double returnfunds = 0.0;
+            bool needsAuth = false;
             
             // Get User for agent
             GloebitAPI.User user = GloebitAPI.User.Get(agentID);
             if(user == null || String.IsNullOrEmpty(user.GloebitToken)) {
                 // If no auth token on file, request authorization.
+                needsAuth = true;
+            } else {
+                returnfunds = m_api.GetBalance(user, out needsAuth);
+                // if GetBalance fails due to invalidToken, needsAuth is set to true
+            }
+            
+            if (needsAuth && forceAuthOnInvalidToken) {
                 // TODO: remove client as arg.  replace with user or string of agentID assuming we can make this work for OnNewClient
                 // Locating the client is aparently always null when this is triggered from OnNewClient at login.  What about when crossing boundaries?
                 m_api.Authorize(client, BaseURI);
-            } else {
-                returnfunds = m_api.GetBalance(user);
-                // TODO: if GetBalance fails due to invalidToken, request authorization
             }
             
             return returnfunds;
@@ -3639,13 +3632,13 @@ namespace Gloebit.GloebitMoneyModule
                     payerClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], txn.PayerEndingBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
                 } else {
                     // TODO: consider what this delays while it makes non async call GetBalance from GetAgentBalance call get balance
-                    int payerBalance = (int)GetAgentBalance(txn.PayerID, payerClient);
+                    int payerBalance = (int)GetAgentBalance(txn.PayerID, payerClient, true);
                     payerClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payerBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
                 }
             }
             if ((payeeClient != null) && (txn.PayerID != txn.PayeeID)) {
                 // TODO: consider what this delays while it makes non async call GetBalance from GetAgentBalance call get balance
-                int payeeBalance = (int)GetAgentBalance(txn.PayeeID, payeeClient);
+                int payeeBalance = (int)GetAgentBalance(txn.PayeeID, payeeClient, false);
                 payeeClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payeeBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
             }
             m_log.InfoFormat("[GLOEBITMONEYMODULE] XXXXXXXXXXXXXXXXXXXX Log finish updating balances after txn:{0}", txn.TransactionID);

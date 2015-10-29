@@ -76,29 +76,23 @@ namespace Gloebit.GloebitMoneyModule {
             public bool IgnoreNextBalanceRequestHack
             {
                 get {
-                    //if (m_IgnoreNextBalanceRequest == true && (m_IgnoreTime.CompareTo(DateTime.UtcNow.AddSeconds(-10)) < 0)) {
-                    if (m_IgnoreNextBalanceRequest) {
+                    if (m_IgnoreNextBalanceRequest == true && (m_IgnoreTime.CompareTo(DateTime.UtcNow.AddSeconds(-10)) > 0)) {
                         m_IgnoreNextBalanceRequest = false;
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] User INBRH get returning true");
                         return true;
                     }
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] User INBRH get returning false");
                     return false;
                 }
                 set {
                     if (value) {
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] User INBRH set true");
                         m_IgnoreNextBalanceRequest = true;
                         m_IgnoreTime = DateTime.UtcNow;
                     } else {
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] User INBRH set false");
                         m_IgnoreNextBalanceRequest = false;
                     }
                 }
             }
 
             // TODO - update tokenMap to be a proper LRU Cache and hold User objects
-            //// private static Dictionary<string,string> s_tokenMap = new Dictionary<string, string>();
             private static Dictionary<string, User> s_userMap = new Dictionary<string, User>();
 
             public User() {
@@ -116,20 +110,13 @@ namespace Gloebit.GloebitMoneyModule {
             public static User Get(UUID agentID) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] in User.Get");
                 string agentIdStr = agentID.ToString();
-                /* string token;
-                lock(s_tokenMap) {
-                    s_tokenMap.TryGetValue(agentIdStr, out token);
-                }*/
+                
                 User u;
                 lock(s_userMap) {
                     s_userMap.TryGetValue(agentIdStr, out u);
                 }
                 
-                if (u != null) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] User Get found user");
-                    //return user;
-                } else {
-                //// if(token == null) {
+                if (u == null) {
                     m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior user for {0}", agentIdStr);
                     User[] users = GloebitUserData.Instance.Get("PrincipalID", agentIdStr);
 
@@ -137,10 +124,6 @@ namespace Gloebit.GloebitMoneyModule {
                         case 1:
                             u = users[0];
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken));
-                            /*lock(s_userMap) {
-                                s_userMap[agentIdStr] = u;
-                            }
-                            return u;*/
                             break;
                         case 0:
                             u = new User(agentIdStr, String.Empty, null);
@@ -151,7 +134,7 @@ namespace Gloebit.GloebitMoneyModule {
                     // TODO - use the Gloebit identity service for userId
                 }
 
-                // Store in map and return
+                // Store in map and return User
                 lock(s_userMap) {
                     s_userMap[agentIdStr] = u;
                 }
@@ -160,9 +143,6 @@ namespace Gloebit.GloebitMoneyModule {
 
             public static User Init(UUID agentId, string token) {
                 string agentIdStr = agentId.ToString();
-                /*lock(s_tokenMap) {
-                    s_tokenMap[agentIdStr] = token;
-                }*/
 
                 // TODO: properly store GloebitID when we get it.
                 //User u = new User(agentIdStr, UUID.Zero.ToString(), token);
@@ -178,9 +158,6 @@ namespace Gloebit.GloebitMoneyModule {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.InvalidateToken() {0}, valid token? {1}", PrincipalID, !String.IsNullOrEmpty(GloebitToken)); 
                 if(!String.IsNullOrEmpty(GloebitToken)) {
                     GloebitToken = String.Empty;
-                    /*lock(s_tokenMap) {
-                        s_tokenMap.Remove(PrincipalID);
-                    }*/
                     GloebitUserData.Instance.Store(this);
                 }
             }
@@ -936,7 +913,7 @@ namespace Gloebit.GloebitMoneyModule {
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", u);
 
                             // TODO - make this use a callback
-                            user.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)GetBalance(u), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                            user.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)GetBalance(u, out bool invalidatedToken), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
                         } else {
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken error: {0}, reason: {1}", responseDataMap["error"], responseDataMap["reason"]);
                             // TODO: signal error;
@@ -960,9 +937,11 @@ namespace Gloebit.GloebitMoneyModule {
         /// </summary>
         /// <returns>The Gloebit balance for the Gloebit accunt the user has linked to this OpenSim agentID on this grid/region.  Returns zero if a link between this OpenSim user and a Gloebit account has not been created and the user has not granted authorization to this grid/region.</returns>
         /// <param name="user">User object for the OpenSim user for whom the balance request is being made. <see cref="GloebitAPI.User.Get(UUID)"/></param>
-        public double GetBalance(User user) {
+        public double GetBalance(User user, out bool invalidatedToken) {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance for agentID:{0}", user.PrincipalID);
+            
+            invalidatedToken = false;
             
             //************ BUILD GET BALANCE GET REQUEST ********//
             
@@ -995,6 +974,7 @@ namespace Gloebit.GloebitMoneyModule {
                             // The token is invalid (probably the user revoked our app through the website)
                             // so force a reauthorization next time.
                             user.InvalidateToken();
+                            invalidatedToken = true;
                             break;
                         default:
                             m_log.ErrorFormat("Unknown error getting balance, reason: '{0}'", reason);
