@@ -937,6 +937,8 @@ namespace Gloebit.GloebitMoneyModule {
         /// </summary>
         /// <returns>The Gloebit balance for the Gloebit accunt the user has linked to this OpenSim agentID on this grid/region.  Returns zero if a link between this OpenSim user and a Gloebit account has not been created and the user has not granted authorization to this grid/region.</returns>
         /// <param name="user">User object for the OpenSim user for whom the balance request is being made. <see cref="GloebitAPI.User.Get(UUID)"/></param>
+        /// <param name="invalidatedToken">Bool set to true if request fails due to a bad token which we have invalidated.  Eventually, this should be a more general error interface</param>
+        /// <returns>Double balance of user or 0.0 if fails for any reason</returns>
         public double GetBalance(User user, out bool invalidatedToken) {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance for agentID:{0}", user.PrincipalID);

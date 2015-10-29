@@ -1661,10 +1661,8 @@ namespace Gloebit.GloebitMoneyModule
             UUID agentId = UUID.Parse(requestData["agentId"] as string);
             IClientAPI client = LocateClientObject(agentId);
             
-            //// GloebitAPI.User u = GloebitAPI.User.Get(agentId);
-            //// double balance = m_api.GetBalance(u);
+            // Update balance in viewer.  Request auth if not authed.
             double balance = GetAgentBalance(agentId, client, true);
-            
             client.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)balance, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
 
             Hashtable response = new Hashtable();
@@ -2233,15 +2231,15 @@ namespace Gloebit.GloebitMoneyModule
 
         /// <summary>
         /// Retrieves the gloebit balance of the gloebit account linked to the OpenSim agent defined by the agentID.
-        /// If there is no token, or an invalid token on file, we request authorization from the user.
+        /// If there is no token, or an invalid token on file, and forceAuthOnInvalidToken is true, we request authorization from the user.
         /// </summary>
         /// <param name="AgentID">OpenSim AgentID for the user whose balance is being requested</param>
+        /// <param name="client">IClientAPI for agent.  Need to pass this in because locating returns null when called from OnNewClient</param>
+        /// <param name ="forceAuthOnInvalidToken">Bool indicating whether we should reqeust auth on failures from lack of auth</param>
         /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
         private double GetAgentBalance(UUID agentID, IClientAPI client, bool forceAuthOnInvalidToken)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GetAgentBalance AgentID:{0}", agentID);
-            ////GloebitAPI.User user = GloebitAPI.User.Get(agentID);
-            ////m_log.InfoFormat("[GLOEBITMONEYMODULE] GetFundsForAgentID User:{0}", user);
             double returnfunds = 0.0;
             bool needsAuth = false;
             
