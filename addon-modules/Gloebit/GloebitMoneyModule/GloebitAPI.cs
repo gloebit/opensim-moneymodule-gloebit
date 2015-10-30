@@ -72,6 +72,8 @@ namespace Gloebit.GloebitMoneyModule {
 
             // TODO - update tokenMap to be a proper LRU Cache and hold User objects
             private static Dictionary<string, User> s_userMap = new Dictionary<string, User>();
+            
+            private object userLock = new object();
 
             public User() {
             }
@@ -81,7 +83,14 @@ namespace Gloebit.GloebitMoneyModule {
                 this.GloebitID = gloebitID;
                 this.GloebitToken = token;
             }
+            
+            private User(User copyFrom) {
+                this.PrincipalID = copyFrom.PrincipalID;
+                this.GloebitID = copyFrom.GloebitID;
+                this.GloebitToken = copyFrom.GloebitToken;
+            }
 
+            // TODO: should probably return User class to using strings instead of UUIDs to make it more generic.
             public static User Get(UUID agentID) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] in User.Get");
                 string agentIdStr = agentID.ToString();
@@ -107,13 +116,27 @@ namespace Gloebit.GloebitMoneyModule {
                            throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one prior token for {0}", agentIdStr));
                     }
                     // TODO - use the Gloebit identity service for userId
+                    
+                    // Store in map and return User
+                    lock(s_userMap) {
+                        // Make sure no one else has already loaded this user
+                        User alreadyLoadedUser;
+                        s_userMap.TryGetValue(agentIdStr, out alreadyLoadedUser);
+                        if (alreadyLoadedUser == null) {
+                            s_userMap[agentIdStr] = u;
+                        } else {
+                            u = alreadyLoadedUser;
+                        }
+                    }
                 }
 
-                // Store in map and return User
-                lock(s_userMap) {
-                    s_userMap[agentIdStr] = u;
+                // Create a thread local copy of the user to return.
+                User localUser;
+                lock (u.userLock) {
+                    localUser = new User(u);
                 }
-                return u;
+                
+                return localUser;
             }
 
             public static User Init(UUID agentId, string token) {
@@ -121,21 +144,52 @@ namespace Gloebit.GloebitMoneyModule {
 
                 // TODO: properly store GloebitID when we get it.
                 //User u = new User(agentIdStr, UUID.Zero.ToString(), token);
-                User u = new User(agentIdStr, String.Empty, token);
-                GloebitUserData.Instance.Store(u);
-                lock(s_userMap) {
-                    s_userMap[agentIdStr] = u;
+                //User u = new User(agentIdStr, String.Empty, token);
+                
+                // TODO: I think there has to be a better way to do this, but I'm not finding it right now.
+                // By calling Get, we make sure that the user is in the map and has any additional data users store.
+                User localUser = User.Get(agentId);
+                User u;
+                lock (s_userMap) {
+                    s_userMap.TryGetValue(agentIdStr, out u);
                 }
-                return u;
+                // TODO: do we have to worry about u ever being null, or being modified before we take our lock below?
+                lock (u.userLock) {
+                    u.GloebitToken = token;
+                    GloebitUserData.Instance.Store(u);
+                }
+                
+                // TODO: should we be returning a local copy or global copy??
+                //return u;
+                return new User(u);
             }
 
             public void InvalidateToken() {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.InvalidateToken() {0}, valid token? {1}", PrincipalID, !String.IsNullOrEmpty(GloebitToken)); 
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.InvalidateToken() {0}, valid token? {1}", PrincipalID, !String.IsNullOrEmpty(GloebitToken));
+                
                 if(!String.IsNullOrEmpty(GloebitToken)) {
-                    GloebitToken = String.Empty;
-                    GloebitUserData.Instance.Store(this);
+                    User u;
+                    lock (s_userMap) {
+                        s_userMap.TryGetValue(PrincipalID, out u);
+                    }
+                    // TODO: what to do if u is null?  can that happen?
+                    lock (u.userLock) {
+                        if (GloebitToken != u.GloebitToken) {
+                            // Someone else invalidated it already or authorized it.
+                            // Don't overwrite
+                            // TODO: should we set this equal to a copy of u before we return?
+                            return;
+                        } else {
+                            u.GloebitToken = String.Empty;
+                            GloebitUserData.Instance.Store(u);
+                            // TODO: should we set this equal to a copy of u before we return?
+                        }
+                    }
                 }
             }
+            
+            // TODO: do we need an Update function to update the local user from the one in the map?
+            // Ideally, users are thrown away after use, but we should review.
             
             public static void Cleanup(UUID agentId) {
                 string agentIdStr = agentId.ToString();
@@ -891,6 +945,7 @@ namespace Gloebit.GloebitMoneyModule {
                         string token = responseDataMap["access_token"];
                         // TODO - do something to handle the "refresh_token" field properly
                         if(!String.IsNullOrEmpty(token)) {
+                            // TODO: perhaps we should change this function from "init" to Authorize or StoreToken
                             User u = User.Init(user.AgentId, token);
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", u);
 
