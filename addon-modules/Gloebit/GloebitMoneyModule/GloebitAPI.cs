@@ -69,28 +69,6 @@ namespace Gloebit.GloebitMoneyModule {
             public string PrincipalID;
             public string GloebitID;
             public string GloebitToken;
-            
-            // TODO: move these hacks to a class inheriting from User but in GMM
-            private bool m_IgnoreNextBalanceRequest = false;
-            private DateTime m_IgnoreTime = DateTime.UtcNow;
-            public bool IgnoreNextBalanceRequestHack
-            {
-                get {
-                    if (m_IgnoreNextBalanceRequest == true && (m_IgnoreTime.CompareTo(DateTime.UtcNow.AddSeconds(-10)) > 0)) {
-                        m_IgnoreNextBalanceRequest = false;
-                        return true;
-                    }
-                    return false;
-                }
-                set {
-                    if (value) {
-                        m_IgnoreNextBalanceRequest = true;
-                        m_IgnoreTime = DateTime.UtcNow;
-                    } else {
-                        m_IgnoreNextBalanceRequest = false;
-                    }
-                }
-            }
 
             // TODO - update tokenMap to be a proper LRU Cache and hold User objects
             private static Dictionary<string, User> s_userMap = new Dictionary<string, User>();
@@ -102,9 +80,6 @@ namespace Gloebit.GloebitMoneyModule {
                 this.PrincipalID = principalID;
                 this.GloebitID = gloebitID;
                 this.GloebitToken = token;
-                
-                this.m_IgnoreNextBalanceRequest = false;
-                this.m_IgnoreTime = DateTime.UtcNow;
             }
 
             public static User Get(UUID agentID) {
@@ -159,6 +134,13 @@ namespace Gloebit.GloebitMoneyModule {
                 if(!String.IsNullOrEmpty(GloebitToken)) {
                     GloebitToken = String.Empty;
                     GloebitUserData.Instance.Store(this);
+                }
+            }
+            
+            public static void Cleanup(UUID agentId) {
+                string agentIdStr = agentId.ToString();
+                lock(s_userMap) {
+                    s_userMap.Remove(agentIdStr);
                 }
             }
         }
