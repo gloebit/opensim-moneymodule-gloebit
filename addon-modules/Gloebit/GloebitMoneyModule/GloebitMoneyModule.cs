@@ -81,21 +81,21 @@ namespace Gloebit.GloebitMoneyModule
         /// This causes the balance to be reqeusted twice, and if not authed, the user to be asked to auth twice.
         /// This class is designed solely for preventing the second request in that single case.
         /// </summary>
-        private class LoginBalanceRequestHack
+        private class LoginBalanceRequest
         {
             // Create a static map of agent IDs to LRBHs
-            private static Dictionary<UUID, LoginBalanceRequestHack> s_LoginBalanceRequestHackMap = new Dictionary<UUID, LoginBalanceRequestHack>();
+            private static Dictionary<UUID, LoginBalanceRequest> s_LoginBalanceRequestMap = new Dictionary<UUID, LoginBalanceRequest>();
             private bool m_IgnoreNextBalanceRequest = false;
             private DateTime m_IgnoreTime = DateTime.UtcNow;
             private static int numSeconds = -10;
             
-            private LoginBalanceRequestHack()
+            private LoginBalanceRequest()
             {
                 this.m_IgnoreNextBalanceRequest = false;
                 this.m_IgnoreTime = DateTime.UtcNow;
             }
             
-            public bool IgnoreNextBalanceRequestHack
+            public bool IgnoreNextBalanceRequest
             {
                 get {
                     if (m_IgnoreNextBalanceRequest == true && (m_IgnoreTime.CompareTo(DateTime.UtcNow.AddSeconds(numSeconds)) > 0)) {
@@ -114,21 +114,21 @@ namespace Gloebit.GloebitMoneyModule
                 }
             }
             
-            public static LoginBalanceRequestHack Get(UUID agentID) {
-                LoginBalanceRequestHack hack;
-                lock (s_LoginBalanceRequestHackMap) {
-                    s_LoginBalanceRequestHackMap.TryGetValue(agentID, out hack);
-                    if (hack == null) {
-                        hack = new LoginBalanceRequestHack();
-                        s_LoginBalanceRequestHackMap[agentID] = hack;
+            public static LoginBalanceRequest Get(UUID agentID) {
+                LoginBalanceRequest lbr;
+                lock (s_LoginBalanceRequestMap) {
+                    s_LoginBalanceRequestMap.TryGetValue(agentID, out lbr);
+                    if (lbr == null) {
+                        lbr = new LoginBalanceRequest();
+                        s_LoginBalanceRequestMap[agentID] = lbr;
                     }
                 }
-                return hack;
+                return lbr;
             }
             
             public static void Cleanup(UUID agentID) {
-                lock (s_LoginBalanceRequestHackMap) {
-                    s_LoginBalanceRequestHackMap.Remove(agentID);
+                lock (s_LoginBalanceRequestMap) {
+                    s_LoginBalanceRequestMap.Remove(agentID);
                 }
             }
         }
@@ -1202,8 +1202,8 @@ namespace Gloebit.GloebitMoneyModule
             // Two auths look bad.
             // So, we tell our balance request to ignore the one right after login from the viewer.
             // We set a timestamp in case any viewers have removed this request, so that this ignore flag expires within a few seconds.
-            LoginBalanceRequestHack hack = LoginBalanceRequestHack.Get(client.AgentId);
-            hack.IgnoreNextBalanceRequestHack = true;
+            LoginBalanceRequest lbr = LoginBalanceRequest.Get(client.AgentId);
+            lbr.IgnoreNextBalanceRequest = true;
         }
         
         /// <summary>
@@ -1371,9 +1371,9 @@ namespace Gloebit.GloebitMoneyModule
             if (client.AgentId == agentID && client.SessionId == SessionID)
             {
                 // HACK to ignore request when this is just after we delivered the balance at login
-                LoginBalanceRequestHack hack = LoginBalanceRequestHack.Get(client.AgentId);
-                if (hack.IgnoreNextBalanceRequestHack) {
-                    hack.IgnoreNextBalanceRequestHack = false;
+                LoginBalanceRequest lbr = LoginBalanceRequest.Get(client.AgentId);
+                if (lbr.IgnoreNextBalanceRequest) {
+                    lbr.IgnoreNextBalanceRequest = false;
                     return;
                 }
                 
@@ -2723,8 +2723,8 @@ namespace Gloebit.GloebitMoneyModule
             // Deregister OnChatFromClient if we have one.
             Dialog.DeregisterAgent(client);
             
-            // Remove from s_LoginBalanceRequestHackMap
-            LoginBalanceRequestHack.Cleanup(client.AgentId);
+            // Remove from s_LoginBalanceRequestMap
+            LoginBalanceRequest.Cleanup(client.AgentId);
             
             // Remove from s_userMap
             GloebitAPI.User.Cleanup(client.AgentId);

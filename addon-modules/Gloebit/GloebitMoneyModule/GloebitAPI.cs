@@ -139,7 +139,7 @@ namespace Gloebit.GloebitMoneyModule {
                 return localUser;
             }
 
-            public static User Init(UUID agentId, string token) {
+            public static User Authorize(UUID agentId, string token) {
                 string agentIdStr = agentId.ToString();
 
                 // TODO: properly store GloebitID when we get it.
@@ -153,15 +153,16 @@ namespace Gloebit.GloebitMoneyModule {
                 lock (s_userMap) {
                     s_userMap.TryGetValue(agentIdStr, out u);
                 }
-                // TODO: do we have to worry about u ever being null, or being modified before we take our lock below?
+                if (u == null) {
+                    u = localUser;  // User logged out.  Still want to store token.  Don't want to add back to map.
+                }
                 lock (u.userLock) {
                     u.GloebitToken = token;
                     GloebitUserData.Instance.Store(u);
+                    localUser = new User(u);
                 }
                 
-                // TODO: should we be returning a local copy or global copy??
-                //return u;
-                return new User(u);
+                return localUser;
             }
 
             public void InvalidateToken() {
@@ -172,7 +173,9 @@ namespace Gloebit.GloebitMoneyModule {
                     lock (s_userMap) {
                         s_userMap.TryGetValue(PrincipalID, out u);
                     }
-                    // TODO: what to do if u is null?  can that happen?
+                    if (u == null) {
+                        u = this;   // User logged out.  Still want to invalidate token.  Don't want to add back to map.
+                    }
                     lock (u.userLock) {
                         if (GloebitToken != u.GloebitToken) {
                             // Someone else invalidated it already or authorized it.
@@ -945,8 +948,7 @@ namespace Gloebit.GloebitMoneyModule {
                         string token = responseDataMap["access_token"];
                         // TODO - do something to handle the "refresh_token" field properly
                         if(!String.IsNullOrEmpty(token)) {
-                            // TODO: perhaps we should change this function from "init" to Authorize or StoreToken
-                            User u = User.Init(user.AgentId, token);
+                            User u = User.Authorize(user.AgentId, token);
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", u);
 
                             // TODO - make this use a callback
