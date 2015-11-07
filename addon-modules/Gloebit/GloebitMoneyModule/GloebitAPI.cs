@@ -1949,7 +1949,8 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="client">IClientAPI of client we are sending the URL to</param>
         /// <param name="subAuthID">ID of the authorization request the user will be asked to approve - provided by Gloebit.</param>
         /// <param name="sub">Subscription which containes necessary details for message to user.</param>
-        public void SendSubscriptionAuthorizationToClient(IClientAPI client, string subAuthID, Subscription sub)
+        /// <param name="isDeclined">Bool is true if this sub auth has already been declined by the user which should present different messaging.</param>
+        public void SendSubscriptionAuthorizationToClient(IClientAPI client, string subAuthID, Subscription sub, bool isDeclined)
         {
             // Build the URL -- consider making a helper to be done in the API once we move this to the GMM
             Uri request_uri = new Uri(m_url, String.Format("authorize-subscription/{0}/", subAuthID));
@@ -1957,7 +1958,12 @@ namespace Gloebit.GloebitMoneyModule {
             if (client != null) {
                 // TODO: adjust our wording
                 string title = "GLOEBIT Subscription Authorization Request (scripted object auto-debit):";
-                string body = String.Format("To approve or decline the request to authorize this object:\n   {0}\n   {1}\n\nPlease visit this web page:", sub.ObjectName, sub.ObjectID);
+                string body;
+                if (!isDeclined) {
+                    body = String.Format("To approve or decline the request to authorize this object:\n   {0}\n   {1}\n\nPlease visit this web page:", sub.ObjectName, sub.ObjectID);
+                } else {
+                    body = String.Format("You've already declined the request to authorize this object:\n   {0}\n   {1}\n\nIf you would like to review the request, or alter your response, please visit this web page:", sub.ObjectName, sub.ObjectID);
+                }
                 
                 SendUrlToClient(client, title, body, request_uri);
             } else {
