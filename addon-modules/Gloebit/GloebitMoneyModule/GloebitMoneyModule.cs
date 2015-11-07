@@ -753,7 +753,7 @@ namespace Gloebit.GloebitMoneyModule
                         // TODO: Do we need to check if this is null?  Shouldn't happen.
                         
                         // Send Authorize URL
-                        api.SendSubscriptionAuthorizationToClient(client, SubscriptionAuthorizationID.ToString(), sub);
+                        api.SendSubscriptionAuthorizationToClient(client, SubscriptionAuthorizationID.ToString(), sub, false);
                         
                         break;
                     case "Report Fraud":
@@ -1885,10 +1885,14 @@ namespace Gloebit.GloebitMoneyModule
                             break;
                         case GloebitAPI.TransactionFailure.SUBSCRIPTION_AUTH_DECLINED:            /* User has declined the authorization for this subscription */
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- user declined subscription auth.  id:{0}", tID);
-                            // TODO: should we do something here? -- different type of dialog perhaps
-                            // Send dialog asking user to auth or report --- needs different message.
                             
                             alertUsersTransactionFailed(txn, stage, failure, String.Empty);
+                            
+                            // TODO: We should really send another dialog here like the PendingDialog instead of just a url here.
+                            // Send dialog asking user to auth or report --- needs different message.
+                            GloebitAPI.Subscription sub = GloebitAPI.Subscription.GetBySubscriptionID(subscriptionIDStr, m_api.m_url.ToString());
+                            m_api.SendSubscriptionAuthorizationToClient(buyerClient, subscriptionAuthIDStr, sub, true);
+                            
                             break;
                         case GloebitAPI.TransactionFailure.PAYER_ACCOUNT_LOCKED:                  /* Buyer's gloebit account is locked and not allowed to spend gloebits */
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- payer account locked.  id:{0}", tID);
@@ -1979,10 +1983,10 @@ namespace Gloebit.GloebitMoneyModule
             //IClientAPI sellerClient = LocateClientObject(sellerID);
             
             // TODO: we need to carry the transactionID through and retrieve toID, toName, amount
-            UUID toID = UUID.Zero;
-            UUID transactionID = UUID.Zero;
-            string toName = "testing name";
-            int amount = 47;
+            //UUID toID = UUID.Zero;
+            //UUID transactionID = UUID.Zero;
+            //string toName = "testing name";
+            //int amount = 47;
             
             if (success) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionAuthorizationCompleted with SUCCESS reason:{0} status:{1}", reason, status);
@@ -1994,17 +1998,18 @@ namespace Gloebit.GloebitMoneyModule
                         string subAuthID = responseDataMap["id"];
                         
                         // Send Authorize URL
-                        m_api.SendSubscriptionAuthorizationToClient(client, subAuthID, sub);
+                        m_api.SendSubscriptionAuthorizationToClient(client, subAuthID, sub, false);
                         
                         break;
                     case "duplicate-and-already-approved-by-user":
-                        // TODO: if we have a transaction pending, trigger it
+                        // TODO: if we have a transaction pending, should we trigger it?
                         break;
                     case "duplicate-and-previously-declined-by-user":
-                        // TODO: determine what we'll do here.
-                        // Is this a success case or failure case?
-                        // Do we make a call to reset to pending?
-                        // Do we send a dialog to the user --- maybe that makes more sense. !!! I think a new dialog message is the winner.
+                        // grab subscription_authorization_id
+                        string declinedSubAuthID = responseDataMap["id"];
+                        // TODO: Should we send a dialog message or just the url?
+                        // Send Authorize URL
+                        m_api.SendSubscriptionAuthorizationToClient(client, declinedSubAuthID, sub, true);
                         break;
                     default:
                         break;
@@ -3506,7 +3511,7 @@ namespace Gloebit.GloebitMoneyModule
                             break;
                         case GloebitAPI.TransactionFailure.SUBSCRIPTION_AUTH_DECLINED:
                             error = "Payer has declined authorization for this subscription.";
-                            instruction = "There is not currently a method for resetting this authorization request.  If you would like such functionality, please contact Gloebit to request it.";
+                            instruction = "You can review and alter your respsonse subscription authorization requests from the Subscriptions section of the Gloebit website.";
                             payeeInstruction = contactPayer;
                             break;
                         // Validate Payer
