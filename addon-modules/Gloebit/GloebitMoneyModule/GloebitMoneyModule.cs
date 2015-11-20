@@ -30,6 +30,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -840,10 +841,12 @@ namespace Gloebit.GloebitMoneyModule
             m_log.Info ("[GLOEBITMONEYMODULE] Initialising.");
             m_gConfig = config;
 
+            LoadConfig(m_gConfig);
+
             string[] sections = {"Startup", "Gloebit", "Economy", "GridInfoService"};
             foreach (string section in sections) {
                 IConfig sec_config = m_gConfig.Configs[section];
-            
+
                 if (null == sec_config) {
                     m_log.WarnFormat("[GLOEBITMONEYMODULE] Config section {0} is missing. Skipping.", section);
                     continue;
@@ -867,6 +870,27 @@ namespace Gloebit.GloebitMoneyModule
                 GloebitTransactionData.Initialise(m_gConfig.Configs["DatabaseService"]);
                 GloebitSubscriptionData.Initialise(m_gConfig.Configs["DatabaseService"]);
             }
+        }
+
+        /// <summary>
+        /// Load Addin Configuration from Addin config dir
+        /// </summary>
+        /// <param name="config"></param>
+        private void LoadConfig(IConfigSource config)
+        {
+           string configPath = string.Empty;
+           bool created;
+           string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+           if (!Util.MergeConfigurationFile(config, "Gloebit.ini", Path.Combine(assemblyDirectory, "Gloebit.ini"), out configPath, out created))
+           {
+               m_log.WarnFormat("[GLOEBITMONEYMODULE]: Gloebit.ini configuration file not merged");
+               return;
+           }
+           if (created)
+           {
+               m_log.ErrorFormat("[GLOEBITMONEYMODULE]: PLEASE EDIT {0} BEFORE RUNNING THIS ADDIN", configPath);
+               throw new Exception("Addin must be configured prior to running");
+           }
         }
 
         /// <summary>
