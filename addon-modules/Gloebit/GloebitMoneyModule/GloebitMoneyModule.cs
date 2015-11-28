@@ -288,8 +288,8 @@ namespace Gloebit.GloebitMoneyModule
             /// <param name="chat">message sent</param>
             protected static void OnChatFromClientAPI(Object sender, OSChatMessage chat)
             {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI from:{0} chat:{1}", sender, chat);
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI \n\tmessage:{0} \n\ttype: {1} \n\tchannel: {2} \n\tposition: {3} \n\tfrom: {4} \n\tto: {5} \n\tsender: {6} \n\tsenderObject: {7} \n\tsenderUUID: {8} \n\ttargetUUID: {9} \n\tscene: {10}", chat.Message, chat.Type, chat.Channel, chat.Position, chat.From, chat.To, chat.Sender, chat.SenderObject, chat.SenderUUID, chat.TargetUUID, chat.Scene);
+                // m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI from:{0} chat:{1}", sender, chat);
+                // m_log.InfoFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI \n\tmessage:{0} \n\ttype: {1} \n\tchannel: {2} \n\tposition: {3} \n\tfrom: {4} \n\tto: {5} \n\tsender: {6} \n\tsenderObject: {7} \n\tsenderUUID: {8} \n\ttargetUUID: {9} \n\tscene: {10}", chat.Message, chat.Type, chat.Channel, chat.Position, chat.From, chat.To, chat.Sender, chat.SenderObject, chat.SenderUUID, chat.TargetUUID, chat.Scene);
                 
                 IClientAPI client = (IClientAPI) sender;
                 
@@ -322,8 +322,10 @@ namespace Gloebit.GloebitMoneyModule
                 /***** Validate base Dialog response parameters *****/
                 
                 // Check defaults that should always be the same to ensure no one tried to impersonate our dialog response
-                if (chat.SenderUUID != UUID.Zero || chat.TargetUUID != UUID.Zero || !String.IsNullOrEmpty(chat.From) || !String.IsNullOrEmpty(chat.To) || chat.Type != ChatTypeEnum.Region) {
-                    m_log.WarnFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI Received message on Gloebit dialog channel:{0} which may be an attempted impersonation. SenderUUID:{1}, TargetUUID:{2}, From:{3} To:{4} Type: {5} Message:{6}", chat.Channel, chat.SenderUUID, chat.TargetUUID, chat.From, chat.To, chat.Type, chat.Message);
+                // if (chat.SenderUUID != UUID.Zero || chat.TargetUUID != UUID.Zero || !String.IsNullOrEmpty(chat.From) || !String.IsNullOrEmpty(chat.To) || chat.Type != ChatTypeEnum.Region) {
+                if (chat.SenderUUID != UUID.Zero || !String.IsNullOrEmpty(chat.From) || chat.Type != ChatTypeEnum.Region) {
+                    // m_log.WarnFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI Received message on Gloebit dialog channel:{0} which may be an attempted impersonation. SenderUUID:{1}, TargetUUID:{2}, From:{3} To:{4} Type: {5} Message:{6}", chat.Channel, chat.SenderUUID, chat.TargetUUID, chat.From, chat.To, chat.Type, chat.Message);
+                    m_log.WarnFormat("[GLOEBITMONEYMODULE] OnChatFromClientAPI Received message on Gloebit dialog channel:{0} which may be an attempted impersonation. SenderUUID:{1}, From:{2}, Type: {3}, Message:{4}", chat.Channel, chat.SenderUUID, chat.From, chat.Type, chat.Message);
                     return;
                 }
                 
@@ -1048,11 +1050,30 @@ namespace Gloebit.GloebitMoneyModule
 
 
         #region IMoneyModule Members
-
+        
+        // Dummy IMoneyModule interface which is not yet used.
+        public void MoveMoney(UUID fromAgentID, UUID toAgentID, int amount, string text)
+        {
+        }
+        
+        // Old IMoneyModule interface designed for LLGiveMoney instead of LLTransferLindenDollars.  Deprecated.
         public bool ObjectGiveMoney(UUID objectID, UUID fromID, UUID toID, int amount)
+        {
+            string reason = String.Empty;
+            UUID txnID = UUID.Zero;
+            bool txnResult = ObjectGiveMoney(objectID, fromID, toID, amount, txnID, out reason);
+            return txnResult;
+        }
+        
+        // New IMoneyModule interface.
+        // If called from LLGiveMoney, txnID is UUID.Zero and reason is thrown away.
+        // If called from LLTransferLindenDollars, txnID is set and reason is returned to script if function returns false.
+        public bool ObjectGiveMoney(UUID objectID, UUID fromID, UUID toID, int amount, UUID txnID, out string reason)
         {
             string description = String.Format("Object {0} pays {1}", resolveObjectName(objectID), resolveAgentName(toID));
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ******************ObjectGiveMoney {0}", description);
+            
+            reason = String.Empty;
             
             SceneObjectPart part = null;
             string regionname = "";
@@ -1273,7 +1294,7 @@ namespace Gloebit.GloebitMoneyModule
                     break;
             }
             
-            GloebitAPI.Transaction txn = GloebitAPI.Transaction.Init(transactionID, payerID, payerName, payeeID, payeeName, amount, (int)transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
+            GloebitAPI.Transaction txn = GloebitAPI.Transaction.Create(transactionID, payerID, payerName, payeeID, payeeName, amount, (int)transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
             return txn;
         }
         

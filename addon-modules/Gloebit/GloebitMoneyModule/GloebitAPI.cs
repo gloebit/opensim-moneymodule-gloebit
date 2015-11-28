@@ -254,6 +254,8 @@ namespace Gloebit.GloebitMoneyModule {
             private static Dictionary<string, Transaction> s_pendingTransactionMap = new Dictionary<string, Transaction>(); // tracks assets currently being worked on so that two state functions are not enacted at the same time.
             
             // Necessary for use with standard db serialization system
+            // See Create() to generate a new transaction record
+            // See Get() to retrieve an existing transaction record
             public Transaction() {
             }
             
@@ -312,16 +314,30 @@ namespace Gloebit.GloebitMoneyModule {
                 // On SQLite, I don't think that you can set them to allow NULL explicitely, and haven't checked defaults.
             }
             
-            public static Transaction Init(UUID transactionID, UUID payerID, string payerName, UUID payeeID, string payeeName, int amount, int transactionType, string transactionTypeString, bool isSubscriptionDebit, UUID subscriptionID, UUID partID, string partName, string partDescription, UUID categoryID, uint localID, int saleType)
+            // Creates a new transaction
+            // First verifies that a transaction with this ID does not already exist
+            // --- If existing txn is found, returns null
+            // Creates new Transaction, stores it in the cache and db
+            public static Transaction Create(UUID transactionID, UUID payerID, string payerName, UUID payeeID, string payeeName, int amount, int transactionType, string transactionTypeString, bool isSubscriptionDebit, UUID subscriptionID, UUID partID, string partName, string partDescription, UUID categoryID, uint localID, int saleType)
             {
-                
                 // Create the Transaction
                 Transaction txn = new Transaction(transactionID, payerID, payerName, payeeID, payeeName, amount, transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
                 
-                // Store the Transaction in the fast access cache
+                // Ensure that a transaction does not already exist with this ID before storing it
                 string transactionIDstr = transactionID.ToString();
+                Transaction existingTxn = Get(transactionIDstr);
+                if (existingTxn != null) {
+                    // Record in DB store with this id -- return null
+                    return null;
+                }
+                // lock cache and ensure there is still no existing record before storing this txn.
                 lock(s_transactionMap) {
-                    s_transactionMap[transactionIDstr] = txn;
+                    if (s_transactionMap.TryGetValue(transactionIDstr, out existingTxn)) {
+                        return null;
+                    } else {
+                        // Store the Transaction in the fast access cache
+                        s_transactionMap[transactionIDstr] = txn;
+                    }
                 }
                 
                 // Store the Transaction to the persistent DB
@@ -354,7 +370,7 @@ namespace Gloebit.GloebitMoneyModule {
                             }
                             return transaction;
                         case 0:
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] Could not find transaction matching tID:{0}", transaction.TransactionID);
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] Could not find transaction matching tID:{0}", transactionIDStr);
                             return null;
                         default:
                             throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one transaction for {0}", transactionIDStr));
