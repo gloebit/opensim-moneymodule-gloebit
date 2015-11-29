@@ -1061,8 +1061,7 @@ namespace Gloebit.GloebitMoneyModule
         {
             string reason = String.Empty;
             UUID txnID = UUID.Zero;
-            bool txnResult = ObjectGiveMoney(objectID, fromID, toID, amount, txnID, out reason);
-            return txnResult;
+            return ObjectGiveMoney(objectID, fromID, toID, amount, txnID, out reason);
         }
         
         // New IMoneyModule interface.
@@ -1107,6 +1106,7 @@ namespace Gloebit.GloebitMoneyModule
                 m_api.CreateSubscription(sub, m_economyURL);
                 
                 // return false so this the current transaciton terminates and object is alerted to failure
+                reason = "Owner has not yet created a subscription.";
                 return false;
             }
             
@@ -1115,6 +1115,7 @@ namespace Gloebit.GloebitMoneyModule
             if (payerUser != null && String.IsNullOrEmpty(payerUser.GloebitToken)) {
                 // send message asking to auth Gloebit.
                 alertUsersSubscriptionTransactionFailedForGloebitAuthorization(fromID, toID, amount, sub);
+                reason = "Owner has not authorized this app with Gloebit.";
                 return false;
             }
             
@@ -1122,15 +1123,27 @@ namespace Gloebit.GloebitMoneyModule
             
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectGiveMoney", part);
             
-            GloebitAPI.Transaction txn = buildTransaction(transactionType: TransactionType.OBJECT_PAYS_USER,
+            GloebitAPI.Transaction txn = buildTransaction(transactionID: txnID, transactionType: TransactionType.OBJECT_PAYS_USER,
                                                           payerID: fromID, payeeID: toID, amount: amount, subscriptionID: sub.SubscriptionID,
                                                           partID: objectID, partName: part.Name, partDescription: part.Description,
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
+            
+            if (txn == null) {
+                // build failed, likely due to a reused transactionID.  Shouldn't happen, but possible in ObjectGiveMoney.
+                IClientAPI payerClient = LocateClientObject(fromID);
+                alertUsersTransactionPreparationFailure(TransactionType.OBJECT_PAYS_USER, TransactionPrecheckFailure.EXISTING_TRANSACTION_ID, payerClient);
+                reason = "Transaction submitted with ID for existing transaction.";
+                return false;
+            }
             
             // This needs to be a sync txn because the object recieves the bool response and uses it as txn success or failure.
             // Todo: remove callbacks from this transaction since we don't use them.
             bool give_result = SubmitSyncTransaction(txn, description, descMap);
 
+            if (!give_result) {
+                reason = "Transaction failed during processing.  See logs or text chat for more details.";
+                // TODO: pass failure back through SubmitSyncTransaction and design system to pull error string from a failure.
+            }
             return give_result;
         }
 
@@ -1234,6 +1247,7 @@ namespace Gloebit.GloebitMoneyModule
         /// --- used for processing transact enact/consume/cancel callbacks to handle any other OpenSim components of the transaction(such as object delivery),
         /// --- used for tracking/reporting/analysis
         /// </summary>
+        /// <param name="transactionID">UUID to use for this transaction.  If UUID.Zero, a random UUID is chosen.</param>
         /// <param name="transactionType">enum from OpenSim defining the type of transaction (buy object, pay object, pay user, object pays user, etc).  This will not affect how Gloebit process the monetary component of a transaction, but is useful for easily varying how OpenSim should handle processing once funds are transfered.</param>
         /// <param name="payerID">OpenSim UUID of agent sending gloebits.</param>
         /// <param name="payeeID">OpenSim UUID of agent receiving gloebits</param>
@@ -1246,12 +1260,16 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="localID">uint region specific id of object used when transactionType is ObjectBuy.  0 otherwise.  Required by IBuySellModule.</param>
         /// <param name="saleType">int differentiating between orginal, copy or contents for ObjectBuy.  Required by IBuySellModule to process delivery.</param>
         /// <returns>GloebitAPI.Transaction created. if successful.</returns>
-        private GloebitAPI.Transaction buildTransaction(TransactionType transactionType, UUID payerID, UUID payeeID, int amount, UUID subscriptionID, UUID partID, string partName, string partDescription, UUID categoryID, uint localID, int saleType)
+        private GloebitAPI.Transaction buildTransaction(UUID transactionID, TransactionType transactionType, UUID payerID, UUID payeeID, int amount, UUID subscriptionID, UUID partID, string partName, string partDescription, UUID categoryID, uint localID, int saleType)
         {
             // TODO: we should store "transaction description" with the Transaction?
             
-            // Create a transaction ID
-            UUID transactionID = UUID.Random();
+            bool isRandomID = false;
+            if (transactionID == UUID.Zero) {
+                // Create a transaction ID
+                transactionID = UUID.Random();
+                isRandomID = true;
+            }
             
             // Get user names
             string payerName = resolveAgentName(payerID);
@@ -1295,6 +1313,13 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             GloebitAPI.Transaction txn = GloebitAPI.Transaction.Create(transactionID, payerID, payerName, payeeID, payeeName, amount, (int)transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
+            
+            if (txn == null && isRandomID) {
+                // Try one more time in case the incredibly unlikely event of a UUID.Random overlap has occurred.
+                transactionID = UUID.Random();
+                txn = GloebitAPI.Transaction.Create(transactionID, payerID, payerName, payeeID, payeeName, amount, (int)transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
+            }
+            
             return txn;
         }
         
@@ -2615,10 +2640,17 @@ namespace Gloebit.GloebitMoneyModule
                     
                     OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "LandBuy");
                     
-                    GloebitAPI.Transaction txn = buildTransaction(transactionType: TransactionType.USER_BUYS_LAND,
+                    GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_LAND,
                                                                   payerID: e.agentId, payeeID: e.parcelOwnerID, amount: e.parcelPrice, subscriptionID: UUID.Zero,
                                                                   partID: UUID.Zero, partName: null, partDescription: String.Empty,
                                                                   categoryID: UUID.Zero, localID: 0, saleType: 0);
+                    
+                    if (txn == null) {
+                        // build failed, likely due to a reused transactionID.  Shouldn't happen.
+                        IClientAPI payerClient = LocateClientObject(e.agentId);
+                        alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LAND, TransactionPrecheckFailure.EXISTING_TRANSACTION_ID, payerClient);
+                        return;
+                    }
                     
                     bool submission_result = SubmitTransaction(txn, description, descMap);
                     
@@ -2721,10 +2753,17 @@ namespace Gloebit.GloebitMoneyModule
             
             /******** Set up necessary parts for gloebit transact-u2u **********/
             
-            GloebitAPI.Transaction txn = buildTransaction(transactionType: (TransactionType)e.transactiontype,
+            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: (TransactionType)e.transactiontype,
                                                           payerID: fromID, payeeID: toID, amount: e.amount, subscriptionID: UUID.Zero,
                                                           partID: partID, partName: partName, partDescription: partDescription,
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
+            
+            if (txn == null) {
+                // build failed, likely due to a reused transactionID.  Shouldn't happen.
+                IClientAPI payerClient = LocateClientObject(fromID);
+                alertUsersTransactionPreparationFailure((TransactionType)e.transactiontype, TransactionPrecheckFailure.EXISTING_TRANSACTION_ID, payerClient);
+                return;
+            }
             
             bool transaction_result = SubmitTransaction(txn, description, descMap);
             
@@ -2839,10 +2878,16 @@ namespace Gloebit.GloebitMoneyModule
 
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "ObjectBuy", part);
             
-            GloebitAPI.Transaction txn = buildTransaction(transactionType: TransactionType.USER_BUYS_OBJECT,
+            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_OBJECT,
                                                           payerID: agentID, payeeID: part.OwnerID, amount: salePrice, subscriptionID: UUID.Zero,
                                                           partID: part.UUID, partName: part.Name, partDescription: part.Description,
                                                           categoryID: categoryID, localID: localID, saleType: saleType);
+            
+            if (txn == null) {
+                // build failed, likely due to a reused transactionID.  Shouldn't happen.
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.EXISTING_TRANSACTION_ID, remoteClient);
+                return;
+            }
             
             bool transaction_result = SubmitTransaction(txn, description, descMap);
             
@@ -3216,6 +3261,14 @@ namespace Gloebit.GloebitMoneyModule
                     // Alert payer and payee
                     txnTypeFailure = "Transaction attempt failed prechecks.";
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented failure TransactionType [{0}] Failure [{1}].", typeID, failure);
+                    break;
+            }
+            
+            // Handle some failures that could happen from any transaction type
+            switch (failure) {
+                case TransactionPrecheckFailure.EXISTING_TRANSACTION_ID:
+                    precheckFailure = "Transaction conflicted with existing transacion record with identical ID.";
+                    instruction = tryAgainRelog;
                     break;
             }
             
@@ -3752,6 +3805,7 @@ namespace Gloebit.GloebitMoneyModule
             SALE_TYPE_MISMATCH,
             BUY_SELL_MODULE_INACCESSIBLE,
             LAND_VALIDATION_FAILED,
+            EXISTING_TRANSACTION_ID,
         }
         
     }
