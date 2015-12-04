@@ -51,6 +51,10 @@ using OpenMetaverse.StructuredData;     // TODO: turn transactionData into a dic
 
 [assembly: Addin("Gloebit", "0.1")]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
+[assembly: AddinDescription("OpenSim Addin for Gloebit Money Module")]
+[assembly: AddinAuthor("Gloebit LLC gloebit@gloebit.com")
+//[assembly: ImportAddinFile("Gloebit.ini")]
+
 
 namespace Gloebit.GloebitMoneyModule
 {
@@ -787,6 +791,7 @@ namespace Gloebit.GloebitMoneyModule
         private float EnergyEfficiency = 0f;
 
         private bool m_enabled = true;
+        private bool m_configured = true;
         private UUID[] m_enabledRegions = null;
         private bool m_sellEnabled = false;
         private GLBEnv m_environment = GLBEnv.None;
@@ -862,9 +867,10 @@ namespace Gloebit.GloebitMoneyModule
             if(m_environment != GLBEnv.Sandbox && m_environment != GLBEnv.Production && m_environment != GLBEnv.Custom) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] Unsupported environment selected: {0}, disabling GloebitMoneyModule", m_environment);
                 m_enabled = false;
+                m_configured = false;
             }
 
-            if(m_enabled || m_enabledRegions != null) {
+            if(m_configured) {
                 //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
                 m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
                 GloebitUserData.Initialise(m_gConfig.Configs["DatabaseService"]);
@@ -955,7 +961,7 @@ namespace Gloebit.GloebitMoneyModule
                 if(!String.IsNullOrEmpty(enabledRegionIdsStr)) {
                     // null for the delimiter argument means split on whitespace
                     string[] enabledRegionIds = enabledRegionIdsStr.Split((string[])null, StringSplitOptions.RemoveEmptyEntries);
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GLBEnabledOnlyInRegions {0}", (object)enabledRegionIds);
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GLBEnabledOnlyInRegions num regions: {0}", enabledRegionIds.Length);
                     m_enabledRegions = new UUID[enabledRegionIds.Length];
                     for(int i = 0; i < enabledRegionIds.Length; i++) {
                         m_enabledRegions[i] = UUID.Parse(enabledRegionIds[i]);
@@ -998,6 +1004,10 @@ namespace Gloebit.GloebitMoneyModule
 
         public void AddRegion(Scene scene)
         {
+            if(!m_configured) {
+                return;
+            }
+
             if (m_enabled || (m_enabledRegions != null && m_enabledRegions.Contains(scene.RegionInfo.RegionID)))
             {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] region added {0}", scene.RegionInfo.RegionID.ToString());
@@ -1052,6 +1062,10 @@ namespace Gloebit.GloebitMoneyModule
                 
                 scene.EventManager.OnClientLogin += OnClientLogin;
                 
+            } else {
+                if(m_enabledRegions != null) {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] SKIPPING region add {0} is not in enabled region list", scene.RegionInfo.RegionID.ToString());
+                }
             }
         }
 
@@ -1074,6 +1088,7 @@ namespace Gloebit.GloebitMoneyModule
         public void Close()
         {
             m_enabled = false;
+            m_configured = false;
         }
 
         public Type ReplaceableInterface {
