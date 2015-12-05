@@ -968,7 +968,8 @@ namespace Gloebit.GloebitMoneyModule {
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", u);
 
                             // TODO - make this use a callback
-                            user.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)GetBalance(u, out bool invalidatedToken), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                            bool invalidatedToken;
+                            user.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)GetBalance(u, out invalidatedToken), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
                         } else {
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken error: {0}, reason: {1}", responseDataMap["error"], responseDataMap["reason"]);
                             // TODO: signal error;

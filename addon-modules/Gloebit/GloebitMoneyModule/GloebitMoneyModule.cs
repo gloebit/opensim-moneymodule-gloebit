@@ -30,6 +30,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -50,6 +51,10 @@ using OpenMetaverse.StructuredData;     // TODO: turn transactionData into a dic
 
 [assembly: Addin("Gloebit", "0.1")]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
+[assembly: AddinDescription("OpenSim Addin for Gloebit Money Module")]
+[assembly: AddinAuthor("Gloebit LLC gloebit@gloebit.com")
+//[assembly: ImportAddinFile("Gloebit.ini")]
+
 
 namespace Gloebit.GloebitMoneyModule
 {
@@ -786,6 +791,8 @@ namespace Gloebit.GloebitMoneyModule
         private float EnergyEfficiency = 0f;
 
         private bool m_enabled = true;
+        private bool m_configured = true;
+        private UUID[] m_enabledRegions = null;
         private bool m_sellEnabled = false;
         private GLBEnv m_environment = GLBEnv.None;
         private string m_keyAlias;
@@ -840,10 +847,12 @@ namespace Gloebit.GloebitMoneyModule
             m_log.Info ("[GLOEBITMONEYMODULE] Initialising.");
             m_gConfig = config;
 
+            LoadConfig(m_gConfig);
+
             string[] sections = {"Startup", "Gloebit", "Economy", "GridInfoService"};
             foreach (string section in sections) {
                 IConfig sec_config = m_gConfig.Configs[section];
-            
+
                 if (null == sec_config) {
                     m_log.WarnFormat("[GLOEBITMONEYMODULE] Config section {0} is missing. Skipping.", section);
                     continue;
@@ -858,15 +867,37 @@ namespace Gloebit.GloebitMoneyModule
             if(m_environment != GLBEnv.Sandbox && m_environment != GLBEnv.Production && m_environment != GLBEnv.Custom) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] Unsupported environment selected: {0}, disabling GloebitMoneyModule", m_environment);
                 m_enabled = false;
+                m_configured = false;
             }
 
-            if(m_enabled) {
+            if(m_configured) {
                 //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
                 m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
                 GloebitUserData.Initialise(m_gConfig.Configs["DatabaseService"]);
                 GloebitTransactionData.Initialise(m_gConfig.Configs["DatabaseService"]);
                 GloebitSubscriptionData.Initialise(m_gConfig.Configs["DatabaseService"]);
             }
+        }
+
+        /// <summary>
+        /// Load Addin Configuration from Addin config dir
+        /// </summary>
+        /// <param name="config"></param>
+        private void LoadConfig(IConfigSource config)
+        {
+           string configPath = string.Empty;
+           bool created;
+           string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+           if (!Util.MergeConfigurationFile(config, "Gloebit.ini", Path.Combine(assemblyDirectory, "Gloebit.ini"), out configPath, out created))
+           {
+               m_log.WarnFormat("[GLOEBITMONEYMODULE]: Gloebit.ini configuration file not merged");
+               return;
+           }
+           if (created)
+           {
+               m_log.ErrorFormat("[GLOEBITMONEYMODULE]: PLEASE EDIT {0} BEFORE RUNNING THIS ADDIN", configPath);
+               throw new Exception("Addin must be configured prior to running");
+           }
         }
 
         /// <summary>
@@ -879,7 +910,7 @@ namespace Gloebit.GloebitMoneyModule
             if (section == "Startup") {
                 m_enabled = (config.GetString("economymodule", "Gloebit") == "Gloebit");
                 if(m_enabled) {
-                    m_log.Info ("[GLOEBITMONEYMODULE] selected as economymodule.");
+                    m_log.Info ("[GLOEBITMONEYMODULE] selected as global economymodule.");
                 }
             }
 
@@ -887,8 +918,7 @@ namespace Gloebit.GloebitMoneyModule
                 bool enabled = config.GetBoolean("Enabled", false);
                 m_enabled = m_enabled && enabled;
                 if (!enabled) {
-                    m_log.Info ("[GLOEBITMONEYMODULE] Not enabled. (to enable set \"Enabled = true\" in [Gloebit])");
-                    return;
+                    m_log.Info ("[GLOEBITMONEYMODULE] Not enabled globally. (to enable set \"Enabled = true\" in [Gloebit])");
                 }
                 string envString = config.GetString("GLBEnvironment", "sandbox");
                 switch(envString) {
@@ -926,6 +956,18 @@ namespace Gloebit.GloebitMoneyModule
                 if (!String.IsNullOrEmpty(ownerEmail)) {
                     m_contactOwner = String.Format("{0} at {1}", ownerName, ownerEmail);
                 }
+
+                string enabledRegionIdsStr = config.GetString("GLBEnabledOnlyInRegions");
+                if(!String.IsNullOrEmpty(enabledRegionIdsStr)) {
+                    // null for the delimiter argument means split on whitespace
+                    string[] enabledRegionIds = enabledRegionIdsStr.Split((string[])null, StringSplitOptions.RemoveEmptyEntries);
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GLBEnabledOnlyInRegions num regions: {0}", enabledRegionIds.Length);
+                    m_enabledRegions = new UUID[enabledRegionIds.Length];
+                    for(int i = 0; i < enabledRegionIds.Length; i++) {
+                        m_enabledRegions[i] = UUID.Parse(enabledRegionIds[i]);
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] selected as local economymodule for region {0}", enabledRegionIds[i]);
+                    }
+                }
             }
 
             if (section == "Economy") {
@@ -962,9 +1004,13 @@ namespace Gloebit.GloebitMoneyModule
 
         public void AddRegion(Scene scene)
         {
-            if (m_enabled)
+            if(!m_configured) {
+                return;
+            }
+
+            if (m_enabled || (m_enabledRegions != null && m_enabledRegions.Contains(scene.RegionInfo.RegionID)))
             {
-                m_log.Info("[GLOEBITMONEYMODULE] region added");
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] region added {0}", scene.RegionInfo.RegionID.ToString());
                 scene.RegisterModuleInterface<IMoneyModule>(this);
                 IHttpServer httpServer = MainServer.Instance;
 
@@ -1016,6 +1062,10 @@ namespace Gloebit.GloebitMoneyModule
                 
                 scene.EventManager.OnClientLogin += OnClientLogin;
                 
+            } else {
+                if(m_enabledRegions != null) {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] SKIPPING region add {0} is not in enabled region list", scene.RegionInfo.RegionID.ToString());
+                }
             }
         }
 
@@ -1038,6 +1088,7 @@ namespace Gloebit.GloebitMoneyModule
         public void Close()
         {
             m_enabled = false;
+            m_configured = false;
         }
 
         public Type ReplaceableInterface {
