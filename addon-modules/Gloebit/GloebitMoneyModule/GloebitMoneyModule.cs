@@ -52,7 +52,7 @@ using OpenMetaverse.StructuredData;     // TODO: turn transactionData into a dic
 [assembly: Addin("Gloebit", "0.1")]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
 [assembly: AddinDescription("OpenSim Addin for Gloebit Money Module")]
-[assembly: AddinAuthor("Gloebit LLC gloebit@gloebit.com")
+[assembly: AddinAuthor("Gloebit LLC gloebit@gloebit.com")]
 //[assembly: ImportAddinFile("Gloebit.ini")]
 
 
@@ -888,7 +888,7 @@ namespace Gloebit.GloebitMoneyModule
            string configPath = string.Empty;
            bool created;
            string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-           if (!Util.MergeConfigurationFile(config, "Gloebit.ini", Path.Combine(assemblyDirectory, "Gloebit.ini"), out configPath, out created))
+           if (!Util.MergeConfigurationFile(config, "Gloebit.ini", Path.Combine(assemblyDirectory, "Gloebit.ini.example"), out configPath, out created))
            {
                m_log.WarnFormat("[GLOEBITMONEYMODULE]: Gloebit.ini configuration file not merged");
                return;

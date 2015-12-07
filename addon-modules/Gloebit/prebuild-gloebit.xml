@@ -42,6 +42,7 @@
     <Match pattern="*.cs" recurse="true"/>
     <Match buildAction="EmbeddedResource" path="Resources" pattern="*.sql"/>
     <Match buildAction="EmbeddedResource" path="Resources" pattern="*.migrations"/>
+    <Match buildAction="Copy" pattern="*.ini.example" destination="../../../bin/"/>
   </Files>
  
 </Project>
