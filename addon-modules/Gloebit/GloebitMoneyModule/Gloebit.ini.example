@@ -1,7 +1,40 @@
 [Gloebit]
+    ;;;;;; ENABLE GLOBALLY OR FOR INDIVIDUAL REGIONS ;;;;;
+
+    ;# {Enabled} {[Startup]economymodule:Gloebit} {Enable Gloebit Money Module Globally?} {false, true} false
+    ;; Set to true to enable GMM for all regions controlled by this OpenSim process.
+    ;; Requires that "economymodule = Gloebit" is set in opensim.ini
+    ;; If set to false, can be enabled for individual regions - see GLBEnabledOnlyInRegions below
     Enabled = false
+
+    ;# {GLBEnabledOnlyInRegions} {Enabled:false} {Enable Gloebit Money Module in specific regions by region UUID (space delimited list)?} {*} ""
+    ;; If Enabled is false above, you can enable for individual regions controlled by this OpenSim process.
+    ;; Set this variable to a whitespace delimited list of region UUIDs
+    ;    GLBEnabledOnlyInRegions =
+
+    ;;;;;; CONFIGURE ENVIRONMENT AND APPLICATION ;;;;;;
+    ;; Configure GMM to environment and Gloebit application on that environment to interact with
+    ;; see http://dev.gloebit.com/opensim/configuration-instructions/ for more details.
+
+    ;; GLBEnvironment is currently restricted to sandbox for testing.
+    ;; Environments:
+    ;;      sandbox - connects to sandbox.gloebit.com;  fake/sandboxed payments;
     GLBEnvironment = sandbox
-    ;# Fill in Key and Secret with values from app created at https://sandbox.gloebit.com/merchant-tools/
+
+    ;; Application the GMM on this process will connect to within the environment specified above
+    ;; Fill in GLBKey and GLBSecret with values from app created at https://sandbox.gloebit.com/merchant-tools/
+    ;; See http://dev.gloebit.com/opensim/configuration-instructions/ for more details.
     GLBKey = 00000000-0000-0000-0000-000000000000
     GLBSecret = 00000000-0000-0000-0000-000000000000
-;    GLBEnabledOnlyInRegions =
+
+    ;;;;;; CONFIGURE HELPFUL ERROR CONTACT INFO FOR USER MESSAGES ;;;;;;
+    ;; The following are supplied to users in error messages for certain errors for which they should
+    ;; contact the person who configured this GMM and app and may need to fix something
+    ;; Those messages will include a trailing instruction string formatted like:
+    ;; Please contact GLBOnwerName at GLBOwnerEmail if this problem persists.
+
+    ;; GLBOwnerName should be replaced with the neme of the person or avatar which manages this OpenSim process.
+    GLBOwnerName = Region or Grid Owner
+
+    ;; GLBOwnerEmail should be replaced with the email address (or other contact mechanism) for the person who manages this OpenSim process.
+    ; GLBOwnerEmail = Manager@example.com
