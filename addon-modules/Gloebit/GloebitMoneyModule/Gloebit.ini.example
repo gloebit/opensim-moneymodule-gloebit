@@ -27,6 +27,12 @@
     GLBKey = 00000000-0000-0000-0000-000000000000
     GLBSecret = 00000000-0000-0000-0000-000000000000
 
+    ;; GLBKeyAlias is optional and can be left out.
+    ;; If included, this will be used to make some URLs more user-friendly and human-readalbe
+    ;; To use, fill this with the OAuth Key Alias registered for this application on Gloebit
+    ; GLBKeyAlias =
+
+
     ;;;;;; CONFIGURE HELPFUL ERROR CONTACT INFO FOR USER MESSAGES ;;;;;;
     ;; The following are supplied to users in error messages for certain errors for which they should
     ;; contact the person who configured this GMM and app and may need to fix something
