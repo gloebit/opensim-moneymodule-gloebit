@@ -902,8 +902,8 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["scope"] = "user balance transact";
             auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.AgentId).ToString();
             auth_params["response_type"] = "code";
-            // auth_params["user"] = user.AgentId.ToString(); // Add this back in once we can track user id as well.
             auth_params["user"] = user.Name;
+            auth_params["uid"] = user.AgentId.ToString();
             // TODO - make use of 'state' param for XSRF protection
             // auth_params["state"] = ???;
 
