@@ -1526,22 +1526,28 @@ namespace Gloebit.GloebitMoneyModule
 
         private string resolveAgentName(UUID agentID)
         {
-            // try avatar username surname
+            string avatarname = String.Empty;
             Scene scene = GetAnyScene();
-            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
-            if (account != null)
-            {
-                string avatarname = account.FirstName + " " + account.LastName;
-                return avatarname;
-            }
-            else
-            {
-                m_log.ErrorFormat(
-                    "[GLOEBITMONEYMODULE]: Could not resolve user {0}", 
-                    agentID);
+            
+            // Try using IUserManagement module which works for both local users and hypergrid visitors
+            IUserManagement umModule = scene.RequestModuleInterface<IUserManagement>();
+            if (umModule != null) {
+                avatarname = umModule.GetUserName(agentID);
             }
             
-            return String.Empty;
+            // If above didn't work, try old method which doesn't work for hypergrid visitors
+            if (String.IsNullOrEmpty(avatarname)) {
+                UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
+                if (account != null)
+                {
+                    avatarname = account.FirstName + " " + account.LastName;
+                } else {
+                    // both methods failed.  Log error.
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE]: Could not resolve name for user {0}", agentID);
+                }
+            }
+            
+            return avatarname;
         }
         
         // Possible that this is automatic as firstname=FN.LN and lastname=@home_uri
