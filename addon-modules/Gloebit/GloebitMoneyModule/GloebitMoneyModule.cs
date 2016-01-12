@@ -49,7 +49,7 @@ using OpenSim.Region.Framework.Scenes;
 using OpenSim.Services.Interfaces;
 using OpenMetaverse.StructuredData;     // TODO: turn transactionData into a dictionary of <string, object> and remove this.
 
-[assembly: Addin("Gloebit", "0.1")]
+[assembly: Addin("Gloebit", "0.1.1-opensim" + OpenSim.VersionInfo.VersionNumber)]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
 [assembly: AddinDescription("OpenSim Addin for Gloebit Money Module")]
 [assembly: AddinAuthor("Gloebit LLC gloebit@gloebit.com")]
@@ -1529,6 +1529,10 @@ namespace Gloebit.GloebitMoneyModule
             // try avatar username surname
             Scene scene = GetAnyScene();
             UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
+
+            IUserManagement umModule = scene.RequestModuleInterface<IUserManagement>();
+            m_log.InfoFormat("[GLOEBITMONEYMODULE]: resolveAgentName\n GetUserName:{0} \nGetUserHomeURL:{1} \nGetUserUUI:{2}", umModule.GetUserName(agentID), umModule.GetUserHomeURL(agentID), umModule.GetUserUUI(agentID));
+
             if (account != null)
             {
                 string avatarname = account.FirstName + " " + account.LastName;
