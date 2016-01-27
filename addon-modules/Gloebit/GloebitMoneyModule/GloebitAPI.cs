@@ -1127,9 +1127,8 @@ namespace Gloebit.GloebitMoneyModule {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURI:{7}", sender.PrincipalID, txn.PayerName, recipient.PrincipalID, txn.PayeeName, recipientEmail, txn.Amount, description, baseURI);
             
             // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
-            // TODO: How do we identify recipient?  Get email from profile from OpenSim UUID?
-            // TODO: If we use emails, we may need to make sure account merging works for email/3rd party providers.
-            // TODO: If we allow anyone to receive, need to ensure that gloebits received are locked down until user authenticates as merchant.
+            // 1. If the recipient has authed ever, we'll have a recipient.GloebitID to use.
+            // 2. If not, and the recipeint's account is on this grid, Get the email from the profile for the account.
             
             // ************ BUILD AND SEND TRANSACT U2U POST REQUEST ******** //
             
@@ -1311,9 +1310,10 @@ namespace Gloebit.GloebitMoneyModule {
             //transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
             transact_params["username-on-application"] = txn.PayerName;
             transact_params["transaction-id"] = txn.TransactionID.ToString();
-            if (!String.IsNullOrEmpty(senderGloebitID) && senderGloebitID != UUID.Zero.ToString()) {
-                transact_params["app-user-id"] = senderGloebitID;
-            }
+            
+            // TODO: make payerID required in all txns and move to base params section
+            transact_params["buyer-id-on-application"] = txn.PayerID;
+            transact_params["app-user-id"] = senderGloebitID;
             
             /***** Asset Params *****/
             // TODO: should only build this if asset, not product txn.  u2u txn probably has to be asset.
@@ -1347,8 +1347,7 @@ namespace Gloebit.GloebitMoneyModule {
             if (!String.IsNullOrEmpty(recipientEmail)) {
                 transact_params["seller-email-address"] = recipientEmail;
             }
-            // TODO: make payerID required in all txns and move to base params section
-            transact_params["buyer-id-on-application"] = txn.PayerID;
+            
             // TODO: make descmap optional or required in all txns and move to own section
             if (descMap != null) {
                 transact_params["platform-desc-names"] = descMap["platform-names"];
