@@ -139,12 +139,8 @@ namespace Gloebit.GloebitMoneyModule {
                 return localUser;
             }
 
-            public static User Authorize(UUID agentId, string token) {
+            public static User Authorize(UUID agentId, string token, string gloebitID) {
                 string agentIdStr = agentId.ToString();
-
-                // TODO: properly store GloebitID when we get it.
-                //User u = new User(agentIdStr, UUID.Zero.ToString(), token);
-                //User u = new User(agentIdStr, String.Empty, token);
                 
                 // TODO: I think there has to be a better way to do this, but I'm not finding it right now.
                 // By calling Get, we make sure that the user is in the map and has any additional data users store.
@@ -158,6 +154,7 @@ namespace Gloebit.GloebitMoneyModule {
                 }
                 lock (u.userLock) {
                     u.GloebitToken = token;
+                    u.GloebitID = gloebitID;
                     GloebitUserData.Instance.Store(u);
                     localUser = new User(u);
                 }
@@ -963,9 +960,10 @@ namespace Gloebit.GloebitMoneyModule {
                         // ************ PARSE AND HANDLE EXCHANGE ACCESS TOKEN RESPONSE ********* //
 
                         string token = responseDataMap["access_token"];
+                        string app_user_id = responseDataMap["app_user_id"];
                         // TODO - do something to handle the "refresh_token" field properly
                         if(!String.IsNullOrEmpty(token)) {
-                            User u = User.Authorize(user.AgentId, token);
+                            User u = User.Authorize(user.AgentId, token, app_user_id);
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", u);
 
                             // TODO - make this use a callback
@@ -1073,6 +1071,8 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["asset-code"] = description;
             transact_params["asset-quantity"] = 1;
             
+            transact_params["app-user-id"] = sender.GloebitID;
+            
             HttpWebRequest request = BuildGloebitRequest("transact", "POST", sender, "application/json", transact_params);
             if (request == null) {
                 // ERROR
@@ -1127,9 +1127,8 @@ namespace Gloebit.GloebitMoneyModule {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURI:{7}", sender.PrincipalID, txn.PayerName, recipient.PrincipalID, txn.PayeeName, recipientEmail, txn.Amount, description, baseURI);
             
             // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
-            // TODO: How do we identify recipient?  Get email from profile from OpenSim UUID?
-            // TODO: If we use emails, we may need to make sure account merging works for email/3rd party providers.
-            // TODO: If we allow anyone to receive, need to ensure that gloebits received are locked down until user authenticates as merchant.
+            // 1. If the recipient has authed ever, we'll have a recipient.GloebitID to use.
+            // 2. If not, and the recipeint's account is on this grid, Get the email from the profile for the account.
             
             // ************ BUILD AND SEND TRANSACT U2U POST REQUEST ******** //
             
@@ -1138,7 +1137,7 @@ namespace Gloebit.GloebitMoneyModule {
             
             // TODO: move away from OSDMap to a standard C# dictionary
             OSDMap transact_params = new OSDMap();
-            PopulateTransactParams(transact_params, txn, description, recipientEmail, recipient.GloebitID, descMap, baseURI);
+            PopulateTransactParams(transact_params, sender.GloebitID, txn, description, recipientEmail, recipient.GloebitID, descMap, baseURI);
             
             HttpWebRequest request = BuildGloebitRequest("transact-u2u", "POST", sender, "application/json", transact_params);
             if (request == null) {
@@ -1225,7 +1224,7 @@ namespace Gloebit.GloebitMoneyModule {
             
             // TODO: move away from OSDMap to a standard C# dictionary
             OSDMap transact_params = new OSDMap();
-            PopulateTransactParams(transact_params, txn, description, recipientEmail, recipient.GloebitID, descMap, baseURI);
+            PopulateTransactParams(transact_params, sender.GloebitID, txn, description, recipientEmail, recipient.GloebitID, descMap, baseURI);
             
             HttpWebRequest request = BuildGloebitRequest("transact-u2u", "POST", sender, "application/json", transact_params);
             if (request == null) {
@@ -1302,7 +1301,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
         /// <param name="baseURI">Asset representing local transaction part requiring processing via callbacks.</param>
-        private void PopulateTransactParams(OSDMap transact_params, Transaction txn, string description, string recipientEmail, string recipientGloebitID, OSDMap descMap, Uri baseURI)
+        private void PopulateTransactParams(OSDMap transact_params, string senderGloebitID, Transaction txn, string description, string recipientEmail, string recipientGloebitID, OSDMap descMap, Uri baseURI)
         {
             /***** Base Params *****/
             transact_params["version"] = 1;
@@ -1311,6 +1310,10 @@ namespace Gloebit.GloebitMoneyModule {
             //transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
             transact_params["username-on-application"] = txn.PayerName;
             transact_params["transaction-id"] = txn.TransactionID.ToString();
+            
+            // TODO: make payerID required in all txns and move to base params section
+            transact_params["buyer-id-on-application"] = txn.PayerID;
+            transact_params["app-user-id"] = senderGloebitID;
             
             /***** Asset Params *****/
             // TODO: should only build this if asset, not product txn.  u2u txn probably has to be asset.
@@ -1338,14 +1341,13 @@ namespace Gloebit.GloebitMoneyModule {
             /***** U2U specific transact params *****/
             transact_params["seller-name-on-application"] = txn.PayeeName;
             transact_params["seller-id-on-application"] = txn.PayeeID;
-            if (recipientGloebitID != null && recipientGloebitID != UUID.Zero.ToString()) {
+            if (!String.IsNullOrEmpty(recipientGloebitID) && recipientGloebitID != UUID.Zero.ToString()) {
                 transact_params["seller-id-from-gloebit"] = recipientGloebitID;
             }
             if (!String.IsNullOrEmpty(recipientEmail)) {
                 transact_params["seller-email-address"] = recipientEmail;
             }
-            // TODO: make payerID required in all txns and move to base params section
-            transact_params["buyer-id-on-application"] = txn.PayerID;
+            
             // TODO: make descmap optional or required in all txns and move to own section
             if (descMap != null) {
                 transact_params["platform-desc-names"] = descMap["platform-names"];
@@ -1646,6 +1648,9 @@ namespace Gloebit.GloebitMoneyModule {
             //sub_auth_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
             sub_auth_params["username-on-application"] = senderName;
             sub_auth_params["user-id-on-application"] = sender.PrincipalID;
+            if (!String.IsNullOrEmpty(sender.GloebitID) && sender.GloebitID != UUID.Zero.ToString()) {
+                sub_auth_params["app-user-id"] = sender.GloebitID;
+            }
             // TODO: should we add additional-details to sub_auth_params?
             sub_auth_params["subscription-id"] = sub.SubscriptionID;
             
