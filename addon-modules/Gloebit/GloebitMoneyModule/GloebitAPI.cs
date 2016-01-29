@@ -1464,6 +1464,10 @@ namespace Gloebit.GloebitMoneyModule {
                 } else if (status == "unknown-merchant") {                  /* can not identify merchant from params supplied by app */
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED;
+                } else if (reason == "transaction is missing parameters needed to identify gloebit account of seller - supply at least one of seller-email-address or seller-id-from-gloebit.") {
+                    // TODO: handle this better in the long run
+                    stage = TransactionStage.VALIDATE;
+                    failure = TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED;
                 } else if (reason == "Transaction with automated-transaction=True is missing subscription-id") {
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.FORM_MISSING_SUBSCRIPTION_ID;
