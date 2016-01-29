@@ -3874,13 +3874,17 @@ namespace Gloebit.GloebitMoneyModule
             if ((txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER) && (txn.PayerID != txn.PayeeID)) {
                 sendTxnStatusToClient(txn, payeeClient, "Transaction SUCCEEDED.", showDetailsWithTxnSucceeded, showIDWithTxnSucceeded);
             }
+            // If this transaction was one user paying another, if the user is online, we should let them know they received a payment
+            if (txn.TransactionType == (int)TransactionType.USER_PAYS_USER) {
+                string message = String.Format("You've received Gloebits from {0}.", resolveAgentName(payerClient.AgentId));
+                sendTxnStatusToClient(txn, payeeClient, message, true, showIDWithTxnSucceeded);
+            }
             // TODO: consider if we want to send an alert that payee earned money with transaction details for other transaction types
             
             // TODO: should consider updating API to return payee ending balance as well.  Potential privacy issue here if not approved to see balance.
             
             // TODO: Once we store description in txn, change 3rd arg in SMB below to Utils.StringToBytes(description)
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] XXXXXXXXXXXXXXXXXXXX Log start updating balances after txn:{0}", txn.TransactionID);
             // Update Payer & Payee balances if still logged in.
             if (payerClient != null) {
                 if (txn.PayerEndingBalance >= 0) {  /* if -1, got an invalid balance in response.  possible this shouldn't ever happen */
@@ -3896,7 +3900,6 @@ namespace Gloebit.GloebitMoneyModule
                 int payeeBalance = (int)GetAgentBalance(txn.PayeeID, payeeClient, false);
                 payeeClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payeeBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
             }
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] XXXXXXXXXXXXXXXXXXXX Log finish updating balances after txn:{0}", txn.TransactionID);
         }
 
         public enum TransactionType : int
