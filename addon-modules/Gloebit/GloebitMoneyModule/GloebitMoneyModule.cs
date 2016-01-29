@@ -3707,8 +3707,8 @@ namespace Gloebit.GloebitMoneyModule
                         case GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED:
                             // message payer and payee
                             error = "Gloebit can not identify payee from OpenSim account.";
-                            instruction = contactPayee;
-                            payeeInstruction = "Please ensure your OpenSim account has an email address, and that you have verified this email address in your Gloebit account.";
+                            instruction = "Please alert seller/payee to this issue.  They should run through the authorization flow from this grid to link their OpenSim agent to a Gloebit account.";
+                            payeeInstruction = "Please ensure your OpenSim account has an email address, and that you have verified this email address in your Gloebit account.  If you are a hypergrid user with a foreign home grid, then your email address is not provided, so you will need to authorize this Grid in order to create a link from this agent to your Gloebit account.  You can immediately revoke your authorization if you don't want this Grid to be able to charge your account.  We will continue to send received funds to the last Gloebit account linked to this avatar.";
                             messagePayee = true;
                             payeeMessage = String.Format("Gloebit:\nAttempt to pay you failed because we cannot identify your Gloebit account from your OpenSim account.\n\n{0}", payeeInstruction);
                             break;
@@ -3844,6 +3844,11 @@ namespace Gloebit.GloebitMoneyModule
             if (messagePayee) {
                 sendMessageToClient(payeeClient, payeeMessage, txn.PayeeID);
                 // TODO: this message should be delivered to email if client is not online and didn't trigger this message.
+                
+                // Since unidentified seller can now be fixed by auth, send the auth link if they are online
+                if payeeClient != null && transactionFailure == GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED) {
+                    m_api.Authorize(payeeClient, m_economyURL);
+                }
             }
             
         }
