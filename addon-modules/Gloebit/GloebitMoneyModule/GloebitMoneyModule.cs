@@ -1275,6 +1275,16 @@ namespace Gloebit.GloebitMoneyModule
             // If we try to LocateClientObject at thist time, it will return null for this AgentId
             double agentBalance = GetAgentBalance(client.AgentId, client, true);
             client.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)agentBalance, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+            
+            // TODO: It's possible this will send this at every grid crossing.  People might find that overkill.  Might want to generate a
+            // a callback for when we add a user to the user map and use that to make the initial auth request or send the purchase url.
+            // Send purchase URL to make it easy to find out how to buy more gloebits.
+            GloebitAPI.User u = GloebitAPI.User.Get(client.AgentId);
+            if (!String.IsNullOrEmpty(u.GloebitToken)) {        // TODO: this should probably be turned into a User class function bool isAuthed()
+                // Deliver Purchase URI in case the helper-uri is not working
+                Uri url = m_api.BuildPurchaseURI(m_economyURL, u);      // TODO: is the m_economyURL the right callback base_url?
+                GloebitAPI.SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
+            }
         }
         
         private void OnClientLogin(IClientAPI client)
