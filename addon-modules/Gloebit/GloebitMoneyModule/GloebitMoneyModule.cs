@@ -1490,6 +1490,14 @@ namespace Gloebit.GloebitMoneyModule
                 // Get balance rounded down (may not be int for merchants)
                 returnfunds = (int)realBal;
                 client.SendMoneyBalance(TransactionID, true, new byte[0], returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                
+                // Send purchase URL to make it easy to find out how to buy more gloebits.
+                GloebitAPI.User u = GloebitAPI.User.Get(client.AgentId);
+                if (!String.IsNullOrEmpty(u.GloebitToken)) {        // TODO: this should probably be turned into a User class function bool isAuthed()
+                    // Deliver Purchase URI in case the helper-uri is not working
+                    Uri url = m_api.BuildPurchaseURI(m_economyURL, u);      // TODO: is the m_economyURL the right callback base_url?
+                    GloebitAPI.SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
+                }
             }
             else
             {
