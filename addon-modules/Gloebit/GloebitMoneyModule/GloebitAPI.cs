@@ -50,6 +50,7 @@ namespace Gloebit.GloebitMoneyModule {
         public readonly Uri m_url;
         
         public interface IAsyncEndpointCallback {
+            void exchangeAccessTokenCompleted(bool success, User user, OSDMap responseDataMap);
             void transactU2UCompleted (OSDMap responseDataMap, User sender, User recipient, Transaction transaction, TransactionStage stage, TransactionFailure failure);
             void createSubscriptionCompleted(OSDMap responseDataMap, Subscription subscription);
             void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, Subscription subscription, User sender, IClientAPI client);
@@ -930,10 +931,11 @@ namespace Gloebit.GloebitMoneyModule {
         /// <returns>The authenticated User object containing the access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.</returns>
         /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
         /// <param name="auth_code">Authorization Code returned to the redirect_uri from the Gloebit Authorize endpoint.</param>
-        public void ExchangeAccessToken(IClientAPI user, string auth_code, Uri baseURI) {
+        public void ExchangeAccessToken(User user, string auth_code, Uri baseURI) {
             
-            //TODO stop logging auth_code
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken Name:[{0}] AgentID:{1} auth_code:{1}", user.Name, user.AgentId, auth_code);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken AgentID:{1}", user.PrincipalID);
+            
+            UUID agentID = UUID.Parse(user.PrincipalID);
             
             // ************ BUILD EXCHANGE ACCESS TOKEN POST REQUEST ******** //
             OSDMap auth_params = new OSDMap();
@@ -943,7 +945,7 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["code"] = auth_code;
             auth_params["grant_type"] = "authorization_code";
             auth_params["scope"] = "user balance transact";
-            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.AgentId).ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, agentID).ToString();
             
             HttpWebRequest request = BuildGloebitRequest("oauth2/access-token", "POST", null, "application/x-www-form-urlencoded", auth_params);
             if (request == null) {
@@ -961,18 +963,18 @@ namespace Gloebit.GloebitMoneyModule {
 
                         string token = responseDataMap["access_token"];
                         string app_user_id = responseDataMap["app_user_id"];
+                        bool success = false;
                         // TODO - do something to handle the "refresh_token" field properly
                         if(!String.IsNullOrEmpty(token)) {
-                            User u = User.Authorize(user.AgentId, token, app_user_id);
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", u);
-
-                            // TODO - make this use a callback
-                            bool invalidatedToken;
-                            user.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)GetBalance(u, out invalidatedToken), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                            success = true;
+                            user = User.Authorize(agentID, token, app_user_id);
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", user);
                         } else {
+                            success = false;
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken error: {0}, reason: {1}", responseDataMap["error"], responseDataMap["reason"]);
                             // TODO: signal error;
                         }
+                        m_asyncEndpointCallbacks.exchangeAccessTokenCompleted(success, user, responseDataMap);
                     }));
         }
         

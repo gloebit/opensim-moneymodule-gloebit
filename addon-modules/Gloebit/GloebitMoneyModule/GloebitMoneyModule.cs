@@ -1752,19 +1752,19 @@ namespace Gloebit.GloebitMoneyModule
 
             string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
+            
+            UUID parsedAgentId = UUID.Parse(agentId);
+            GloebitAPI.User u = GloebitAPI.User.Get(parsedAgentId);
 
-            m_api.ExchangeAccessToken(LocateClientObject(UUID.Parse(agentId)), code, BaseURI);
+            m_api.ExchangeAccessToken(u, code, BaseURI);
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func started ExchangeAccessToken");
-
-            // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
-
-            // TODO: How do we wait until complete to send this response and update balance?
-
-            // TODO: call SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID) to update user balance.
+            
+            Uri url = m_api.BuildPurchaseURI(m_economyURL, u);      // TODO: is the m_economyURL the right callback base_url?
+            
             Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
-            response["str_response_string"] = "<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window.</body></html>";
+            response["str_response_string"] = String.Format("<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window and return to OpenSim.<br /><br /><br />You'll now be able spend gloebits from your Gloebit account as the agent you authorized on this OpenSim Grid.<br /><br />If you need gloebits, you can <a href=\"{0}\">purchase them here</a>.</body></html>", url);
             response["content_type"] = "text/html";
             return response;
         }
@@ -1818,8 +1818,15 @@ namespace Gloebit.GloebitMoneyModule
         /// Used by the redirect-to parameter to GloebitAPI.Purchase.  Called when a user has finished purchasing gloebits
         /// Sends a balance update to the user
         /// </summary>
-        /// <param name="requestData">response data from GloebitAPI.Authorize</param>
+        /// <param name="requestData">response data from GloebitAPI.Purchase</param>
         private Hashtable buyComplete_func(Hashtable requestData) {
+            // TODO: As best I can tell, this is not implemented on the api side.  BuildPurchaseURI sets the return-to query arg to this, but that's
+            // not what that query arg does.  That just overrides the default return-to url that is used by the return-to app link on the page.
+            // We would have to create a new query arg for this alert, and then we'd need to build the functionality to call that url upon purchase completion.
+            // We would probably pass this through and do it when we load the purchase success page.
+            // TODO: also, since we have a success page and we're not prepared to allow alternate success pages, this should probably just be used
+            // to inform the grid of a balance change and shouldn't produce html.
+            
             UUID agentId = UUID.Parse(requestData["agentId"] as string);
             IClientAPI client = LocateClientObject(agentId);
             
@@ -1837,6 +1844,25 @@ namespace Gloebit.GloebitMoneyModule
         /******************************************/
         /**** IAsyncEndpointCallback Interface ****/
         /******************************************/
+        
+        public void exchangeAccessTokenCompleted(bool success, GloebitAPI.User user, OSDMap responseDataMap)
+        {
+            UUID agentID = UUID.Parse(user.PrincipalID);
+            IClientAPI client = LocateClientObject(agentID);
+            
+            if (success) {
+                // Update the user's balance.
+                bool invalidatedToken;
+                client.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)m_api.GetBalance(user, out invalidatedToken), 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                // we have this other version in comments: SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
+            
+                // Deliver Purchase URI in case the helper-uri is not working
+                Uri url = m_api.BuildPurchaseURI(m_economyURL, user);      // TODO: is the m_economyURL the right callback base_url?
+                GloebitAPI.SendUrlToClient(client, "Gloebit Authorization Successful", "Buy gloebits you can spend on this grid:", url);
+            } else {
+                // May want to log an error or retry.
+            }
+        }
         
         public void transactU2UCompleted(OSDMap responseDataMap, GloebitAPI.User sender, GloebitAPI.User recipient, GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure)
         {
