@@ -3846,7 +3846,7 @@ namespace Gloebit.GloebitMoneyModule
                 // TODO: this message should be delivered to email if client is not online and didn't trigger this message.
                 
                 // Since unidentified seller can now be fixed by auth, send the auth link if they are online
-                if payeeClient != null && transactionFailure == GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED) {
+                if (payeeClient != null && failure == GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED) {
                     m_api.Authorize(payeeClient, m_economyURL);
                 }
             }
