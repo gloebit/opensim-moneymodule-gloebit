@@ -933,7 +933,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="auth_code">Authorization Code returned to the redirect_uri from the Gloebit Authorize endpoint.</param>
         public void ExchangeAccessToken(User user, string auth_code, Uri baseURI) {
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken AgentID:{1}", user.PrincipalID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken AgentID:{0}", user.PrincipalID);
             
             UUID agentID = UUID.Parse(user.PrincipalID);
             
@@ -1747,10 +1747,16 @@ namespace Gloebit.GloebitMoneyModule {
         public Uri BuildPurchaseURI(Uri callbackBaseURL, User u) {
             UriBuilder purchaseUri = new UriBuilder(m_url);
             purchaseUri.Path = "/purchase";
-            UriBuilder callbackUrl = new UriBuilder(callbackBaseURL);
-            callbackUrl.Path = "/gloebit/buy_complete";
-            callbackUrl.Query = String.Format("agentId={0}", u.PrincipalID);
-            purchaseUri.Query = String.Format("reset&r={0}&return-to={1}", m_keyAlias, callbackUrl.Uri);
+            if (callbackBaseURL != null) {
+                // TODO: this whole url should be built in GMM, not GAPI
+                // could do a try/catch here with the errors that UriBuilder can throw to also prevent crash from poorly formatted server uri.
+                UriBuilder callbackUrl = new UriBuilder(callbackBaseURL);
+                callbackUrl.Path = "/gloebit/buy_complete";
+                callbackUrl.Query = String.Format("agentId={0}", u.PrincipalID);
+                purchaseUri.Query = String.Format("reset&r={0}&inform={1}", m_keyAlias, callbackUrl.Uri);
+            } else {
+                purchaseUri.Query = String.Format("reset&r={0}", m_keyAlias);
+            }
             return purchaseUri.Uri;
         }
  

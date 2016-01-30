@@ -990,13 +990,20 @@ namespace Gloebit.GloebitMoneyModule
             }
 
             if (section == "GridInfoService") {
+                // TODO: This whole section is not there on Maria's grid.  Is that a problem???
                 m_gridnick = config.GetString("gridnick", m_gridnick);
                 m_gridname = config.GetString("gridname", m_gridname);
-                m_economyURL = new Uri(config.GetString("economy"));
+                string ecoURL = config.GetString("economy", null);
+                if (!String.IsNullOrEmpty(ecoURL)) {
+                    m_economyURL = new Uri(ecoURL);
+                } else {
+                    m_economyURL = null;
+                }
 
                 // TODO(brad) - figure out how to install a global economy url handler
                 // in robust mode.  do we need to make a separate addon for Robust.exe?
                 if(m_economyURL == null) {
+                    // TODO: Are we now using BaseURI for everything?  Should this error message be removed?  Should we remove m_eonomyURL?
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] GridInfoService.economy setting MUST be configured!");
                 }
             }
@@ -1154,7 +1161,7 @@ namespace Gloebit.GloebitMoneyModule
                 alertUsersSubscriptionTransactionFailedForSubscriptionCreation(fromID, toID, amount, sub);
                 
                 // call api to have Gloebit create
-                m_api.CreateSubscription(sub, m_economyURL);
+                m_api.CreateSubscription(sub, BaseURI);
                 
                 // return false so this the current transaciton terminates and object is alerted to failure
                 reason = "Owner has not yet created a subscription.";
@@ -1282,7 +1289,7 @@ namespace Gloebit.GloebitMoneyModule
             GloebitAPI.User u = GloebitAPI.User.Get(client.AgentId);
             if (!String.IsNullOrEmpty(u.GloebitToken)) {        // TODO: this should probably be turned into a User class function bool isAuthed()
                 // Deliver Purchase URI in case the helper-uri is not working
-                Uri url = m_api.BuildPurchaseURI(m_economyURL, u);      // TODO: is the m_economyURL the right callback base_url?
+                Uri url = m_api.BuildPurchaseURI(BaseURI, u);
                 GloebitAPI.SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
             }
         }
@@ -1505,7 +1512,7 @@ namespace Gloebit.GloebitMoneyModule
                 GloebitAPI.User u = GloebitAPI.User.Get(client.AgentId);
                 if (!String.IsNullOrEmpty(u.GloebitToken)) {        // TODO: this should probably be turned into a User class function bool isAuthed()
                     // Deliver Purchase URI in case the helper-uri is not working
-                    Uri url = m_api.BuildPurchaseURI(m_economyURL, u);      // TODO: is the m_economyURL the right callback base_url?
+                    Uri url = m_api.BuildPurchaseURI(BaseURI, u);
                     GloebitAPI.SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
                 }
             }
@@ -1668,7 +1675,7 @@ namespace Gloebit.GloebitMoneyModule
             GloebitAPI.User u = GloebitAPI.User.Get(agentId);
             if (String.IsNullOrEmpty(u.GloebitToken)) {
                 IClientAPI user = LocateClientObject(agentId);
-                m_api.Authorize(user, m_economyURL);
+                m_api.Authorize(user, BaseURI);
             }
 
             returnval.Value = quoteResponse;
@@ -1691,7 +1698,7 @@ namespace Gloebit.GloebitMoneyModule
                 agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
 
             GloebitAPI.User u = GloebitAPI.User.Get(agentId);
-            Uri url = m_api.BuildPurchaseURI(m_economyURL, u);
+            Uri url = m_api.BuildPurchaseURI(BaseURI, u);
             string message = String.Format("Unfortunately we cannot yet sell Gloebits directly in the viewer.  Please visit {0} to buy Gloebits.", url);
 
             XmlRpcResponse returnval = new XmlRpcResponse();
@@ -1778,7 +1785,7 @@ namespace Gloebit.GloebitMoneyModule
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func started ExchangeAccessToken");
             
-            Uri url = m_api.BuildPurchaseURI(m_economyURL, u);      // TODO: is the m_economyURL the right callback base_url?
+            Uri url = m_api.BuildPurchaseURI(BaseURI, u);
             
             Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
@@ -1875,7 +1882,7 @@ namespace Gloebit.GloebitMoneyModule
                 // we have this other version in comments: SendMoneyBalance(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
             
                 // Deliver Purchase URI in case the helper-uri is not working
-                Uri url = m_api.BuildPurchaseURI(m_economyURL, user);      // TODO: is the m_economyURL the right callback base_url?
+                Uri url = m_api.BuildPurchaseURI(BaseURI, user);
                 GloebitAPI.SendUrlToClient(client, "Gloebit Authorization Successful", "Buy gloebits you can spend on this grid:", url);
             } else {
                 // May want to log an error or retry.
@@ -2007,7 +2014,7 @@ namespace Gloebit.GloebitMoneyModule
                             alertUsersTransactionFailed(txn, stage, failure, String.Empty);
                             
                             if (buyerClient != null) {
-                                Dialog.Send(new CreateSubscriptionAuthorizationDialog(buyerClient, txn.PayerID, txn.PayerName, txn.PartID, txn.PartName, txn.PartDescription, txn.TransactionID, txn.PayeeID, txn.PayeeName, txn.Amount, txn.SubscriptionID, m_api, m_economyURL));
+                                Dialog.Send(new CreateSubscriptionAuthorizationDialog(buyerClient, txn.PayerID, txn.PayerName, txn.PartID, txn.PartName, txn.PartDescription, txn.TransactionID, txn.PayeeID, txn.PayeeName, txn.Amount, txn.SubscriptionID, m_api, BaseURI));
                             } else {
                                 // TODO: does the message eventually make it if the user is offline?  Is there a way to send a Dialog to a user the next time they log in?
                                 // Should we just create the subscription_auth in this case?
@@ -2024,7 +2031,7 @@ namespace Gloebit.GloebitMoneyModule
                             
                             // Send request to user again
                             if (buyerClient != null) {
-                                Dialog.Send(new PendingSubscriptionAuthorizationDialog(buyerClient, txn.PayerID, txn.PayerName, txn.PartID, txn.PartName, txn.PartDescription, txn.TransactionID, txn.PayeeID, txn.PayeeName, txn.Amount, txn.SubscriptionID, subscriptionAuthID, m_api, m_economyURL));
+                                Dialog.Send(new PendingSubscriptionAuthorizationDialog(buyerClient, txn.PayerID, txn.PayerName, txn.PartID, txn.PartName, txn.PartDescription, txn.TransactionID, txn.PayeeID, txn.PayeeName, txn.Amount, txn.SubscriptionID, subscriptionAuthID, m_api, BaseURI));
                             } else {
                                 // TODO: does the message eventually make it if the user is offline?  Is there a way to send a Dialog to a user the next time they log in?
                                 // Should we just create the subscription_auth in this case?
@@ -3847,7 +3854,7 @@ namespace Gloebit.GloebitMoneyModule
                 
                 // Since unidentified seller can now be fixed by auth, send the auth link if they are online
                 if (payeeClient != null && failure == GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED) {
-                    m_api.Authorize(payeeClient, m_economyURL);
+                    m_api.Authorize(payeeClient, BaseURI);
                 }
             }
             
