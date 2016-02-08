@@ -21,6 +21,7 @@
   <Reference name="Nini" path="../../../bin/"/>
   <Reference name="log4net" path="../../../bin/"/>
   <Reference name="MySql.Data" path="../../../bin/"/>
+  <Reference name="Npgsql" path="../../../bin/"/>
   <Reference name="OpenSim.Data"/>
   <Reference name="OpenSim.Data.MySQL"/>
   <Reference name="OpenSim.Data.PGSQL"/>
