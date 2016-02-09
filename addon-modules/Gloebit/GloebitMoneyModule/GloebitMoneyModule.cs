@@ -1153,13 +1153,15 @@ namespace Gloebit.GloebitMoneyModule
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - creating local subscription fo {0}", part.Name);
                 // Create local sub
                 // Make sure Name and Description are not null to avoid pgsql issue with storing null values
-                if (part.Name == null) {
-                    part.Name = String.Empty;
+                string partName = part.Name;
+                string partDescription = part.Description;
+                if (partName == null) {
+                    partName = String.Empty;
                 }
-                if (part.Description == null) {
-                    part.Description = String.Empty;
+                if (partDescription == null) {
+                    partDescription = String.Empty;
                 }
-                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
+                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, partName, partDescription);
             }
             if (sub.SubscriptionID == UUID.Zero) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - SID is ZERO -- calling GloebitAPI Create Subscription");
