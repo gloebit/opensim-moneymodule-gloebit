@@ -1152,7 +1152,16 @@ namespace Gloebit.GloebitMoneyModule
             if (sub == null) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - creating local subscription fo {0}", part.Name);
                 // Create local sub
-                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
+                // Make sure Name and Description are not null to avoid pgsql issue with storing null values
+                string partName = part.Name;
+                string partDescription = part.Description;
+                if (partName == null) {
+                    partName = String.Empty;
+                }
+                if (partDescription == null) {
+                    partDescription = String.Empty;
+                }
+                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, partName, partDescription);
             }
             if (sub.SubscriptionID == UUID.Zero) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - SID is ZERO -- calling GloebitAPI Create Subscription");
@@ -1378,6 +1387,14 @@ namespace Gloebit.GloebitMoneyModule
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] buildTransaction failed --- unknown transaction type: {0}", transactionType);
                     // TODO: should we throw an exception?  return null?  just continue?
                     break;
+            }
+            
+            // Storing a null field in pgsql fails, so ensure partName and partDescription are not null incase those are not properly set to String.Empty when blank
+            if (partName == null) {
+                partName = String.Empty;
+            }
+            if (partDescription == null) {
+                partDescription = String.Empty;
             }
             
             GloebitAPI.Transaction txn = GloebitAPI.Transaction.Create(transactionID, payerID, payerName, payeeID, payeeName, amount, (int)transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
@@ -2757,7 +2774,7 @@ namespace Gloebit.GloebitMoneyModule
                     
                     GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_LAND,
                                                                   payerID: e.agentId, payeeID: e.parcelOwnerID, amount: e.parcelPrice, subscriptionID: UUID.Zero,
-                                                                  partID: UUID.Zero, partName: null, partDescription: String.Empty,
+                                                                  partID: UUID.Zero, partName: String.Empty, partDescription: String.Empty,
                                                                   categoryID: UUID.Zero, localID: 0, saleType: 0);
                     
                     if (txn == null) {
@@ -2810,7 +2827,7 @@ namespace Gloebit.GloebitMoneyModule
             UUID fromID = UUID.Zero;
             UUID toID = UUID.Zero;
             UUID partID = UUID.Zero;
-            string partName = null;
+            string partName = String.Empty;
             string partDescription = String.Empty;
             OSDMap descMap = null;
             SceneObjectPart part = null;

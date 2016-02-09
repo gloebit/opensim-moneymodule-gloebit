@@ -140,9 +140,8 @@ namespace Gloebit.GloebitMoneyModule
             public PGSQLImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitSubscriptions", "GloebitSubscriptionsPGSQL")
             {
-                /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
-                /// Start with PGSQLGenericTableHandler impl and see MySql override above
             }
+            
         }
     }
 }

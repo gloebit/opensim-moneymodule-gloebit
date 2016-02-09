@@ -27,7 +27,9 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.SqlTypes;
 using System.Reflection;
+using System.Xml;
 using MySql.Data.MySqlClient;
 using Nini.Config;
 using OpenSim.Data.MySQL;
@@ -73,8 +75,19 @@ namespace Gloebit.GloebitMoneyModule
             public SQLiteImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsSQLite")
             {
-                /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
-                /// Start with SQLiteGenericTableHandler impl and see MySql override below
+            }
+            
+            public override bool Store(GloebitAPI.Transaction txn)
+            {
+                // remove null datetimes as pgsql throws exceptions on null fields
+                if (txn.enactedTime == null) {
+                    txn.enactedTime = SqlDateTime.MinValue.Value;
+                }
+                if (txn.finishedTime == null) {
+                    txn.finishedTime = SqlDateTime.MinValue.Value;
+                }
+                // call parent
+                return base.Store(txn);
             }
         }
 
@@ -140,9 +153,21 @@ namespace Gloebit.GloebitMoneyModule
             public PGSQLImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsPGSQL")
             {
-                /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
-                /// Start with PGSQLGenericTableHandler impl and see MySql override above
+            }
+            
+            public override bool Store(GloebitAPI.Transaction txn)
+            {
+                // remove null datetimes as pgsql throws exceptions on null fields
+                if (txn.enactedTime == null) {
+                    txn.enactedTime = SqlDateTime.MinValue.Value;
+                }
+                if (txn.finishedTime == null) {
+                    txn.finishedTime = SqlDateTime.MinValue.Value;
+                }
+                // call parent
+                return base.Store(txn);
             }
         }
+        
     }
 }
