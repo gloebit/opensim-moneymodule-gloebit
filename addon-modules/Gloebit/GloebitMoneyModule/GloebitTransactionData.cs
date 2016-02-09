@@ -73,8 +73,19 @@ namespace Gloebit.GloebitMoneyModule
             public SQLiteImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsSQLite")
             {
-                /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
-                /// Start with SQLiteGenericTableHandler impl and see MySql override below
+            }
+            
+            public override bool Store(GloebitAPI.Transaction txn)
+            {
+                // remove null datetimes as pgsql throws exceptions on null fields
+                if (txn.enactedTime == null) {
+                    txn.enactedTime = DateTime.MinValue;
+                }
+                if (txn.finishedTime == null) {
+                    txn.finishedTime = DateTime.MinValue;
+                }
+                // call parent
+                return base.Store(txn);
             }
         }
 
@@ -154,7 +165,7 @@ namespace Gloebit.GloebitMoneyModule
                 // call parent
                 return base.Store(txn);
             }
-            
         }
+        
     }
 }
