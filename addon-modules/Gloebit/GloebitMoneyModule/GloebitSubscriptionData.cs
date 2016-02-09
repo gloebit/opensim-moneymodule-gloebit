@@ -28,9 +28,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Reflection;
-using System.Text;                  // Needed solely for StringBuilder
 using MySql.Data.MySqlClient;
-using Npgsql;
 using Nini.Config;
 using OpenSim.Data.MySQL;
 using OpenSim.Data.PGSQL;
@@ -144,116 +142,6 @@ namespace Gloebit.GloebitMoneyModule
             {
             }
             
-            public override bool Store(GloebitAPI.Subscription subscription)
-            {
-                List<string> constraintFields = GetConstraints();
-                List<KeyValuePair<string, string>> constraints = new List<KeyValuePair<string, string>>();
-                
-                using (NpgsqlConnection conn = new NpgsqlConnection(m_ConnectionString))
-                using (NpgsqlCommand cmd = new NpgsqlCommand())
-                {
-                    
-                    StringBuilder query = new StringBuilder();
-                    List<String> names = new List<String>();
-                    List<String> values = new List<String>();
-                    
-                    foreach (FieldInfo fi in m_Fields.Values)
-                    {
-                        names.Add(fi.Name);
-                        values.Add(":" + fi.Name);
-                        // Temporarily return more information about what field is unexpectedly null for
-                        // http://opensimulator.org/mantis/view.php?id=5403.  This might be due to a bug in the
-                        // InventoryTransferModule or we may be required to substitute a DBNull here.
-                        /*if (fi.GetValue(row) == null)
-                            throw new NullReferenceException(
-                                string.Format(
-                                    "[PGSQL GENERIC TABLE HANDLER]: Trying to store field {0} for {1} which is unexpectedly null",
-                                    fi.Name, row));*/
-                        
-                        if (constraintFields.Count > 0 && constraintFields.Contains(fi.Name))
-                        {
-                            constraints.Add(new KeyValuePair<string, string>(fi.Name, fi.GetValue(subscription).ToString() ));
-                        }
-                        if (m_FieldTypes.ContainsKey(fi.Name)) {
-                            cmd.Parameters.Add(m_database.CreateParameter(fi.Name, fi.GetValue(subscription), m_FieldTypes[fi.Name]));
-                        } else {
-                            cmd.Parameters.Add(m_database.CreateParameter(fi.Name, fi.GetValue(subscription)));
-                        }
-                    }
-                    
-                    /*if (m_DataField != null)
-                     {
-                        Dictionary<string, string> data =
-                            (Dictionary<string, string>)m_DataField.GetValue(row);
-                     
-                     foreach (KeyValuePair<string, string> kvp in data)
-                     {
-                        if (constraintFields.Count > 0 && constraintFields.Contains(kvp.Key))
-                        {
-                        constraints.Add(new KeyValuePair<string, string>(kvp.Key, kvp.Key));
-                        }
-                        names.Add(kvp.Key);
-                        values.Add(":" + kvp.Key);
-                     
-                        if (m_FieldTypes.ContainsKey(kvp.Key))
-                            cmd.Parameters.Add(m_database.CreateParameter("" + kvp.Key, kvp.Value, m_FieldTypes[kvp.Key]));
-                        else
-                            cmd.Parameters.Add(m_database.CreateParameter("" + kvp.Key, kvp.Value));
-                        }
-                     
-                     }*/
-                    
-                    query.AppendFormat("UPDATE {0} SET ", m_Realm);
-                    int i = 0;
-                    for (i = 0; i < names.Count - 1; i++)
-                    {
-                        query.AppendFormat("\"{0}\" = {1}, ", names[i], values[i]);
-                    }
-                    query.AppendFormat("\"{0}\" = {1} ", names[i], values[i]);
-                    if (constraints.Count > 0)
-                    {
-                        List<string> terms = new List<string>();
-                        for (int j = 0; j < constraints.Count; j++)
-                        {
-                            terms.Add(String.Format(" \"{0}\" = :{0}", constraints[j].Key));
-                        }
-                        string where = String.Join(" AND ", terms.ToArray());
-                        query.AppendFormat(" WHERE {0} ", where);
-                        
-                    }
-                    cmd.Connection = conn;
-                    cmd.CommandText = query.ToString();
-                    
-                    conn.Open();
-                    if (cmd.ExecuteNonQuery() > 0)
-                    {
-                        //m_log.WarnFormat("[PGSQLGenericTable]: Updating {0}", m_Realm);
-                        return true;
-                    }
-                    else
-                    {
-                        // assume record has not yet been inserted
-                        
-                        query = new StringBuilder();
-                        query.AppendFormat("INSERT INTO {0} (\"", m_Realm);
-                        query.Append(String.Join("\",\"", names.ToArray()));
-                        query.Append("\") values (" + String.Join(",", values.ToArray()) + ")");
-                        cmd.Connection = conn;
-                        cmd.CommandText = query.ToString();
-                        
-                        // m_log.WarnFormat("[PGSQLGenericTable]: Inserting into {0} sql {1}", m_Realm, cmd.CommandText);
-                        
-                        if (conn.State != ConnectionState.Open) {
-                            conn.Open();
-                        }
-                        if (cmd.ExecuteNonQuery() > 0) {
-                            return true;
-                        }
-                    }
-                    
-                    return false;
-                }
-            }
         }
     }
 }
