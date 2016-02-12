@@ -2490,6 +2490,7 @@ namespace Gloebit.GloebitMoneyModule
                 // Fix for having a few old tokens out in the wild without an app_user_id stored as the user.GloebitID
                 // TODO: Remove this  once it's been released for awhile, as this fix should only be necessary for a short time.
                 if (String.IsNullOrEmpty(user.GloebitID) || user.GloebitID == UUID.Zero.ToString()) {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GetAgentBalance AgentID:{0} INVALIDATING TOKEN FROM GMM", agentID);
                     user.InvalidateToken();
                     needsAuth = true;
                 }

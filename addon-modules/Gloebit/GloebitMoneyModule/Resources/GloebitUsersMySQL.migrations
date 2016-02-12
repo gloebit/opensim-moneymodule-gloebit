@@ -12,3 +12,10 @@ CREATE TABLE IF NOT EXISTS `GloebitUsers` (
 
 COMMIT;
 
+:VERSION 2		# -------------------------
+
+BEGIN;
+
+ALTER TABLE `GloebitUsers` DROP COLUMN `Status`;
+
+COMMIT;

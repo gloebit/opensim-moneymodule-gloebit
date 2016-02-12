@@ -12,3 +12,11 @@ CREATE TABLE GloebitUsers (
 
 commit;
 
+
+:VERSION 2         # -------------------------------
+
+begin;
+
+ALTER TABLE GloebitUsers DROP COLUMN IF EXISTS "Status";
+
+commit;

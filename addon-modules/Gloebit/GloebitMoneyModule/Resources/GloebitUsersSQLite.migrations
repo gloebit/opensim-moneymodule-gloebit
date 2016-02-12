@@ -12,3 +12,20 @@ CREATE TABLE GloebitUsers (
 
 COMMIT;
 
+:VERSION 2
+
+BEGIN TRANSACTION;
+
+DROP TABLE IF EXISTS GloebitUsers;
+
+-- gloebitusers table
+CREATE TABLE GloebitUsers (
+    PrincipalID CHAR(36)  primary key,
+    GloebitID CHAR(36) NOT NULL,
+    GloebitToken CHAR(36) NOT NULL,
+);
+
+
+COMMIT;
+
+

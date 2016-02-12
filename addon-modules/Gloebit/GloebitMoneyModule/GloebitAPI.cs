@@ -111,12 +111,12 @@ namespace Gloebit.GloebitMoneyModule {
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken));
                             break;
                         case 0:
-                            u = new User(agentIdStr, String.Empty, null);
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] CREATING NEW USER {0}", agentIdStr);
+                            u = new User(agentIdStr, String.Empty, String.Empty);
                             break;
                         default:
                            throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one prior token for {0}", agentIdStr));
                     }
-                    // TODO - use the Gloebit identity service for userId
                     
                     // Store in map and return User
                     lock(s_userMap) {
@@ -151,12 +151,16 @@ namespace Gloebit.GloebitMoneyModule {
                     s_userMap.TryGetValue(agentIdStr, out u);
                 }
                 if (u == null) {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.Authorize() Did not find User in s_userMap.  User logged out.");
                     u = localUser;  // User logged out.  Still want to store token.  Don't want to add back to map.
                 }
                 lock (u.userLock) {
                     u.GloebitToken = token;
                     u.GloebitID = gloebitID;
-                    GloebitUserData.Instance.Store(u);
+                    bool stored = GloebitUserData.Instance.Store(u);
+                    if (!stored) {
+                        throw new Exception(String.Format("[GLOEBITMONEYMODULE] User.Authorize Failed to store user {0}", agentIdStr));
+                    }
                     localUser = new User(u);
                 }
                 
@@ -182,7 +186,10 @@ namespace Gloebit.GloebitMoneyModule {
                             return;
                         } else {
                             u.GloebitToken = String.Empty;
-                            GloebitUserData.Instance.Store(u);
+                            bool stored = GloebitUserData.Instance.Store(u);
+                            if (!stored) {
+                                throw new Exception(String.Format("[GLOEBITMONEYMODULE] User.InvalidateToken Failed to store user {0}", PrincipalID));
+                            }
                             // TODO: should we set this equal to a copy of u before we return?
                         }
                     }
@@ -998,8 +1005,6 @@ namespace Gloebit.GloebitMoneyModule {
         /// <returns>Double balance of user or 0.0 if fails for any reason</returns>
         public double GetBalance(User user, out bool invalidatedToken) {
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance for agentID:{0}", user.PrincipalID);
-            
             invalidatedToken = false;
             
             //************ BUILD GET BALANCE GET REQUEST ********//
@@ -1032,6 +1037,7 @@ namespace Gloebit.GloebitMoneyModule {
                         case "unknown token2":
                             // The token is invalid (probably the user revoked our app through the website)
                             // so force a reauthorization next time.
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.GetBalance failed - Invalidating Token");
                             user.InvalidateToken();
                             invalidatedToken = true;
                             break;
