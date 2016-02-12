@@ -164,7 +164,6 @@ namespace Gloebit.GloebitMoneyModule {
                     localUser = new User(u);
                 }
                 
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.Authorize() Returning localUser agentId:{0}, token:{1} gloebitID:{2}", localUser.PrincipalID, localUser.GloebitToken, localUser.GloebitID);
                 return localUser;
             }
 
