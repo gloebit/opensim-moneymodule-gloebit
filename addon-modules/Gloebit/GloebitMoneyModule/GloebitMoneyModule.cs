@@ -50,7 +50,9 @@ using OpenSim.Services.Interfaces;
 using OpenMetaverse.StructuredData;     // TODO: turn transactionData into a dictionary of <string, object> and remove this.
 
 [assembly: Addin("Gloebit", "0.1")]
-[assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
+//// MODIFIED FOR BACKWARDS COMPATIBILITY WITH OpenSim 0.8.0.3
+//// [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
+[assembly: AddinDependency("OpenSim", "0.5")]
 [assembly: AddinDescription("OpenSim Addin for Gloebit Money Module")]
 [assembly: AddinAuthor("Gloebit LLC gloebit@gloebit.com")]
 //[assembly: ImportAddinFile("Gloebit.ini")]
@@ -888,7 +890,10 @@ namespace Gloebit.GloebitMoneyModule
            string configPath = string.Empty;
            bool created;
            string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-           if (!Util.MergeConfigurationFile(config, "Gloebit.ini", Path.Combine(assemblyDirectory, "Gloebit.ini.example"), out configPath, out created))
+           //// MODIFIED FOR BACKWARDS COMPATIBILITY WITH OpenSim 0.8.0.3
+           //// if (!Util.MergeConfigurationFile(config, "Gloebit.ini", Path.Combine(assemblyDirectory, "Gloebit.ini.example"), out configPath, out created))
+            m_log.WarnFormat("[GLOEBITMONEYMODULE]: Gloebit.ini configuration file about to be merged");
+           if (!MergeConfigurationFile(config, "Gloebit.ini", Path.Combine(assemblyDirectory, "Gloebit.ini.example"), out configPath, out created))
            {
                m_log.WarnFormat("[GLOEBITMONEYMODULE]: Gloebit.ini configuration file not merged");
                return;
@@ -899,6 +904,66 @@ namespace Gloebit.GloebitMoneyModule
                throw new Exception("Addin must be configured prior to running");
            }
         }
+        
+        //// MODIFIED FOR BACKWARDS COMPATIBILITY WITH OpenSim 0.8.0.3
+        //// THIS IS COPIED FROM Opensim/Framework/Util.cs in order to make module backwards compatible with OpenSim 0.8.0.3
+        /// <summary>
+        /// Reads a configuration file, configFile, merging it with the main configuration, config.
+        /// If the file doesn't exist, it copies a given exampleConfigFile onto configFile, and then
+        /// merges it.
+        /// </summary>
+        /// <param name="config">The main configuration data</param>
+        /// <param name="configFileName">The name of a configuration file in ConfigDirectory variable, no path</param>
+        /// <param name="exampleConfigFile">Full path to an example configuration file</param>
+        /// <param name="configFilePath">Full path ConfigDirectory/configFileName</param>
+        /// <param name="created">True if the file was created in ConfigDirectory, false if it existed</param>
+        /// <returns>True if success</returns>
+        private static bool MergeConfigurationFile(IConfigSource config, string configFileName, string exampleConfigFile, out string configFilePath, out bool created)
+        {
+            created = false;
+            configFilePath = string.Empty;
+            
+            IConfig cnf = config.Configs["Startup"];
+            if (cnf == null)
+            {
+                m_log.WarnFormat("[UTILS]: Startup section doesn't exist");
+                return false;
+            }
+            
+            string configDirectory = cnf.GetString("ConfigDirectory", ".");
+            string configFile = Path.Combine(configDirectory, configFileName);
+            
+            if (!File.Exists(configFile) && !string.IsNullOrEmpty(exampleConfigFile))
+            {
+                // We need to copy the example onto it
+                
+                if (!Directory.Exists(configDirectory))
+                    Directory.CreateDirectory(configDirectory);
+                
+                try
+                {
+                    File.Copy(exampleConfigFile, configFile);
+                    created = true;
+                }
+                catch (Exception e)
+                {
+                    m_log.WarnFormat("[UTILS]: Exception copying configuration file {0} to {1}: {2}", configFile, exampleConfigFile, e.Message);
+                    return false;
+                }
+            }
+            
+            if (File.Exists(configFile))
+            {
+                // Merge
+                config.Merge(new IniConfigSource(configFile));
+                config.ExpandKeyValues();
+                configFilePath = configFile;
+                return true;
+            }
+            else
+                return false;
+        }
+        
 
         /// <summary>
         /// Parse Standard MoneyModule Configuration
@@ -3053,7 +3118,9 @@ namespace Gloebit.GloebitMoneyModule
             // Add base platform details
             addDescMapEntry(descMap, "platform", "platform", "OpenSim");
             addDescMapEntry(descMap, "platform", "version", OpenSim.VersionInfo.Version);
-            addDescMapEntry(descMap, "platform", "version-number", OpenSim.VersionInfo.VersionNumber);
+            //// MODIFIED FOR BACKWARDS COMPATIBILITY WITH OpenSim 0.8.0.3
+            //// addDescMapEntry(descMap, "platform", "version-number", OpenSim.VersionInfo.VersionNumber);
+            addDescMapEntry(descMap, "platform", "version-number", "0.8.0.3");
             // TODO: Should we add hosting-provider or more?
             
             // Add base location details
