@@ -1150,18 +1150,20 @@ namespace Gloebit.GloebitMoneyModule
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - looking for local subscription");
             GloebitAPI.Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
             if (sub == null) {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - creating local subscription fo {0}", part.Name);
-                // Create local sub
+                // Don't create unless the object has a name and description
                 // Make sure Name and Description are not null to avoid pgsql issue with storing null values
-                string partName = part.Name;
-                string partDescription = part.Description;
-                if (partName == null) {
-                    partName = String.Empty;
+                // Make sure neither are empty as they are required by Gloebit to create a subscription
+                if (String.IsNullOrEmpty(part.Name) || String.IsNullOrEmpty(part.Description)) {
+                     m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - Can not create local subscription because part name or description is blank - Name:{0} Description:{1}", part.Name, part.Description);
+                     // Send message to the owner to let them know they must edit the object and add a name and description
+                     String imMsg = String.Format("Object with auto-debit script is missing a name or description.  Name and description are required by Gloebit in order to create a subscription for this auto-debit object.  Please enter a name and description in the object.  Current values are Name:[{0}] and Description:[{1}].", part.Name, part.Description);
+                     sendMessageToClient(LocateClientObject(fromID), imMsg, fromID);
+                     reason = "Owner has not yet created a subscription and object name or description are blank.  Name and Description are required.";
+                     return false;
                 }
-                if (partDescription == null) {
-                    partDescription = String.Empty;
-                }
-                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, partName, partDescription);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - creating local subscription for {0}", part.Name);
+                // Create local sub
+                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
             }
             if (sub.SubscriptionID == UUID.Zero) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - SID is ZERO -- calling GloebitAPI Create Subscription");
