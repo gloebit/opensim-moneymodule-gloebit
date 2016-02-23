@@ -46,6 +46,7 @@ using OpenSim.Framework.Servers;
 using OpenSim.Framework.Servers.HttpServer;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
+using OpenSim.Region.OptionalModules.ViewerSupport;   // Necessary for SimulatorFeaturesHelper
 using OpenSim.Services.Interfaces;
 using OpenMetaverse.StructuredData;     // TODO: turn transactionData into a dictionary of <string, object> and remove this.
 
@@ -1086,6 +1087,41 @@ namespace Gloebit.GloebitMoneyModule
 
         public void RegionLoaded(Scene scene)
         {
+            if (!m_enabled && (m_enabledRegions == null || !m_enabledRegions.Contains(scene.RegionInfo.RegionID))) {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] region not loaded as not enabled {0}", scene.RegionInfo.RegionID.ToString());
+                return;
+            }
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] region loaded {0}", scene.RegionInfo.RegionID.ToString());
+            
+            IEntityTransferModule et = scene.RequestModuleInterface<IEntityTransferModule>();
+            SimulatorFeaturesHelper simFeaturesHelper = new SimulatorFeaturesHelper(scene, et);
+            
+            ISimulatorFeaturesModule featuresModule = scene.RequestModuleInterface<ISimulatorFeaturesModule>();
+            if (featuresModule != null) {
+                featuresModule.OnSimulatorFeaturesRequest += delegate(UUID agentID, ref OSDMap features)
+                {
+                    if (simFeaturesHelper.ShouldSend(agentID)) {
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] OnSimulatorFeaturesRequest Scene:{0} Agent:{1}", scene.RegionInfo.RegionID.ToString(), agentID);
+                        // Get or create the extras section of the features map
+                        OSDMap extrasMap;
+                        if (features.ContainsKey("OpenSimExtras")) {
+                            extrasMap = (OSDMap)features["OpenSimExtras"];
+                        } else {
+                            extrasMap = new OSDMap();
+                            features["OpenSimExtras"] = extrasMap;
+                        }
+                        
+                        // Add our values to the extras map
+                        extrasMap["currency"] = "G$";
+                        extrasMap["currency-base-uri"] = GetCurrencyBaseURI();
+                    }
+                };
+            }
+        }
+        
+        private string GetCurrencyBaseURI() {
+            // TODO: create base currency uri string
+            return String.Empty;
         }
 
         public void PostInitialise()
