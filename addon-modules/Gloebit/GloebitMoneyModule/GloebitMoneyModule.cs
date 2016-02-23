@@ -1120,8 +1120,8 @@ namespace Gloebit.GloebitMoneyModule
         }
         
         private string GetCurrencyBaseURI() {
-            // TODO: create base currency uri string
-            return String.Empty;
+            // TODO: is this the correct uri?
+            return BaseURI.ToString();
         }
 
         public void PostInitialise()
