@@ -1113,15 +1113,14 @@ namespace Gloebit.GloebitMoneyModule
                         
                         // Add our values to the extras map
                         extrasMap["currency"] = "G$";
-                        extrasMap["currency-base-uri"] = GetCurrencyBaseURI();
+                        extrasMap["currency-base-uri"] = GetCurrencyBaseURI(scene);
                     }
                 };
             }
         }
         
-        private string GetCurrencyBaseURI() {
-            // TODO: is this the correct uri?
-            return BaseURI.ToString();
+        private string GetCurrencyBaseURI(Scene scene) {
+            return scene.RegionInfo.ServerURI;
         }
 
         public void PostInitialise()
@@ -1255,20 +1254,41 @@ namespace Gloebit.GloebitMoneyModule
         public int GetBalance(UUID agentID)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GetBalance for agent {0}", agentID);
+            
+            // TODO: call GetAgentBalance(UUID agentID, IClientAPI client, bool forceAuthOnInvalidToken)
+            // remove client from GetAgentBalance first
+            // returns a double.  will need to cast to an int.
+            // probably call with forceAuthOnInvalidToken = false.
+
             return 0;
         }
 
         // Please do not refactor these to be just one method
         // Existing implementations need the distinction
         //
+        
+        // Checks a user's balance to ensure they can cover an upload fee.
+        // NOTE: we need to force a balance update because this immediately uploads the asset if we return true.  It does not wait for the charge response.
+        // For more details, see:
+        // --- BunchOfCaps.NewAgentInventoryRequest
+        // --- AssetTransactionModule.HandleUDPUploadRequest
+        // --- BunchOfCaps.UploadCompleteHandler
         public bool UploadCovered(UUID agentID, int amount)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] UploadCovered for agent {0}", agentID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] UploadCovered for agent {0}, price {1}", agentID, amount);
+            // TODO: force a balance update, then check against amount.
+            
             return true;
         }
+        
+        // Checks a user's balance to ensure they can cover a fee.
+        // For more details, see:
+        // --- GroupsModule.CreateGroup
+        // --- UserProfileModule.ClassifiedInfoUpdate
         public bool AmountCovered(UUID agentID, int amount)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] AmountCovered for agent {0}", agentID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] AmountCovered for agent {0}, price {1}", agentID, amount);
+             // TODO: force a balance update, then check against amount.
             return true;
         }
 
@@ -1278,29 +1298,107 @@ namespace Gloebit.GloebitMoneyModule
         public void ApplyCharge(UUID agentID, int amount, MoneyTransactionType type, string extraData)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyCharge for agent {0} with extraData {1}", agentID, extraData);
+            // As far as I can tell, this is not used in recent versions of OpenSim.
+            // For backwards compatibility, call new ApplyChOpenSimExtrasrge func
+            ApplyCharge(agentID, amount, type);
         }
 
+        // Charge user a fee
+        // Group Creation
+        // --- GroupsModule.CreateGroup
+        // --- type = MoneyTransactionType.GroupCreate
+        // --- Do not throw exception on error.  Group has already been created.  Response has not been sent to viewer.  Unclear what would fail.  Log error instead.
+        // Classified Ad fee
+        // --- UserProfileModule.ClassifiedInfoUpdate
+        // --- type = MoneyTransactionType.ClassifiedCharge
+        // --- Throw exception on failure.  Classified ad has not been created yet.
         public void ApplyCharge(UUID agentID, int amount, MoneyTransactionType type)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyCharge for agent {0}", agentID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyCharge for agent {0}, MoneyTransactionType {1}", agentID, type);
+            
+            // TODO: should verify that agentID is not UUID.Zero and amount > 0)
+            
+            Scene s = LocateSceneClientIn(agentID);
+            string agentName = resolveAgentName(agentID);
+            string regionname = s.RegionInfo.RegionName;
+            string regionID = s.RegionInfo.RegionID.ToString();
+            
+            
+            string description = String.Empty;
+            string txnTypeString = "GeneralFee";
+            TransactionType txnType = TransactionType.FEE_GENERAL;
+            switch (type) {
+                case MoneyTransactionType.GroupCreate:
+                    // Group creation fee
+                    description = String.Format("Group Creation Fee on {0}, {1}", regionname, m_gridnick);
+                    txnTypeString = "GroupCreationFee";
+                    txnType = TransactionType.FEE_GROUP_CREATION;
+                    break;
+                case MoneyTransactionType.ClassifiedCharge:
+                    // Classified Ad Fee
+                    description = String.Format("Classified Ad Fee on {0}, {1}", regionname, m_gridnick);
+                    txnTypeString = "ClassifiedAdFee";
+                    txnType = TransactionType.FEE_CLASSIFIED_AD;
+                    break;
+                default:
+                    // Other - not in core at type of writing.
+                    description = String.Format("Fee (type {0}) on {1}, {2}", type, regionname, m_gridnick);
+                    txnTypeString = "GeneralFee";
+                    txnType = TransactionType.FEE_GENERAL;
+                    break;
+            }
+            
+            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), txnTypeString);
+            
+            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: txnType,
+                                                          payerID: agentID, payeeID: UUID.Zero, amount: amount, subscriptionID: UUID.Zero,
+                                                          partID: UUID.Zero, partName: String.Empty, partDescription: String.Empty,
+                                                          categoryID: UUID.Zero, localID: 0, saleType: 0);
+            
+            if (txn == null) {
+                // build failed, likely due to a reused transactionID.  Shouldn't happen.
+                IClientAPI payerClient = LocateClientObject(agentID);
+                alertUsersTransactionPreparationFailure(txnType, TransactionPrecheckFailure.EXISTING_TRANSACTION_ID, payerClient);
+                return;
+            }
+            
+            bool transaction_result = SubmitTransaction(txn, description, descMap, false);
+            
+            if (!transaction_result) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] ApplyCharge failed to create HTTP Request for [{0}] from agent: [{1}] -- txnID: [{2}] -- agent likely received benefit without being charged.", description, agentID, txn.TransactionID.ToString());
+            } else {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyCharge Transaction queued {0}", txn.TransactionID.ToString());
+            }
         }
 
+        // Process the upload charge
+        // NOTE: Do not throw exception on failure.  Delivery is complete, but BunchOfCaps.m_FileAgentInventoryState has not been reset to idle.  Fire off an error log instead.
+        // For more details, see:
+        // --- Scene.AddUploadedInventoryItem "Asset upload"
+        // --- BunchOfCaps.UploadCompleteHandler
         public void ApplyUploadCharge(UUID agentID, int amount, string text)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyUploadCharge for agent {0}", agentID);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyUploadCharge for agent {0}, ammount {1}, for {2}", agentID, amount, text);
+            // TODO: charge agent the amount passed in.
         }
 
         // property to store fee for uploading assets
-        // NOTE: fees are not applied to meshes right now because functionality to compute prim equivalent has not been written
+        // NOTE: This is the prim BaseCost.  If mesh, this is calculated in BunchOfCaps
+        // For more details, see:
+        // --- BunchOfCaps.NewAgentInventoryRequest
+        // --- AssetTransactionModule.HandleUDPUploadRequest
+        // Returns the PriceUpload set by the economy section of the config
         public int UploadCharge
         {
-            get { return 0; }
+            get { return PriceUpload; }
         }
 
         // property to store fee for creating a group
+        // For more details, see:
+        // --- GroupsModule.CreateGroup
         public int GroupCreationCharge
         {
-            get { return 0; }
+            get { return PriceGroupCreate; }    // TODO: PriceGroupCreate is defaulted to -1, not 0.  Why is this?  How should we handle this?
         }
 
 //#pragma warning disable 0067
@@ -1365,7 +1463,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="transactionID">UUID to use for this transaction.  If UUID.Zero, a random UUID is chosen.</param>
         /// <param name="transactionType">enum from OpenSim defining the type of transaction (buy object, pay object, pay user, object pays user, etc).  This will not affect how Gloebit process the monetary component of a transaction, but is useful for easily varying how OpenSim should handle processing once funds are transfered.</param>
         /// <param name="payerID">OpenSim UUID of agent sending gloebits.</param>
-        /// <param name="payeeID">OpenSim UUID of agent receiving gloebits</param>
+        /// <param name="payeeID">OpenSim UUID of agent receiving gloebits.  UUID.Zero if this is a fee being paid to the app owner (not a u2u txn).</param>
         /// <param name="amount">Amount of gloebits being transferred.</param>
         /// <param name="subscriptionID">UUID of subscription for automated transactions (Object pays user).  Otherwise UUID.Zero.</param>
         /// <param name="partID">UUID of the object, when transaciton involves an object.  UUID.Zero otherwise.</param>
@@ -1418,8 +1516,36 @@ namespace Gloebit.GloebitMoneyModule
                     // TODO: what to do if subscriptionID is zero?
                     break;
                 case TransactionType.USER_BUYS_LAND:
-                    // 5013 - OnLandBuy
+                    // 5002 - OnLandBuy
                     transactionTypeString = "User Buys Land";
+                    break;
+                case TransactionType.FEE_GROUP_CREATION:
+                    // 1002 - ApplyCharge
+                    transactionTypeString = "Group Creation Fee";
+                    if (payeeID == UUID.Zero) {
+                        payeeName = "App Owner";
+                    }
+                    break;
+                case TransactionType.FEE_UPLOAD_ASSET:
+                    // 1101 - ApplyUploadCharge
+                    transactionTypeString = "Asset Upload Fee";
+                    if (payeeID == UUID.Zero) {
+                        payeeName = "App Owner";
+                    }
+                    break;
+                case TransactionType.FEE_CLASSIFIED_AD:
+                    // 1103 - ApplyCharge
+                    transactionTypeString = "Classified Ad Fee";
+                    if (payeeID == UUID.Zero) {
+                        payeeName = "App Owner";
+                    }
+                    break;
+                case TransactionType.FEE_GENERAL:
+                    // 1104 - ApplyCharge - catch all in case there are modules which enable fees which are not used in the core.
+                    transactionTypeString = "General Fee";
+                    if (payeeID == UUID.Zero) {
+                        payeeName = "App Owner";
+                    }
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] buildTransaction failed --- unknown transaction type: {0}", transactionType);
@@ -1454,19 +1580,27 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
         /// <param name="description">Description of transaction for transaction history reporting.</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
+        /// <param name="u2u">boolean declaring whether this is a user-to-app (false) or user-to-user (true) transaction.</param>
         /// <returns>
         /// true if async transactU2U web request was built and submitted successfully; false if failed to submit request.
         /// If true:
         /// --- IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.
         /// --- IAssetCallback processAsset[Enact|Consume|Cancel]Hold may eventually be called dependent upon processing.
         /// </returns>
-        private bool SubmitTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap)
+        private bool SubmitTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap, bool u2u)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] SubmitTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
             alertUsersTransactionBegun(txn, description);
             
+            // TODO: Update all the alert funcs to handle fees properly.
+            
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
-            bool result = m_api.TransactU2U(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
+            bool result = false;
+            if (u2u) {
+                result = m_api.TransactU2U(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
+            } else {
+                result = m_api.Transact(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), BaseURI);
+            }
             
             if (!result) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] SubmitTransaction failed to create HttpWebRequest in GloebitAPI.TransactU2U");
@@ -2372,7 +2506,7 @@ namespace Gloebit.GloebitMoneyModule
                     // nothing to enact.
                     break;
                 case TransactionType.USER_BUYS_LAND:
-                    // 5013 - OnLandBuy
+                    // 5002 - OnLandBuy
                     // Need to transfer land
                     bool transferred = transferLand(txn, out returnMsg);
                     if (!transferred) {
@@ -2428,7 +2562,7 @@ namespace Gloebit.GloebitMoneyModule
                     // nothing to finalize
                     break;
                 case TransactionType.USER_BUYS_LAND:
-                    // 5013 - OnLandBuy
+                    // 5002 - OnLandBuy
                     // Remove land asset from map
                     lock(m_landAssetMap) {
                         m_landAssetMap.Remove(txn.TransactionID);
@@ -2483,7 +2617,7 @@ namespace Gloebit.GloebitMoneyModule
                     // nothing to cancel
                     break;
                 case TransactionType.USER_BUYS_LAND:
-                    // 5013 - OnLandBuy
+                    // 5002 - OnLandBuy
                     // nothing to cancel, if we're here, it is because land was not transferred successfully.
                     break;
                 default:
@@ -2823,7 +2957,7 @@ namespace Gloebit.GloebitMoneyModule
                         return;
                     }
                     
-                    bool submission_result = SubmitTransaction(txn, description, descMap);
+                    bool submission_result = SubmitTransaction(txn, description, descMap, true);
                     
                     if (!submission_result) {
                         // payment failed.  message user and halt attempt to transfer land
@@ -2936,7 +3070,7 @@ namespace Gloebit.GloebitMoneyModule
                 return;
             }
             
-            bool transaction_result = SubmitTransaction(txn, description, descMap);
+            bool transaction_result = SubmitTransaction(txn, description, descMap, true);
             
             // TODO - do we need to send any error message to the user if things failed above?`
         }
@@ -3060,7 +3194,7 @@ namespace Gloebit.GloebitMoneyModule
                 return;
             }
             
-            bool transaction_result = SubmitTransaction(txn, description, descMap);
+            bool transaction_result = SubmitTransaction(txn, description, descMap, true);
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy Transaction queued {0}", txn.TransactionID.ToString());
         }
@@ -3637,7 +3771,7 @@ namespace Gloebit.GloebitMoneyModule
                             ////status = "Successfully enacted local components of transaction.";
                             break;
                         case TransactionType.USER_BUYS_LAND:
-                            // 5013 - OnLandBuy
+                            // 5002 - OnLandBuy
                             // land transferred
                             status = "Successfully transferred parcel to new owner.";
                             break;
@@ -3854,7 +3988,7 @@ namespace Gloebit.GloebitMoneyModule
                             error = "Enacting of local transaction components failed.";
                             break;
                         case TransactionType.USER_BUYS_LAND:
-                            // 5013 - OnLandBuy
+                            // 5002 - OnLandBuy
                             // land transfer failed
                             error = "Transfer of parcel to new owner failed.";
                             instruction = tryAgainContactOwner;
@@ -3964,15 +4098,26 @@ namespace Gloebit.GloebitMoneyModule
                 payeeClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payeeBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
             }
         }
-
+        
+        // TODO: consider replacing with libOpenMetaverse MoneyTransactionType
+        // https://github.com/openmetaversefoundation/libopenmetaverse/blob/master/OpenMetaverse/AgentManager.cs#L342
         public enum TransactionType : int
         {
+            /* Fees */
+            FEE_GROUP_CREATION  = 1002,             // comes through ApplyCharge
+            FEE_UPLOAD_ASSET    = 1101,             // comes through ApplyUploadCharge
+            FEE_CLASSIFIED_AD   = 1103,             // comes through ApplyCharge
+            FEE_GENERAL         = 1104,             // here for anything we're unaware of yet.
+            
+            /* Purchases */
             USER_BUYS_OBJECT    = 5000,             // comes through ObjectBuy
             USER_PAYS_USER      = 5001,             // comes through OnMoneyTransfer
+            USER_BUYS_LAND      = 5002,             // comes through scene events OnValidateLandBuy and OnLandBuy
             REFUND              = 5005,             // not yet implemented
             USER_PAYS_OBJECT    = 5008,             // comes through OnMoneyTransfer
+            
+            /* Auto-Debit Subscription */
             OBJECT_PAYS_USER    = 5009,             // script auto debit owner - comes thorugh ObjectGiveMoney
-            USER_BUYS_LAND      = 5013,             // comes through scene events OnValidateLandBuy and OnLandBuy
         }
         
         public enum TransactionPrecheckFailure : int
