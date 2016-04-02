@@ -2521,6 +2521,18 @@ namespace Gloebit.GloebitMoneyModule
                         return false;
                     }
                     break;
+                case TransactionType.FEE_GROUP_CREATION:
+                    // 1002 - ApplyCharge
+                    // Nothing to do since the group was already created.  Ideally, this would create group or finalize creation.
+                    break;
+                case TransactionType.FEE_UPLOAD_ASSET:
+                    // 1101 - ApplyUploadCharge
+                    // Nothing to do since the asset was already uploaded.  Ideally, this would upload asset or finalize upload.
+                    break;
+                case TransactionType.FEE_CLASSIFIED_AD:
+                    // 1103 - ApplyCharge
+                    // Nothing to do since the ad was already placed.  Ideally, this would create ad finalize ad.
+                    break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] processAssetEnactHold called on unknown transaction type: {0}", txn.TransactionType);
                     // TODO: should we throw an exception?  return null?  just continue?
@@ -2567,6 +2579,18 @@ namespace Gloebit.GloebitMoneyModule
                     lock(m_landAssetMap) {
                         m_landAssetMap.Remove(txn.TransactionID);
                     }
+                    break;
+                case TransactionType.FEE_GROUP_CREATION:
+                    // 1002 - ApplyCharge
+                    // Nothing to do since the group was already created.  Ideally, this would finalize creation.
+                    break;
+                case TransactionType.FEE_UPLOAD_ASSET:
+                    // 1101 - ApplyUploadCharge
+                    // Nothing to do since the asset was already uploaded.  Ideally, this would finalize upload.
+                    break;
+                case TransactionType.FEE_CLASSIFIED_AD:
+                    // 1103 - ApplyCharge
+                    // Nothing to do since the ad was already placed.  Ideally, this would finalize ad.
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] processAssetConsumeHold called on unknown transaction type: {0}", txn.TransactionType);
@@ -2619,6 +2643,18 @@ namespace Gloebit.GloebitMoneyModule
                 case TransactionType.USER_BUYS_LAND:
                     // 5002 - OnLandBuy
                     // nothing to cancel, if we're here, it is because land was not transferred successfully.
+                    break;
+                case TransactionType.FEE_GROUP_CREATION:
+                    // 1002 - ApplyCharge
+                    // TODO: can we delete the group?
+                    break;
+                case TransactionType.FEE_UPLOAD_ASSET:
+                    // 1101 - ApplyUploadCharge
+                    // TODO: can we delete the asset?
+                    break;
+                case TransactionType.FEE_CLASSIFIED_AD:
+                    // 1103 - ApplyCharge
+                    // TODO: can we delete the ad?
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] processAssetCancelHold called on unknown transaction type: {0}", txn.TransactionType);
@@ -3653,6 +3689,18 @@ namespace Gloebit.GloebitMoneyModule
                     // Alert payer only
                     actionStr = "Purchase Land.";
                     break;
+                case TransactionType.FEE_GROUP_CREATION:
+                    // Alert payer only.  Payee is App.
+                    actionStr = "Paying Grid to create a group";
+                    break;
+                case TransactionType.FEE_UPLOAD_ASSET:
+                    // Alert payer only.  Payee is App.
+                    actionStr = "Paying Grid to upload an asset";
+                    break;
+                case TransactionType.FEE_CLASSIFIED_AD:
+                    // Alert payer only.  Payee is App.
+                    actionStr = "Paying Grid to place a classified ad";
+                    break;
                 default:
                     // Alert payer and payee
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionPreparationFailure: Unimplemented TransactionBegun TransactionType [{0}] with description [{1}].", txn.TransactionType, description);
@@ -3774,6 +3822,18 @@ namespace Gloebit.GloebitMoneyModule
                             // 5002 - OnLandBuy
                             // land transferred
                             status = "Successfully transferred parcel to new owner.";
+                            break;
+                        case TransactionType.FEE_GROUP_CREATION:
+                            // 1002 - ApplyCharge
+                            // Nothing local enacted.
+                            break;
+                        case TransactionType.FEE_UPLOAD_ASSET:
+                            // 1101 - ApplyUploadCharge
+                            // Nothing local enacted
+                            break;
+                        case TransactionType.FEE_CLASSIFIED_AD:
+                            // 1103 - ApplyCharge
+                            // Nothing local enacted
                             break;
                         default:
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionStageCompleted called on unknown transaction type: {0}", txn.TransactionType);

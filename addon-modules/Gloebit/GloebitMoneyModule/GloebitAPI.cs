@@ -1082,7 +1082,7 @@ namespace Gloebit.GloebitMoneyModule {
             OSDMap transact_params = new OSDMap();
             PopulateTransactParamsBase(transact_params, txn, description, sender.GloebitID, descMap, baseURI);
             
-            HttpWebRequest request = BuildGloebitRequest("transact", "POST", sender, "application/json", transact_params);
+            HttpWebRequest request = BuildGloebitRequest("2/transact", "POST", sender, "application/json", transact_params);
             if (request == null) {
                 // ERROR
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact failed to create HttpWebRequest");
@@ -1389,7 +1389,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="txn">Transaction representing local transaction we are create transact_params from.</param>
         /// <param name="recipientGloebitID">UUID from the Gloebit system of user being paid.  May be empty.</param>
         /// <param name="recipientEmail">Email of the user being paid gloebits.  May be empty.</param>
-        private void PopulateTransactParamsU2U(OSDMap transact_params, Transaction txn, string recipientEmail, string recipientGloebitID)
+        private void PopulateTransactParamsU2U(OSDMap transact_params, Transaction txn, string recipientGloebitID, string recipientEmail)
         {
             /***** U2U specific transact params *****/
             transact_params["seller-name-on-application"] = txn.PayeeName;
@@ -1463,6 +1463,7 @@ namespace Gloebit.GloebitMoneyModule {
                             break;
                     }
                 }
+            // TODO: Adding an "early-enact-failed" status to make this simpler
             } else if (status == "queued") {                                /* successfully queued.  an early enact failed */
                 // This is a complex error/flow response which we should really consider if there is a better way to handle.
                 // Is this always a permanent failure?  Could this succeed in queue if user purchased gloebits at same time?
@@ -1494,6 +1495,7 @@ namespace Gloebit.GloebitMoneyModule {
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYER_ACCOUNT_LOCKED;
                 } else if (status == "cannot-receive") {                    /* Seller's gloebit account can not receive gloebits */
+                    // TODO: Check role in new system.  This is for role=Payee, not role=Application
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYEE_CANNOT_RECEIVE;
                 } else if (status == "unknown-merchant") {                  /* can not identify merchant from params supplied by app */
