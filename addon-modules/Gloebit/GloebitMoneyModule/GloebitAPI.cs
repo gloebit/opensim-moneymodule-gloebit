@@ -1070,10 +1070,6 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <returns>true if async transact web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactCompleted should eventually be called with additional details on state of request.</returns>
         public bool Transact(Transaction txn, string description, OSDMap descMap, User sender, Uri baseURI) {
-            //
-            //(User sender, string senderName, int amount, string description)
-            
-            // TODO: This will need to use a new version and and possibly place it in the URL.
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", sender.PrincipalID, txn.PayerName, txn.Amount, description);
             
@@ -1165,7 +1161,6 @@ namespace Gloebit.GloebitMoneyModule {
             OSDMap transact_params = new OSDMap();
             PopulateTransactParamsBase(transact_params, txn, description, sender.GloebitID, descMap, baseURI);
             PopulateTransactParamsU2U(transact_params, txn, recipient.GloebitID, recipientEmail);
-            ////PopulateTransactParams(transact_params, sender.GloebitID, txn, description, recipientEmail, recipient.GloebitID, descMap, baseURI);
             
             HttpWebRequest request = BuildGloebitRequest("transact-u2u", "POST", sender, "application/json", transact_params);
             if (request == null) {
@@ -1241,7 +1236,8 @@ namespace Gloebit.GloebitMoneyModule {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURI:{7}", sender.PrincipalID, txn.PayerName, recipient.PrincipalID, txn.PayeeName, recipientEmail, txn.Amount, description, baseURI);
             
             // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
-            // TODO: How do we identify recipient?  Get email from profile from OpenSim UUID?
+            // If the recipient has ever authorized, we have an AppUserID from Gloebit which will allow identification.
+            // If not, Gloebit will attempt id from email.
             // TODO: If we use emails, we may need to make sure account merging works for email/3rd party providers.
             // TODO: If we allow anyone to receive, need to ensure that gloebits received are locked down until user authenticates as merchant.
             

@@ -1708,6 +1708,7 @@ namespace Gloebit.GloebitMoneyModule
         /// --- This is triggered by the OnMoneyBalanceRequest event
         /// ------ This appears to get called at login and when a user clicks on his/her balance.  The TransactionID is zero in both cases.
         /// ------ This may get called in other situations, but buying an object does not seem to trigger it.
+        /// ------ It appears that The system which calls ApplyUploadCharge calls immediately after (still with TransactionID of Zero).
         /// </summary>
         /// <param name="client"></param>
         /// <param name="agentID"></param>
