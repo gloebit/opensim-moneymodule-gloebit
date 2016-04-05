@@ -1255,12 +1255,9 @@ namespace Gloebit.GloebitMoneyModule
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GetBalance for agent {0}", agentID);
             
-            // TODO: call GetAgentBalance(UUID agentID, IClientAPI client, bool forceAuthOnInvalidToken)
-            // remove client from GetAgentBalance first
-            // returns a double.  will need to cast to an int.
-            // probably call with forceAuthOnInvalidToken = false.
-
-            return 0;
+            // forceAuthOnInvalidToken = false.  If another system is calling this frequently, it will prevent spamming of users with auth requests.
+            // client is null as it is only needed to request auth.
+            return (int)GetAgentBalance(agentID, null, false);
         }
 
         // Please do not refactor these to be just one method
@@ -1276,8 +1273,17 @@ namespace Gloebit.GloebitMoneyModule
         public bool UploadCovered(UUID agentID, int amount)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] UploadCovered for agent {0}, price {1}", agentID, amount);
-            // TODO: force a balance update, then check against amount.
             
+            IClientAPI client = LocateClientObject(agentID);
+            double balance = 0.0;
+            
+            // force a balance update, then check against amount.
+            // Retrieve balance from Gloebit if authed.  Reqeust auth if not authed.  Send purchase url if authed but lacking funds to cover amount.
+            balance = UpdateBalance(agentID, client, amount);
+            
+            if (balance < amount) {
+                return false;
+            }
             return true;
         }
         
@@ -1288,7 +1294,17 @@ namespace Gloebit.GloebitMoneyModule
         public bool AmountCovered(UUID agentID, int amount)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] AmountCovered for agent {0}, price {1}", agentID, amount);
-             // TODO: force a balance update, then check against amount.
+            
+            IClientAPI client = LocateClientObject(agentID);
+            double balance = 0.0;
+            
+            // force a balance update, then check against amount.
+            // Retrieve balance from Gloebit if authed.  Reqeust auth if not authed.  Send purchase url if authed but lacking funds to cover amount.
+            balance = UpdateBalance(agentID, client, amount);
+            
+            if (balance < amount) {
+                return false;
+            }
             return true;
         }
 
@@ -1316,7 +1332,10 @@ namespace Gloebit.GloebitMoneyModule
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyCharge for agent {0}, MoneyTransactionType {1}", agentID, type);
             
-            // TODO: should verify that agentID is not UUID.Zero and amount > 0)
+            if (amount <= 0) {
+                // TODO: Should we report this?  Should we ever get here?
+                return;
+            }
             
             Scene s = LocateSceneClientIn(agentID);
             string agentName = resolveAgentName(agentID);
@@ -1379,7 +1398,42 @@ namespace Gloebit.GloebitMoneyModule
         public void ApplyUploadCharge(UUID agentID, int amount, string text)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyUploadCharge for agent {0}, ammount {1}, for {2}", agentID, amount, text);
-            // TODO: charge agent the amount passed in.
+            
+            if (amount <= 0) {
+                // TODO: Should we report this?  Should we ever get here?
+                return;
+            }
+            
+            Scene s = LocateSceneClientIn(agentID);
+            string agentName = resolveAgentName(agentID);
+            string regionname = s.RegionInfo.RegionName;
+            string regionID = s.RegionInfo.RegionID.ToString();
+            
+            string description = String.Format("Classified Ad Fee on {0}, {1}", regionname, m_gridnick);
+            string txnTypeString = "AssetUploadFee";
+            TransactionType txnType = TransactionType.FEE_UPLOAD_ASSET;
+            
+            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), txnTypeString);
+            
+            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: txnType,
+                                                          payerID: agentID, payeeID: UUID.Zero, amount: amount, subscriptionID: UUID.Zero,
+                                                          partID: UUID.Zero, partName: String.Empty, partDescription: String.Empty,
+                                                          categoryID: UUID.Zero, localID: 0, saleType: 0);
+            
+            if (txn == null) {
+                // build failed, likely due to a reused transactionID.  Shouldn't happen.
+                IClientAPI payerClient = LocateClientObject(agentID);
+                alertUsersTransactionPreparationFailure(txnType, TransactionPrecheckFailure.EXISTING_TRANSACTION_ID, payerClient);
+                return;
+            }
+            
+            bool transaction_result = SubmitTransaction(txn, description, descMap, false);
+            
+            if (!transaction_result) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] ApplyUploadCharge failed to create HTTP Request for [{0}] from agent: [{1}] -- txnID: [{2}] -- agent likely received benefit without being charged.", description, agentID, txn.TransactionID.ToString());
+            } else {
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyUploadCharge Transaction queued {0}", txn.TransactionID.ToString());
+            }
         }
 
         // property to store fee for uploading assets
@@ -1425,18 +1479,10 @@ namespace Gloebit.GloebitMoneyModule
             
             // This call is the reason GetAgentBalance requires a client arg.
             // If we try to LocateClientObject at thist time, it will return null for this AgentId
-            double agentBalance = GetAgentBalance(client.AgentId, client, true);
-            client.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)agentBalance, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
-            
-            // TODO: It's possible this will send this at every grid crossing.  People might find that overkill.  Might want to generate a
-            // a callback for when we add a user to the user map and use that to make the initial auth request or send the purchase url.
-            // Send purchase URL to make it easy to find out how to buy more gloebits.
-            GloebitAPI.User u = GloebitAPI.User.Get(client.AgentId);
-            if (!String.IsNullOrEmpty(u.GloebitToken)) {        // TODO: this should probably be turned into a User class function bool isAuthed()
-                // Deliver Purchase URI in case the helper-uri is not working
-                Uri url = m_api.BuildPurchaseURI(BaseURI, u);
-                GloebitAPI.SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
-            }
+            // Request balance from Gloebit if authed.  If not authed, request auth.  If authed, send purchase url.
+            // TODO: It's possible this will send the purchase url at every grid crossing.  People might find that overkill.  Might want to generate a
+            //       a callback for when we add a user to the user map and use that to make the initial auth request or send the purchase url.
+            UpdateBalance(client.AgentId, client, -1);
         }
         
         private void OnClientLogin(IClientAPI client)
@@ -1680,30 +1726,9 @@ namespace Gloebit.GloebitMoneyModule
                     return;
                 }
                 
-                int returnfunds = 0;
-                double realBal = 0.0;
-
-                try
-                {
-                    realBal = GetAgentBalance(agentID, client, true);
-                }
-                catch (Exception e)
-                {
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] SendMoneyBalance Failure, Exception:{0}",e.Message);
-                    client.SendAlertMessage(e.Message + " ");
-                }
-                
-                // Get balance rounded down (may not be int for merchants)
-                returnfunds = (int)realBal;
-                client.SendMoneyBalance(TransactionID, true, new byte[0], returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
-                
-                // Send purchase URL to make it easy to find out how to buy more gloebits.
-                GloebitAPI.User u = GloebitAPI.User.Get(client.AgentId);
-                if (!String.IsNullOrEmpty(u.GloebitToken)) {        // TODO: this should probably be turned into a User class function bool isAuthed()
-                    // Deliver Purchase URI in case the helper-uri is not working
-                    Uri url = m_api.BuildPurchaseURI(BaseURI, u);
-                    GloebitAPI.SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
-                }
+                // Request balance from Gloebit.  Request Auth if not authed.  If Authed, always deliver Gloebit purchase url.
+                // NOTE: we are not passing the TransactionID to SendMoneyBalance as it appears ot always be UUID.Zero.
+                UpdateBalance(agentID, client, -1);
             }
             else
             {
@@ -2041,13 +2066,13 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: also, since we have a success page and we're not prepared to allow alternate success pages, this should probably just be used
             // to inform the grid of a balance change and shouldn't produce html.
             
-            UUID agentId = UUID.Parse(requestData["agentId"] as string);
-            IClientAPI client = LocateClientObject(agentId);
+            UUID agentID = UUID.Parse(requestData["agentId"] as string);
+            IClientAPI client = LocateClientObject(agentID);
             
-            // Update balance in viewer.  Request auth if not authed.
-            double balance = GetAgentBalance(agentId, client, true);
-            client.SendMoneyBalance(UUID.Zero, true, new byte[0], (int)balance, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
-
+            // Update balance in viewer.  Request auth if not authed.  Do not send the purchase url.
+            UpdateBalance(agentID, client, 0);
+            // TODO: When we implement this, we should supply the balance in the requestData and simply call client.SendMoneyBalance(...)
+            
             Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
             response["str_response_string"] = "<html><head><title>Purchase Complete</title></head><body><h2>Purchase Complete</h2>Thank you for purchasing Gloebits.  You may now close this window.</body></html>";
@@ -2676,9 +2701,9 @@ namespace Gloebit.GloebitMoneyModule
         /// Retrieves the gloebit balance of the gloebit account linked to the OpenSim agent defined by the agentID.
         /// If there is no token, or an invalid token on file, and forceAuthOnInvalidToken is true, we request authorization from the user.
         /// </summary>
-        /// <param name="AgentID">OpenSim AgentID for the user whose balance is being requested</param>
+        /// <param name="agentID">OpenSim AgentID for the user whose balance is being requested</param>
         /// <param name="client">IClientAPI for agent.  Need to pass this in because locating returns null when called from OnNewClient</param>
-        /// <param name ="forceAuthOnInvalidToken">Bool indicating whether we should reqeust auth on failures from lack of auth</param>
+        /// <param name ="forceAuthOnInvalidToken">Bool indicating whether we should request auth on failures from lack of auth</param>
         /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
         private double GetAgentBalance(UUID agentID, IClientAPI client, bool forceAuthOnInvalidToken)
         {
@@ -2711,6 +2736,54 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             return returnfunds;
+        }
+        
+        /// <summary>
+        /// Requests the user's balance from Gloebit if authorized.
+        /// If not authorized, sends an auth request to the user.
+        /// Sends the balance to the client (or sends 0 if failure due to lack of auth).
+        /// If the balance is less than the purchaseIndicator, sends the purchase url to the user.
+        /// NOTE: Does not provide any transaction details in the SendMoneyBalance call.  Do not use this helper for updates within a transaction.
+        /// </summary>
+        /// <param name="agentID">OpenSim AgentID for the user whose balance is being updated.</param>
+        /// <param name="client">IClientAPI for agent.  Need to pass this in because locating returns null when called from OnNewClient</param>
+        /// <param name ="purchaseIndicator">int indicating whether we should deliver the purchase url to the user when we have an authorized user.
+        ///                 -1: always deliver
+        ///                 0: never deliver
+        ///                 positive number: deliver if user's balance is below this indicator
+        /// </param>
+        /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
+        private double UpdateBalance(UUID agentID, IClientAPI client, int purchaseIndicator)
+        {
+            int returnfunds = 0;
+            double realBal = 0.0;
+            
+            try
+            {
+                // Request balance from Gloebit.  Request Auth from Gloebit if necessary
+                realBal = GetAgentBalance(agentID, client, true);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] UpdateBalance Failure, Exception:{0}",e.Message);
+                client.SendAlertMessage(e.Message + " ");
+            }
+            
+            // Get balance rounded down (may not be int for merchants)
+            returnfunds = (int)realBal;
+            // NOTE: if updating as part of a transaction, call SendMoneyBalance directly with transaction information instead of using UpdateBalance
+            client.SendMoneyBalance(UUID.Zero, true, new byte[0], returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+            
+            if (purchaseIndicator == -1 || purchaseIndicator > returnfunds) {
+                // Send purchase URL to make it easy to find out how to buy more gloebits.
+                GloebitAPI.User u = GloebitAPI.User.Get(client.AgentId);
+                if (!String.IsNullOrEmpty(u.GloebitToken)) {        // TODO: this should probably be turned into a User class function bool isAuthed()
+                    // Deliver Purchase URI in case the helper-uri is not working
+                    Uri url = m_api.BuildPurchaseURI(BaseURI, u);
+                    GloebitAPI.SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
+                }
+            }
+            return realBal;
         }
 
         #endregion
