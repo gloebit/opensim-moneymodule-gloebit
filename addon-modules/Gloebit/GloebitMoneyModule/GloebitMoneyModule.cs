@@ -1397,7 +1397,7 @@ namespace Gloebit.GloebitMoneyModule
         // --- BunchOfCaps.UploadCompleteHandler
         public void ApplyUploadCharge(UUID agentID, int amount, string text)
         {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyUploadCharge for agent {0}, ammount {1}, for {2}", agentID, amount, text);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyUploadCharge for agent {0}, amount {1}, for {2}", agentID, amount, text);
             
             if (amount <= 0) {
                 // TODO: Should we report this?  Should we ever get here?
@@ -1409,7 +1409,7 @@ namespace Gloebit.GloebitMoneyModule
             string regionname = s.RegionInfo.RegionName;
             string regionID = s.RegionInfo.RegionID.ToString();
             
-            string description = String.Format("Classified Ad Fee on {0}, {1}", regionname, m_gridnick);
+            string description = String.Format("Asset Upload Fee on {0}, {1}", regionname, m_gridnick);
             string txnTypeString = "AssetUploadFee";
             TransactionType txnType = TransactionType.FEE_UPLOAD_ASSET;
             
