@@ -1315,7 +1315,7 @@ namespace Gloebit.GloebitMoneyModule
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ApplyCharge for agent {0} with extraData {1}", agentID, extraData);
             // As far as I can tell, this is not used in recent versions of OpenSim.
-            // For backwards compatibility, call new ApplyChOpenSimExtrasrge func
+            // For backwards compatibility, call new ApplyCharge func
             ApplyCharge(agentID, amount, type);
         }
 
