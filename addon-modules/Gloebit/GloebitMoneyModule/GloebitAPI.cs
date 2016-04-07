@@ -1078,7 +1078,7 @@ namespace Gloebit.GloebitMoneyModule {
             OSDMap transact_params = new OSDMap();
             PopulateTransactParamsBase(transact_params, txn, description, sender.GloebitID, descMap, baseURI);
             
-            HttpWebRequest request = BuildGloebitRequest("2/transact", "POST", sender, "application/json", transact_params);
+            HttpWebRequest request = BuildGloebitRequest("v2/transact", "POST", sender, "application/json", transact_params);
             if (request == null) {
                 // ERROR
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact failed to create HttpWebRequest");
