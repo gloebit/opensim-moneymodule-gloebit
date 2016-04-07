@@ -51,6 +51,7 @@ namespace Gloebit.GloebitMoneyModule {
         
         public interface IAsyncEndpointCallback {
             void exchangeAccessTokenCompleted(bool success, User user, OSDMap responseDataMap);
+            // TODO: may change this to transactCompleted and add a bool for u2u
             void transactU2UCompleted (OSDMap responseDataMap, User sender, User recipient, Transaction transaction, TransactionStage stage, TransactionFailure failure);
             void createSubscriptionCompleted(OSDMap responseDataMap, Subscription subscription);
             void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, Subscription subscription, User sender, IClientAPI client);
@@ -1055,55 +1056,68 @@ namespace Gloebit.GloebitMoneyModule {
         // requires "transact" in scope of authorization token
 
         /// <summary>
-        /// Begins Gloebit transaction request for the gloebit amount specified from the sender to the owner of the Gloebit app this module is connected to.
+        /// Asynchronously requests Gloebit transaction from the sender to the owner of the Gloebit app this module is connected to.
         /// </summary>
+        /// <remarks>
+        /// Asynchronous.
+        /// Upon async response: parses response data, records response in txn, creates TransactionStage and TransactionFailure from response strings,
+        /// handles any necessary failure processing, and calls TransactCompleted callback with response data for module to process and message user.
+        /// </remarks>
+        /// <param name="txn">Transaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer id and name.  <see cref="GloebitAPI.Transaction"/></param>
+        /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
         /// <param name="sender">User object for the user sending the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
-        /// <param name="senderName">OpenSim Name of the user on this grid sending the gloebits.</param>
-        /// <param name="amount">quantity of gloebits to be transacted.</param>
-        /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.</param>
-        public void Transact(User sender, string senderName, int amount, string description) {
+        /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
+        /// <returns>true if async transact web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactCompleted should eventually be called with additional details on state of request.</returns>
+        public bool Transact(Transaction txn, string description, OSDMap descMap, User sender, Uri baseURI) {
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", sender.PrincipalID, senderName, amount, description);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", sender.PrincipalID, txn.PayerName, txn.Amount, description);
             
-            UUID transactionId = UUID.Random();
+            // ************ BUILD AND SEND TRANSACT POST REQUEST ************ //
 
             OSDMap transact_params = new OSDMap();
-
-            transact_params["version"] = 1;
-            transact_params["application-key"] = m_key;
-            transact_params["request-created"] = (int)(DateTime.UtcNow.Ticks / 10000000);  // TODO - figure out if this is in the right units
-            transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
-
-            transact_params["transaction-id"] = transactionId.ToString();
-            transact_params["gloebit-balance-change"] = amount;
-            transact_params["asset-code"] = description;
-            transact_params["asset-quantity"] = 1;
+            PopulateTransactParamsBase(transact_params, txn, description, sender.GloebitID, descMap, baseURI);
             
-            transact_params["app-user-id"] = sender.GloebitID;
-            
-            HttpWebRequest request = BuildGloebitRequest("transact", "POST", sender, "application/json", transact_params);
+            HttpWebRequest request = BuildGloebitRequest("v2/transact", "POST", sender, "application/json", transact_params);
             if (request == null) {
                 // ERROR
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact failed to create HttpWebRequest");
-                return;
+                return false;
                 // TODO once we return, return error value
             }
-            
+                    
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact about to BeginGetResponse");
             // **** Asynchronously make web request **** //
             IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
-                new GloebitRequestState(request, 
-                    delegate(OSDMap responseDataMap) {
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", responseDataMap);
+			                                          new GloebitRequestState(request, 
+			                        delegate(OSDMap responseDataMap) {
+                                        
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", responseDataMap);
 
-                        //************ PARSE AND HANDLE TRANSACT RESPONSE *********//
+                //************ PARSE AND HANDLE TRANSACT-U2U RESPONSE *********//
 
-                        bool success = (bool)responseDataMap["success"];
-                        // TODO: if success=false: id, balance, product-count are invalid.  Do not set balance.
-                        double balance = responseDataMap["balance"].AsReal();
-                        string reason = responseDataMap["reason"];
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact success: {0} balance: {1} reason: {2}", success, balance, reason);
-                        // TODO - update the user's balance
-                    }));
+                // read response and store in txn
+                PopulateTransactResponse(txn, responseDataMap);
+                                        
+                // Build Stage & Failure arguments
+                 TransactionStage stage = TransactionStage.BEGIN;
+                 TransactionFailure failure = TransactionFailure.NONE;
+                // TODO: should we pass the txn instead of the individual string args here?
+                PopulateTransactStageAndFailure(out stage, out failure, txn.ResponseSuccess, txn.ResponseStatus, txn.ResponseReason);
+                // TODO: consider making stage & failure part of the GloebitTransactions table.
+                // still pass explicitly to make sure they can't be modified before callback uses them.
+                                        
+                // Handle any necessary functional adjustments based on failures
+                ProcessTransactFailure(txn, failure, sender);
+
+                m_asyncEndpointCallbacks.transactU2UCompleted(responseDataMap, sender, null, txn, stage, failure);
+            }));
+            
+            // Successfully submitted transaction request to Gloebit
+            txn.Submitted = true;
+            // TODO: if we add stage to txn, we should set it to TransactionStage.SUBMIT here.
+            GloebitTransactionData.Instance.Store(txn);
+            return true;
         }
         
 
@@ -1128,7 +1142,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="sender">User object for the user sending the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
         /// <param name="recipient">User object for the user receiving the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
         /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
-        /// <param name="baseURI">Asset representing local transaction part requiring processing via callbacks.</param>
+        /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
         public bool TransactU2U(Transaction txn, string description, OSDMap descMap, User sender, User recipient, string recipientEmail, Uri baseURI) {
 
@@ -1145,7 +1159,8 @@ namespace Gloebit.GloebitMoneyModule {
             
             // TODO: move away from OSDMap to a standard C# dictionary
             OSDMap transact_params = new OSDMap();
-            PopulateTransactParams(transact_params, sender.GloebitID, txn, description, recipientEmail, recipient.GloebitID, descMap, baseURI);
+            PopulateTransactParamsBase(transact_params, txn, description, sender.GloebitID, descMap, baseURI);
+            PopulateTransactParamsU2U(transact_params, txn, recipient.GloebitID, recipientEmail);
             
             HttpWebRequest request = BuildGloebitRequest("transact-u2u", "POST", sender, "application/json", transact_params);
             if (request == null) {
@@ -1205,7 +1220,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="sender">User object for the user sending the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
         /// <param name="recipient">User object for the user receiving the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
         /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
-        /// <param name="baseURI">Asset representing local transaction part requiring processing via callbacks.</param>
+        /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <param name="stage">TransactionStage handed back to caller representing stage of transaction that failed or completed.</param>
         /// <param name="failure">TransactionFailure handed back to caller representing specific transaction failure, or NONE.</param>
         /// <returns>
@@ -1221,7 +1236,8 @@ namespace Gloebit.GloebitMoneyModule {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURI:{7}", sender.PrincipalID, txn.PayerName, recipient.PrincipalID, txn.PayeeName, recipientEmail, txn.Amount, description, baseURI);
             
             // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
-            // TODO: How do we identify recipient?  Get email from profile from OpenSim UUID?
+            // If the recipient has ever authorized, we have an AppUserID from Gloebit which will allow identification.
+            // If not, Gloebit will attempt id from email.
             // TODO: If we use emails, we may need to make sure account merging works for email/3rd party providers.
             // TODO: If we allow anyone to receive, need to ensure that gloebits received are locked down until user authenticates as merchant.
             
@@ -1232,7 +1248,9 @@ namespace Gloebit.GloebitMoneyModule {
             
             // TODO: move away from OSDMap to a standard C# dictionary
             OSDMap transact_params = new OSDMap();
-            PopulateTransactParams(transact_params, sender.GloebitID, txn, description, recipientEmail, recipient.GloebitID, descMap, baseURI);
+            PopulateTransactParamsBase(transact_params, txn, description, sender.GloebitID, descMap, baseURI);
+            PopulateTransactParamsU2U(transact_params, txn, recipient.GloebitID, recipientEmail);
+            ////PopulateTransactParams(transact_params, sender.GloebitID, txn, description, recipientEmail, recipient.GloebitID, descMap, baseURI);
             
             HttpWebRequest request = BuildGloebitRequest("transact-u2u", "POST", sender, "application/json", transact_params);
             if (request == null) {
@@ -1298,24 +1316,22 @@ namespace Gloebit.GloebitMoneyModule {
         /* Transact U2U Helper Functions */
         
         /// <summary>
-        /// Builds the form parameters in the format that the GloebitAPI TransactU2U endpoint expects for this transaction.
+        /// Builds the base transact form parameters in the format that  GloebitAPI transact endpoints expect for a transaction.
         /// </summary>
         /// <param name="transact_params">OSDMap which will be populated with form parameters.</param>
         /// <param name="txn">Transaction representing local transaction we are create transact_params from.</param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
-        /// <param name="recipientEmail">Email of the user being paid gloebits.  May be empty.</param>
-        /// <param name="recipientGloebitID">UUID from the Gloebit system of user being paid.  May be empty.</param>
-        /// <param name="recipient">User object for the user receiving the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
-        /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
+        /// <param name="senderGloebitID">UUID from the Gloebit system of user making payment.</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
-        /// <param name="baseURI">Asset representing local transaction part requiring processing via callbacks.</param>
-        private void PopulateTransactParams(OSDMap transact_params, string senderGloebitID, Transaction txn, string description, string recipientEmail, string recipientGloebitID, OSDMap descMap, Uri baseURI)
+        /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
+        private void PopulateTransactParamsBase(OSDMap transact_params, Transaction txn, string description, string senderGloebitID, OSDMap descMap, Uri baseURI)
         {
-            /***** Base Params *****/
+            // TODO: consider passing in version.
+            
+            /***** Base Params always required *****/
             transact_params["version"] = 1;
             transact_params["application-key"] = m_key;
             transact_params["request-created"] = (int)(DateTime.UtcNow.Ticks / 10000000);  // TODO - figure out if this is in the right units
-            //transact_params["username-on-application"] = String.Format("{0} - {1}", senderName, sender.PrincipalID);
             transact_params["username-on-application"] = txn.PayerName;
             transact_params["transaction-id"] = txn.TransactionID.ToString();
             
@@ -1342,20 +1358,8 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["asset-enact-hold-url"] = txn.BuildEnactURI(baseURI);
             transact_params["asset-consume-hold-url"] = txn.BuildConsumeURI(baseURI);
             transact_params["asset-cancel-hold-url"] = txn.BuildCancelURI(baseURI);
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] asset-enact-hold-url:{0}", transact_params["asset-enact-hold-url"]);
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] asset-consume-hold-url:{0}", transact_params["asset-consume-hold-url"]);
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] asset-cancel-hold-url:{0}", transact_params["asset-cancel-hold-url"]);
             
-            /***** U2U specific transact params *****/
-            transact_params["seller-name-on-application"] = txn.PayeeName;
-            transact_params["seller-id-on-application"] = txn.PayeeID;
-            if (!String.IsNullOrEmpty(recipientGloebitID) && recipientGloebitID != UUID.Zero.ToString()) {
-                transact_params["seller-id-from-gloebit"] = recipientGloebitID;
-            }
-            if (!String.IsNullOrEmpty(recipientEmail)) {
-                transact_params["seller-email-address"] = recipientEmail;
-            }
-            
+            /***** DescMap Params *****/
             // TODO: make descmap optional or required in all txns and move to own section
             if (descMap != null) {
                 transact_params["platform-desc-names"] = descMap["platform-names"];
@@ -1370,6 +1374,27 @@ namespace Gloebit.GloebitMoneyModule {
             if (txn.IsSubscriptionDebit) {
                 transact_params["automated-transaction"] = true;
                 transact_params["subscription-id"] = txn.SubscriptionID;
+            }
+            
+        }
+        
+        /// <summary>
+        /// Builds the U2U and base form parameters in the format that the GloebitAPI TransactU2U endpoint expects for this transaction.
+        /// </summary>
+        /// <param name="transact_params">OSDMap which will be populated with form parameters.</param>
+        /// <param name="txn">Transaction representing local transaction we are create transact_params from.</param>
+        /// <param name="recipientGloebitID">UUID from the Gloebit system of user being paid.  May be empty.</param>
+        /// <param name="recipientEmail">Email of the user being paid gloebits.  May be empty.</param>
+        private void PopulateTransactParamsU2U(OSDMap transact_params, Transaction txn, string recipientGloebitID, string recipientEmail)
+        {
+            /***** U2U specific transact params *****/
+            transact_params["seller-name-on-application"] = txn.PayeeName;
+            transact_params["seller-id-on-application"] = txn.PayeeID;
+            if (!String.IsNullOrEmpty(recipientGloebitID) && recipientGloebitID != UUID.Zero.ToString()) {
+                transact_params["seller-id-from-gloebit"] = recipientGloebitID;
+            }
+            if (!String.IsNullOrEmpty(recipientEmail)) {
+                transact_params["seller-email-address"] = recipientEmail;
             }
         }
         
@@ -1391,7 +1416,7 @@ namespace Gloebit.GloebitMoneyModule {
                 status = responseDataMap["status"];
             }
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U response recieved success: {0} balance: {1} status: {2} reason: {3}", success, balance, status, reason);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact(-U2U) response recieved success: {0} balance: {1} status: {2} reason: {3}", success, balance, status, reason);
             
             // Store response data in GloebitAPI.Transaction record
             txn.ResponseReceived = true;
@@ -1434,6 +1459,7 @@ namespace Gloebit.GloebitMoneyModule {
                             break;
                     }
                 }
+            // TODO: Adding an "early-enact-failed" status to make this simpler
             } else if (status == "queued") {                                /* successfully queued.  an early enact failed */
                 // This is a complex error/flow response which we should really consider if there is a better way to handle.
                 // Is this always a permanent failure?  Could this succeed in queue if user purchased gloebits at same time?
@@ -1465,6 +1491,7 @@ namespace Gloebit.GloebitMoneyModule {
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYER_ACCOUNT_LOCKED;
                 } else if (status == "cannot-receive") {                    /* Seller's gloebit account can not receive gloebits */
+                    // TODO: Check role in new system.  This is for role=Payee, not role=Application
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYEE_CANNOT_RECEIVE;
                 } else if (status == "unknown-merchant") {                  /* can not identify merchant from params supplied by app */
@@ -1525,7 +1552,7 @@ namespace Gloebit.GloebitMoneyModule {
                     break;
                 default:
                     // TODO: why are we logging this here?  Should this be moved to GMM?
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U Unknown error posting transaction, reason: '{0}'", txn.ResponseReason);
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact(-U2U) Unknown error posting transaction, reason: '{0}'", txn.ResponseReason);
                     break;
             }
         }
