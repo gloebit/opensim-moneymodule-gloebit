@@ -1476,12 +1476,17 @@ namespace Gloebit.GloebitMoneyModule
             client.OnRequestPayPrice += requestPayPrice;
             client.OnObjectBuy += ObjectBuy;
             client.OnLogout += ClientLoggedOut;
-            
+            client.OnCompleteMovementToRegion += OnCompleteMovementToRegion;
+        }
+        
+        private void OnCompleteMovementToRegion(IClientAPI client, bool blah) {
             // This call is the reason GetAgentBalance requires a client arg.
             // If we try to LocateClientObject at thist time, it will return null for this AgentId
             // Request balance from Gloebit if authed.  If not authed, request auth.  If authed, send purchase url.
             // TODO: It's possible this will send the purchase url at every grid crossing.  People might find that overkill.  Might want to generate a
             //       a callback for when we add a user to the user map and use that to make the initial auth request or send the purchase url.
+            // TODO: may now be albe to remove client from these funcs (since we moved this out of OnNewClient, but this still might be simpler.
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion for {0} with bool {1}", client.AgentId, blah);
             UpdateBalance(client.AgentId, client, -1);
         }
         
