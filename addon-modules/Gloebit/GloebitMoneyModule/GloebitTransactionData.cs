@@ -30,6 +30,7 @@ using System.Data;
 using System.Data.SqlTypes;
 using System.Reflection;
 using System.Xml;
+using log4net;
 using MySql.Data.MySqlClient;
 using Nini.Config;
 using OpenSim.Data.MySQL;
@@ -150,6 +151,8 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
+            private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+
             public PGSQLImpl(IConfig config)
                 : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsPGSQL")
             {
@@ -157,15 +160,20 @@ namespace Gloebit.GloebitMoneyModule
             
             public override bool Store(GloebitAPI.Transaction txn)
             {
-                // remove null datetimes as pgsql throws exceptions on null fields
-                if (txn.enactedTime == null) {
-                    txn.enactedTime = SqlDateTime.MinValue.Value;
-                }
-                if (txn.finishedTime == null) {
-                    txn.finishedTime = SqlDateTime.MinValue.Value;
-                }
-                // call parent
-                return base.Store(txn);
+		try {
+                    // remove null datetimes as pgsql throws exceptions on null fields
+                    if (txn.enactedTime == null) {
+                        txn.enactedTime = SqlDateTime.MinValue.Value;
+                    }
+                    if (txn.finishedTime == null) {
+                        txn.finishedTime = SqlDateTime.MinValue.Value;
+                    }
+                    // call parent
+                    return base.Store(txn);
+		} catch(System.OverflowException e) {
+		    m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction {}! {}", txn, e);
+		    throw;
+		}
             }
         }
         
