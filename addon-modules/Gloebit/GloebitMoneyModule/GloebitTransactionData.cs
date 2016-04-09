@@ -171,7 +171,7 @@ namespace Gloebit.GloebitMoneyModule
                     // call parent
                     return base.Store(txn);
 		} catch(System.OverflowException e) {
-		    m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction {}! {}", txn, e);
+		    m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction {0}! {1}", txn, e);
 		    throw;
 		}
             }
