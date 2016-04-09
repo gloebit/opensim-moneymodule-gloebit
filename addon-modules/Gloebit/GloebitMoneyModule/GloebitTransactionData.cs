@@ -168,10 +168,11 @@ namespace Gloebit.GloebitMoneyModule
                     if (txn.finishedTime == null) {
                         txn.finishedTime = SqlDateTime.MinValue.Value;
                     }
+                    m_log.InfoFormat("GloebitTransactionData.PGSQLImpl: storing transaction {0}", txn);
                     // call parent
                     return base.Store(txn);
 		} catch(System.OverflowException e) {
-		    m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction {0}! {1}", txn, e);
+                    m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction {0}! {1}", txn, e);
 		    throw;
 		}
             }
