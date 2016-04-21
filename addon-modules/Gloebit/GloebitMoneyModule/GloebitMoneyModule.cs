@@ -808,6 +808,8 @@ namespace Gloebit.GloebitMoneyModule
         private static string m_contactGloebit = "Gloebit at OpenSimTransactionIssue@gloebit.com";
         private string m_contactOwner = "region or grid owner";
 
+	private bool m_disablePerSimCurrencyExtras = false;
+
         private IConfigSource m_gConfig;
 
         /// <summary>
@@ -969,6 +971,7 @@ namespace Gloebit.GloebitMoneyModule
                         m_log.InfoFormat("[GLOEBITMONEYMODULE] selected as local economymodule for region {0}", enabledRegionIds[i]);
                     }
                 }
+                m_disablePerSimCurrencyExtras = config.GetBoolean("DisablePerSimCurrencyExtras", false);
             }
 
             if (section == "Economy") {
@@ -1097,7 +1100,8 @@ namespace Gloebit.GloebitMoneyModule
             SimulatorFeaturesHelper simFeaturesHelper = new SimulatorFeaturesHelper(scene, et);
             
             ISimulatorFeaturesModule featuresModule = scene.RequestModuleInterface<ISimulatorFeaturesModule>();
-            if (featuresModule != null) {
+	    bool enabled = !m_disablePerSimCurrencyExtras;
+            if (enabled && featuresModule != null) {
                 featuresModule.OnSimulatorFeaturesRequest += delegate(UUID agentID, ref OSDMap features)
                 {
                     if (simFeaturesHelper.ShouldSend(agentID)) {
