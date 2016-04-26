@@ -776,8 +776,8 @@ namespace Gloebit.GloebitMoneyModule
             
             
         };
-        
-        
+
+        private bool m_sfmCallbackRegistered = false;   // bool for ensuring we only register a SimulatorFeaturesModule OnSimulatorFeaturesRequest event once.
         
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -1096,30 +1096,46 @@ namespace Gloebit.GloebitMoneyModule
             }
             m_log.InfoFormat("[GLOEBITMONEYMODULE] region loaded {0}", scene.RegionInfo.RegionID.ToString());
             
-            IEntityTransferModule et = scene.RequestModuleInterface<IEntityTransferModule>();
-            SimulatorFeaturesHelper simFeaturesHelper = new SimulatorFeaturesHelper(scene, et);
-            
             ISimulatorFeaturesModule featuresModule = scene.RequestModuleInterface<ISimulatorFeaturesModule>();
-	    bool enabled = !m_disablePerSimCurrencyExtras;
-            if (enabled && featuresModule != null) {
-                featuresModule.OnSimulatorFeaturesRequest += delegate(UUID agentID, ref OSDMap features)
-                {
-                    if (simFeaturesHelper.ShouldSend(agentID)) {
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] OnSimulatorFeaturesRequest Scene:{0} Agent:{1}", scene.RegionInfo.RegionID.ToString(), agentID);
-                        // Get or create the extras section of the features map
-                        OSDMap extrasMap;
-                        if (features.ContainsKey("OpenSimExtras")) {
-                            extrasMap = (OSDMap)features["OpenSimExtras"];
-                        } else {
-                            extrasMap = new OSDMap();
-                            features["OpenSimExtras"] = extrasMap;
-                        }
-                        
-                        // Add our values to the extras map
-                        extrasMap["currency"] = "G$";
-                        extrasMap["currency-base-uri"] = GetCurrencyBaseURI(scene);
-                    }
-                };
+            bool enabled = !m_disablePerSimCurrencyExtras;
+            if (enabled && featuresModule != null && !m_sfmCallbackRegistered) {
+                featuresModule.OnSimulatorFeaturesRequest += OnSimulatorFeaturesRequest;
+                // Only want to register this once, but need to wait until at least one region is created.
+                m_sfmCallbackRegistered = true;
+            }
+        }
+        
+        private void OnSimulatorFeaturesRequest(UUID agentID, ref OSDMap features)
+        {
+            UUID regionID = UUID.Zero;
+            Scene s = null;
+
+            // If using the new protocol, Grap the Region id
+            if (features.ContainsKey("RegionIDForInternalEvents") && (features["RegionIDForInternalEvents"] != UUID.Zero)) {
+                regionID = (UUID)features["RegionIDForInternalEvents"];
+                if (m_enabled || (m_enabledRegions != null && m_enabledRegions.Contains(regionID))) {
+                    s = GetSceneByUUID(regionID);
+                }
+            } else {
+                // Old system where regionID is not sent.  No way to determine which region this came from.
+                if (m_enabled || m_enabledRegions != null) {
+                    s = GetAnyScene();
+                }
+            }
+            
+            if (s != null) {
+                // Get or create the extras section of the features map
+                OSDMap extrasMap;
+                if (features.ContainsKey("OpenSimExtras")) {
+                    extrasMap = (OSDMap)features["OpenSimExtras"];
+                } else {
+                    extrasMap = new OSDMap();
+                    features["OpenSimExtras"] = extrasMap;
+                }
+                
+                // Add our values to the extras map
+                extrasMap["currency"] = "G$";
+                extrasMap["currency-base-uri"] = GetCurrencyBaseURI(s);
             }
         }
         
