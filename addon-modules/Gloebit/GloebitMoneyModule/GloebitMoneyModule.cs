@@ -3290,6 +3290,23 @@ namespace Gloebit.GloebitMoneyModule
                 alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.BUY_SELL_MODULE_INACCESSIBLE, remoteClient);
                 return;
             }
+            
+            // If 0G$ txn, don't build and submit txn
+            if (salePrice == 0) {
+                // Nothing to submit to Gloebit.  Just deliver the object
+                bool delivered = module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice);
+                // Inform the user of success or failure.
+                if (!delivered) {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] ObjectBuy delivery of free object failed.");
+                    // returnMsg = "IBuySellModule.BuyObject failed delivery attempt.";
+                    sendMessageToClient(remoteClient, String.Format("Delivery of free object failed\nObject Name: {0}", part.Name), agentID);
+                } else {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy delivery of free object succeeded.");
+                    // returnMsg = "object delivery succeeded";
+                    sendMessageToClient(remoteClient, String.Format("Delivery of free object succeeded\nObject Name: {0}", part.Name), agentID);
+                }
+                return;
+            }
 
             string agentName = resolveAgentName(agentID);
             string regionname = s.RegionInfo.RegionName;
