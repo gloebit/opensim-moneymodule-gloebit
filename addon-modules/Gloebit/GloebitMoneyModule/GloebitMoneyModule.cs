@@ -776,8 +776,6 @@ namespace Gloebit.GloebitMoneyModule
             
             
         };
-
-        private bool m_sfmCallbackRegistered = false;   // bool for ensuring we only register a SimulatorFeaturesModule OnSimulatorFeaturesRequest event once.
         
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -1098,32 +1096,16 @@ namespace Gloebit.GloebitMoneyModule
             
             ISimulatorFeaturesModule featuresModule = scene.RequestModuleInterface<ISimulatorFeaturesModule>();
             bool enabled = !m_disablePerSimCurrencyExtras;
-            if (enabled && featuresModule != null && !m_sfmCallbackRegistered) {
-                featuresModule.OnSimulatorFeaturesRequest += OnSimulatorFeaturesRequest;
-                // Only want to register this once, but need to wait until at least one region is created.
-                m_sfmCallbackRegistered = true;
+            if (enabled && featuresModule != null) {
+                featuresModule.OnSimulatorFeaturesRequest += (UUID x, ref OSDMap y) => OnSimulatorFeaturesRequest(x, ref y, scene);
             }
         }
         
-        private void OnSimulatorFeaturesRequest(UUID agentID, ref OSDMap features)
+        private void OnSimulatorFeaturesRequest(UUID agentID, ref OSDMap features, Scene scene)
         {
-            UUID regionID = UUID.Zero;
-            Scene s = null;
+            UUID regionID = scene.RegionInfo.RegionID;
 
-            // If using the new protocol, Grap the Region id
-            if (features.ContainsKey("RegionIDForInternalEvents") && (features["RegionIDForInternalEvents"] != UUID.Zero)) {
-                regionID = (UUID)features["RegionIDForInternalEvents"];
-                if (m_enabled || (m_enabledRegions != null && m_enabledRegions.Contains(regionID))) {
-                    s = GetSceneByUUID(regionID);
-                }
-            } else {
-                // Old system where regionID is not sent.  No way to determine which region this came from.
-                if (m_enabled || m_enabledRegions != null) {
-                    s = GetAnyScene();
-                }
-            }
-            
-            if (s != null) {
+            if (m_enabled || (m_enabledRegions != null && m_enabledRegions.Contains(regionID))) {
                 // Get or create the extras section of the features map
                 OSDMap extrasMap;
                 if (features.ContainsKey("OpenSimExtras")) {
@@ -1135,7 +1117,7 @@ namespace Gloebit.GloebitMoneyModule
                 
                 // Add our values to the extras map
                 extrasMap["currency"] = "G$";
-                extrasMap["currency-base-uri"] = GetCurrencyBaseURI(s);
+                extrasMap["currency-base-uri"] = GetCurrencyBaseURI(scene);
             }
         }
         
