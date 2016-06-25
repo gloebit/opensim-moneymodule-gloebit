@@ -1,4 +1,4 @@
-﻿:VERSION 1		# -------------------------
+:VERSION 1		# -------------------------
 
 BEGIN;
 
@@ -17,5 +17,23 @@ COMMIT;
 BEGIN;
 
 ALTER TABLE `GloebitUsers` DROP COLUMN `Status`;
+
+COMMIT;
+
+:VERSION 3     # --------------------------
+
+BEGIN;
+
+DROP TABLE IF EXISTS `GloebitUsers`;
+
+CREATE TABLE IF NOT EXISTS `GloebitUsers` (
+    `AppKey`        CHAR(36) NOT NULL,
+    `PrincipalID`   CHAR(36) NOT NULL,
+    `GloebitID`     CHAR(36) NOT NULL,
+    `GloebitToken`  CHAR(36) NOT NULL,
+    `LastSessionID` CHAR(36) NOT NULL,
+    PRIMARY KEY pk_gu_ak_pid    (`AppKey`, `PrincipalID`),
+    INDEX       ix_gu_pid       (`PrincipalID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 COMMIT;
