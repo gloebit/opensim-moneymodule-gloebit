@@ -1549,7 +1549,7 @@ namespace Gloebit.GloebitMoneyModule
             // Delay messaging for 8 seconds if viewer isn't fully loaded, shows up as offline while away
             int delay = 1; // Delay 1 seconds
             if (LoginBalanceRequest.ExistsAndJustLoggedIn(client.AgentId)) {
-                delay = 8; // Delay 8 seconds
+                delay = 9; // Delay 9 seconds
             }
             Thread welcomeMessageThread = new Thread(delegate() {
                             Thread.Sleep(delay * 1000);  // Delay miliseconds

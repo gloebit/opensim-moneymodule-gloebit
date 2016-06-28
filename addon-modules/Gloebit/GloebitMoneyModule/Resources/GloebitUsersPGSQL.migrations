@@ -31,11 +31,11 @@ DROP TABLE IF EXISTS GloebitUsers;
 CREATE TABLE IF NOT EXISTS GloebitUsers (
     "AppKey"        CHAR(36) NOT NULL,
     "PrincipalID"   CHAR(36) NOT NULL,
-    "GloebitID"     CHAR(36) NOT NULL,
-    "GloebitToken"  CHAR(36) NOT NULL,
+    "GloebitID"     VARCHAR(36) NOT NULL,
+    "GloebitToken"  VARCHAR(36) NOT NULL,
     "LastSessionID" CHAR(36) NOT NULL,
     CONSTRAINT pk_gu_ak_pid PRIMARY KEY ("AppKey", "PrincipalID")
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+);
 
 CREATE INDEX ix_gu_pid ON GloebitUsers ("PrincipalID");
 
