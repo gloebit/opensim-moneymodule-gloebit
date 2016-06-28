@@ -802,6 +802,8 @@ namespace Gloebit.GloebitMoneyModule
         private string m_gridnick = "unknown_grid";
         private string m_gridname = "unknown_grid_name";
         private Uri m_economyURL;
+	private string m_dbProvider = null;
+	private string m_dbConnectionString = null;
         
         private static string m_contactGloebit = "Gloebit at OpenSimTransactionIssue@gloebit.com";
         private string m_contactOwner = "region or grid owner";
@@ -871,12 +873,14 @@ namespace Gloebit.GloebitMoneyModule
                 m_configured = false;
             }
 
-            if(m_configured) {
+            m_dbProvider = m_gConfig.Configs["DatabaseService"].GetString("StorageProvider");
+            m_dbConnectionString = m_gConfig.Configs["DatabaseService"].GetString("ConnectionString");
+            if(m_configured && String.IsNullOrEmpty(m_dbConnectionString)) {
                 //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
                 m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
-                GloebitUserData.Initialise(m_gConfig.Configs["DatabaseService"]);
-                GloebitTransactionData.Initialise(m_gConfig.Configs["DatabaseService"]);
-                GloebitSubscriptionData.Initialise(m_gConfig.Configs["DatabaseService"]);
+                GloebitUserData.Initialise(m_dbProvider, m_dbConnectionString);
+                GloebitTransactionData.Initialise(m_dbProvider, m_dbConnectionString);
+                GloebitSubscriptionData.Initialise(m_dbProvider, m_dbConnectionString);
             }
         }
 
