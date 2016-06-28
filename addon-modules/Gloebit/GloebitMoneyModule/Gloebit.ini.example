@@ -16,9 +16,16 @@
     ;; Configure GMM to environment and Gloebit application on that environment to interact with
     ;; see http://dev.gloebit.com/opensim/configuration-instructions/ for more details.
 
-    ;; GLBEnvironment is currently restricted to sandbox for testing.
     ;; Environments:
-    ;;      sandbox - connects to sandbox.gloebit.com;  fake/sandboxed payments;
+    ;;      sandbox - connects to sandbox.gloebit.com;  fake/sandboxed payments and gloebits;
+    ;;              https://sandbox.gloebit.com/signup/ - create sandbox account
+    ;;              https://sandbox.gloebit.com/merchant-signup/ - request ability to create apps
+    ;;              https://sandbox.gloebit.com/merchant-tools/ - create app and retrieve Key and Secret
+    ;;      production - connects to www.gloebit.com; real payments and gloebits;
+    ;;              https://www.gloebit.com/signup/ - create production account
+    ;;              https://www.gloebit.com/merchant-signup/ - request ability to create apps
+    ;;              (requires manual approval on production before gaining access to merchant tools)
+    ;;              https://www.gloebit.com/merchant-tools/ - create app and retrieve Key and Secret
     GLBEnvironment = sandbox
 
     ;; Application the GMM on this process will connect to within the environment specified above
