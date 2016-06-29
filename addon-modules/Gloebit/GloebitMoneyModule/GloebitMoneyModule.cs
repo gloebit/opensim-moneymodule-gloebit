@@ -104,7 +104,7 @@ namespace Gloebit.GloebitMoneyModule
             public bool IgnoreNextBalanceRequest
             {
                 get {
-                    if (m_IgnoreNextBalanceRequest == true && (m_IgnoreTime.CompareTo(DateTime.UtcNow.AddSeconds(numSeconds)) > 0)) {
+                    if (m_IgnoreNextBalanceRequest && justLoggedIn()) {
                         m_IgnoreNextBalanceRequest = false;
                         return true;
                     }
@@ -130,6 +130,20 @@ namespace Gloebit.GloebitMoneyModule
                     }
                 }
                 return lbr;
+            }
+            
+            public static bool ExistsAndJustLoggedIn(UUID agentID) {
+                // If an lbr exists and is recent.
+                bool exists;
+                LoginBalanceRequest lbr;
+                lock (s_LoginBalanceRequestMap) {
+                    exists = s_LoginBalanceRequestMap.TryGetValue(agentID, out lbr);
+                }
+                return exists && lbr.justLoggedIn();
+            }
+            
+            private bool justLoggedIn() {
+                return (m_IgnoreTime.CompareTo(DateTime.UtcNow.AddSeconds(numSeconds)) > 0);
             }
             
             public static void Cleanup(UUID agentID) {
@@ -608,7 +622,7 @@ namespace Gloebit.GloebitMoneyModule
                         // TODO: Do we need to check if this is null?  Shouldn't happen.
 
                         // Get GloebitAPI.User for this agent
-                        GloebitAPI.User user = GloebitAPI.User.Get(AgentID);
+                        GloebitAPI.User user = GloebitAPI.User.Get(this.api, AgentID);
                         
                         // TODO: Shouldn't get here unless we have a token, but should we check again?
                         
@@ -1099,6 +1113,15 @@ namespace Gloebit.GloebitMoneyModule
             if (enabled && featuresModule != null) {
                 featuresModule.OnSimulatorFeaturesRequest += (UUID x, ref OSDMap y) => OnSimulatorFeaturesRequest(x, ref y, scene);
             }
+            
+            if (enabled) {
+                // TODO: do we want to keep this.
+                scene.EventManager.OnNewPresence += OnNewPresence;
+            }
+        }
+        
+        private void OnNewPresence(ScenePresence presence) {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnNewPresence viewer:{0}", presence.Viewer);
         }
         
         private void OnSimulatorFeaturesRequest(UUID agentID, ref OSDMap features, Scene scene)
@@ -1117,6 +1140,7 @@ namespace Gloebit.GloebitMoneyModule
                 
                 // Add our values to the extras map
                 extrasMap["currency"] = "G$";
+                // replaced G$ with ₲ (hex 0x20B2 / unicode U+20B2), but screwed up balance display in Firestorm
                 extrasMap["currency-base-uri"] = GetCurrencyBaseURI(scene);
             }
         }
@@ -1217,7 +1241,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // Check that user has authed Gloebit and token is on file.
-            GloebitAPI.User payerUser = GloebitAPI.User.Get(fromID);
+            GloebitAPI.User payerUser = GloebitAPI.User.Get(m_api, fromID);
             if (payerUser != null && String.IsNullOrEmpty(payerUser.GloebitToken)) {
                 // send message asking to auth Gloebit.
                 alertUsersSubscriptionTransactionFailedForGloebitAuthorization(fromID, toID, amount, sub);
@@ -1481,24 +1505,73 @@ namespace Gloebit.GloebitMoneyModule
             client.OnCompleteMovementToRegion += OnCompleteMovementToRegion;
         }
         
+        /// <summary>
+        /// Event triggered when agent enters new region.
+        /// Handles updating of information necessary when a user has arrived at a new region, sim, or grid.
+        /// Requests balance from Gloebit if authed and delivers to viewer.
+        /// If this is a new session, if not authed, requests auth.  If authed, sends purchase url.
+        /// </summary>
         private void OnCompleteMovementToRegion(IClientAPI client, bool blah) {
-            // This call is the reason GetAgentBalance requires a client arg.
-            // If we try to LocateClientObject at thist time, it will return null for this AgentId
-            // Request balance from Gloebit if authed.  If not authed, request auth.  If authed, send purchase url.
-            // TODO: It's possible this will send the purchase url at every grid crossing.  People might find that overkill.  Might want to generate a
-            //       a callback for when we add a user to the user map and use that to make the initial auth request or send the purchase url.
             // TODO: may now be albe to remove client from these funcs (since we moved this out of OnNewClient, but this still might be simpler.
             m_log.InfoFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion for {0} with bool {1}", client.AgentId, blah);
-            UpdateBalance(client.AgentId, client, -1);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion SessionId:{0} SecureSessionId:{1}", client.SessionId, client.SecureSessionId);
+            
+            GloebitAPI.User user = GloebitAPI.User.Get(m_api, client.AgentId);
+            // If authed, update balance immediately
+            if (user.IsAuthed()) {
+                // Don't send Buy Gloebits messaging so that we don't spam
+                UpdateBalance(client.AgentId, client, 0);
+            }
+            if (user.IsNewSession(client.SessionId)) {
+                // Send welcome messaging and buy gloebits messaging or auth messaging
+                SendNewSessionMessaging(client, user);
+            }
         }
         
+        /// <summary>
+        /// Deliver intro messaging for user in new session or new enviromnet.
+        /// --- "Welcome to area running Gloebit in Sandbox for app MYAPP"
+        /// </summary>
+        private void SendNewSessionMessaging(IClientAPI client, GloebitAPI.User user) {
+            // TODO: Add in AppName to messages if we have it -- may need a new endpoint.
+            string msg;
+            if (m_environment == GLBEnv.Sandbox) {
+                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Sandbox Mode for testing.  All payments and transactions are fake.  Try it out.", client.Name);
+            } else if (m_environment == GLBEnv.Production) {
+                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Production Mode.  You can transact with gloebits.", client.Name);
+            } else {
+                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in a Custom Devloper Mode.", client.Name);
+            }
+            // Delay messaging for 8 seconds if viewer isn't fully loaded, shows up as offline while away
+            int delay = 1; // Delay 1 seconds
+            if (LoginBalanceRequest.ExistsAndJustLoggedIn(client.AgentId)) {
+                delay = 9; // Delay 9 seconds
+            }
+            Thread welcomeMessageThread = new Thread(delegate() {
+                            Thread.Sleep(delay * 1000);  // Delay miliseconds
+                            // Deliver welcome message
+                            sendMessageToClient(client, msg, client.AgentId);
+                            // If authed, delivery url where user can purchase gloebits
+                            if (user.IsAuthed()) {
+                                Uri url = m_api.BuildPurchaseURI(BaseURI, user);
+                                GloebitAPI.SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                            } else {
+                                // If not Authed, request auth.
+                                m_api.Authorize(client, BaseURI);
+                            }
+            });
+            welcomeMessageThread.Start();
+        }
+
         private void OnClientLogin(IClientAPI client)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] OnClientLogin for {0}", client.AgentId);
             
             // Bit of a hack
-            // OnNewClient requests balance and asks for auth if not authed -- This is required to cover teleports and crossing into new regions from non GMM region.
-            // But, If this was due to a login, the viewer also requests the balance which triggers the same auth.
+            // OnCompleteMovementToRegion requests balance and asks for auth if not authed
+            // -- This is required to cover teleports and crossing into new regions from non GMM region.
+            // But, If this was due to a login, the viewer also requests the balance which triggers the same auth or purchase messaging.
+            // -- Unfortunately, the event at login from the viewer is the same as when a muser manually clicks on their balance.
             // Two auths look bad.
             // So, we tell our balance request to ignore the one right after login from the viewer.
             // We set a timestamp in case any viewers have removed this request, so that this ignore flag expires within a few seconds.
@@ -1650,9 +1723,9 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: Should we wrap TransactU2U or request.BeginGetResponse in Try/Catch?
             bool result = false;
             if (u2u) {
-                result = m_api.TransactU2U(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
+                result = m_api.TransactU2U(txn, description, descMap, GloebitAPI.User.Get(m_api, txn.PayerID), GloebitAPI.User.Get(m_api, txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI);
             } else {
-                result = m_api.Transact(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), BaseURI);
+                result = m_api.Transact(txn, description, descMap, GloebitAPI.User.Get(m_api, txn.PayerID), BaseURI);
             }
             
             if (!result) {
@@ -1693,7 +1766,7 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: Should we wrap TransactU2U or request.GetResponse in Try/Catch?
             GloebitAPI.TransactionStage stage = GloebitAPI.TransactionStage.BUILD;
             GloebitAPI.TransactionFailure failure = GloebitAPI.TransactionFailure.NONE;
-            bool result = m_api.TransactU2USync(txn, description, descMap, GloebitAPI.User.Get(txn.PayerID), GloebitAPI.User.Get(txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI, out stage, out failure);
+            bool result = m_api.TransactU2USync(txn, description, descMap, GloebitAPI.User.Get(m_api, txn.PayerID), GloebitAPI.User.Get(m_api, txn.PayeeID), resolveAgentEmail(txn.PayeeID), BaseURI, out stage, out failure);
             
             if (!result) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] SubmitSyncTransaction failed in stage: {0} with failure: {1}", stage, failure);
@@ -1894,7 +1967,7 @@ namespace Gloebit.GloebitMoneyModule
             // TODO - generate a unique confirmation token
             quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
 
-            GloebitAPI.User u = GloebitAPI.User.Get(agentId);
+            GloebitAPI.User u = GloebitAPI.User.Get(m_api, agentId);
             if (String.IsNullOrEmpty(u.GloebitToken)) {
                 IClientAPI user = LocateClientObject(agentId);
                 m_api.Authorize(user, BaseURI);
@@ -1919,7 +1992,7 @@ namespace Gloebit.GloebitMoneyModule
             m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
                 agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
 
-            GloebitAPI.User u = GloebitAPI.User.Get(agentId);
+            GloebitAPI.User u = GloebitAPI.User.Get(m_api, agentId);
             Uri url = m_api.BuildPurchaseURI(BaseURI, u);
             string message = String.Format("Unfortunately we cannot yet sell Gloebits directly in the viewer.  Please visit {0} to buy Gloebits.", url);
 
@@ -2001,7 +2074,7 @@ namespace Gloebit.GloebitMoneyModule
             string code = requestData["code"] as string;
             
             UUID parsedAgentId = UUID.Parse(agentId);
-            GloebitAPI.User u = GloebitAPI.User.Get(parsedAgentId);
+            GloebitAPI.User u = GloebitAPI.User.Get(m_api, parsedAgentId);
 
             m_api.ExchangeAccessToken(u, code, BaseURI);
 
@@ -2710,7 +2783,8 @@ namespace Gloebit.GloebitMoneyModule
         /// If there is no token, or an invalid token on file, and forceAuthOnInvalidToken is true, we request authorization from the user.
         /// </summary>
         /// <param name="agentID">OpenSim AgentID for the user whose balance is being requested</param>
-        /// <param name="client">IClientAPI for agent.  Need to pass this in because locating returns null when called from OnNewClient</param>
+        /// <param name="client">IClientAPI for agent.  Need to pass this in because locating returns null when called from OnNewClient.
+        ///                         moved to OnCompleteMovementToRegion, but may still be more efficient until removed from auth.</param>
         /// <param name ="forceAuthOnInvalidToken">Bool indicating whether we should request auth on failures from lack of auth</param>
         /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
         private double GetAgentBalance(UUID agentID, IClientAPI client, bool forceAuthOnInvalidToken)
@@ -2720,8 +2794,8 @@ namespace Gloebit.GloebitMoneyModule
             bool needsAuth = false;
             
             // Get User for agent
-            GloebitAPI.User user = GloebitAPI.User.Get(agentID);
-            if(user == null || String.IsNullOrEmpty(user.GloebitToken)) {
+            GloebitAPI.User user = GloebitAPI.User.Get(m_api, agentID);
+            if(!user.IsAuthed()) {
                 // If no auth token on file, request authorization.
                 needsAuth = true;
             } else {
@@ -2784,8 +2858,8 @@ namespace Gloebit.GloebitMoneyModule
             
             if (purchaseIndicator == -1 || purchaseIndicator > returnfunds) {
                 // Send purchase URL to make it easy to find out how to buy more gloebits.
-                GloebitAPI.User u = GloebitAPI.User.Get(client.AgentId);
-                if (!String.IsNullOrEmpty(u.GloebitToken)) {        // TODO: this should probably be turned into a User class function bool isAuthed()
+                GloebitAPI.User u = GloebitAPI.User.Get(m_api, client.AgentId);
+                if (u.IsAuthed()) {
                     // Deliver Purchase URI in case the helper-uri is not working
                     Uri url = m_api.BuildPurchaseURI(BaseURI, u);
                     GloebitAPI.SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
@@ -3198,7 +3272,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="avatar"></param>
         private void MakeChildAgent(ScenePresence avatar)
         {
-            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] MakeChildAgent {0}", avatar.Name);
         }
 
         /// <summary>
