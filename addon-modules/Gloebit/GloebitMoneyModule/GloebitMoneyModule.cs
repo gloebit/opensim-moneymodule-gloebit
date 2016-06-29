@@ -104,7 +104,7 @@ namespace Gloebit.GloebitMoneyModule
             public bool IgnoreNextBalanceRequest
             {
                 get {
-                    if (m_IgnoreNextBalanceRequest == true && (m_IgnoreTime.CompareTo(DateTime.UtcNow.AddSeconds(numSeconds)) > 0)) {
+                    if (m_IgnoreNextBalanceRequest && justLoggedIn()) {
                         m_IgnoreNextBalanceRequest = false;
                         return true;
                     }
@@ -139,14 +139,10 @@ namespace Gloebit.GloebitMoneyModule
                 lock (s_LoginBalanceRequestMap) {
                     exists = s_LoginBalanceRequestMap.TryGetValue(agentID, out lbr);
                 }
-                if (!exists) {
-                    return false;
-                } else {
-                    return lbr.JustLoggedIn();
-                }
+                return exists && lbr.justLoggedIn();
             }
             
-            private bool JustLoggedIn() {
+            private bool justLoggedIn() {
                 return (m_IgnoreTime.CompareTo(DateTime.UtcNow.AddSeconds(numSeconds)) > 0);
             }
             
@@ -1539,9 +1535,9 @@ namespace Gloebit.GloebitMoneyModule
         private void SendNewSessionMessaging(IClientAPI client, GloebitAPI.User user) {
             // TODO: Add in AppName to messages if we have it -- may need a new endpoint.
             string msg;
-            if (m_environment != GLBEnv.Sandbox) {
+            if (m_environment == GLBEnv.Sandbox) {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Sandbox Mode for testing.  All payments and transactions are fake.  Try it out.", client.Name);
-            } else if (m_environment != GLBEnv.Production) {
+            } else if (m_environment == GLBEnv.Production) {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Production Mode.  You can transact with gloebits.", client.Name);
             } else {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in a Custom Devloper Mode.", client.Name);
