@@ -1554,10 +1554,10 @@ namespace Gloebit.GloebitMoneyModule
                             // If authed, delivery url where user can purchase gloebits
                             if (user.IsAuthed()) {
                                 Uri url = m_api.BuildPurchaseURI(BaseURI, user);
-                                GloebitAPI.SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                                SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
                             } else {
                                 // If not Authed, request auth.
-                                m_api.Authorize(client, BaseURI);
+                                m_api.Authorize(user, client.Name, BaseURI);
                             }
             });
             welcomeMessageThread.Start();
@@ -1967,10 +1967,10 @@ namespace Gloebit.GloebitMoneyModule
             // TODO - generate a unique confirmation token
             quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
 
-            GloebitAPI.User u = GloebitAPI.User.Get(m_api, agentId);
-            if (String.IsNullOrEmpty(u.GloebitToken)) {
-                IClientAPI user = LocateClientObject(agentId);
-                m_api.Authorize(user, BaseURI);
+            GloebitAPI.User user = GloebitAPI.User.Get(m_api, agentId);
+            if (!user.IsAuthed()) {
+                IClientAPI client = LocateClientObject(agentId);
+                m_api.Authorize(user, client.Name, BaseURI);
             }
 
             returnval.Value = quoteResponse;
@@ -2164,6 +2164,37 @@ namespace Gloebit.GloebitMoneyModule
         /******************************************/
         /**** IAsyncEndpointCallback Interface ****/
         /******************************************/
+        
+        public void LoadAuthorizeUrlForUser(GloebitAPI.User user, Uri authorize_uri)
+        {
+            // Since we can't launch a website in OpenSim, we have to send the URL via  an IM
+            IClientAPI client = LocateClientObject(UUID.Parse(user.PrincipalID));
+            string title = "AUTHORIZE GLOEBIT";
+            string body = "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:";
+            SendUrlToClient(client, title, body, authorize_uri);
+        }
+        
+        /// <summary>
+        /// Sends a message with url to user.
+        /// </summary>
+        /// <param name="client">IClientAPI of client we are sending the URL to</param>
+        /// <param name="title">string title of message we are sending with the url</param>
+        /// <param name="body">string body of message we are sending with the url</param>
+        /// <param name="uri">full url we are sending to the client</param>
+        private static void SendUrlToClient(IClientAPI client, string title, string body, Uri uri)
+        {
+            string imMessage = String.Format("{0}\n\n{1}", title, body);
+            UUID fromID = UUID.Zero;
+            string fromName = String.Empty;
+            UUID toID = client.AgentId;
+            bool isFromGroup = false;
+            UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
+            bool isOffline = true;       // I believe when true, if user is logged out, saves message and delivers it next time the user logs in.
+            bool addTimestamp = false;
+            GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, Encoding.UTF8.GetBytes(uri.ToString() + "\0"), addTimestamp);
+            client.SendInstantMessage(im);
+        }
+
         
         public void exchangeAccessTokenCompleted(bool success, GloebitAPI.User user, OSDMap responseDataMap)
         {
@@ -2812,9 +2843,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             if (needsAuth && forceAuthOnInvalidToken) {
-                // TODO: remove client as arg.  replace with user or string of agentID assuming we can make this work for OnNewClient
-                // Locating the client is aparently always null when this is triggered from OnNewClient at login.  What about when crossing boundaries?
-                m_api.Authorize(client, BaseURI);
+                m_api.Authorize(user, client.Name, BaseURI);
             }
             
             return returnfunds;
@@ -3686,7 +3715,8 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: Need to alert payer whether online or not as action is required.
             sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because you have not authorized this application from Gloebit.  Once you authorize this application, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails), payerID);
             if (payerClient != null) {
-                m_api.Authorize(payerClient, BaseURI);
+                GloebitAPI.User user = GloebitAPI.User.Get(m_api, payerID);
+                m_api.Authorize(user, payerClient.Name, BaseURI);
             }
             
             // TODO: is this message bad if fraudster?
@@ -4276,7 +4306,8 @@ namespace Gloebit.GloebitMoneyModule
                 
                 // Since unidentified seller can now be fixed by auth, send the auth link if they are online
                 if (payeeClient != null && failure == GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED) {
-                    m_api.Authorize(payeeClient, BaseURI);
+                    GloebitAPI.User payeeUser = GloebitAPI.User.Get(m_api, payeeClient.AgentId);
+                    m_api.Authorize(payeeUser, payeeClient.Name, BaseURI);
                 }
             }
             

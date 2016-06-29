@@ -50,6 +50,7 @@ namespace Gloebit.GloebitMoneyModule {
         public readonly Uri m_url;
         
         public interface IAsyncEndpointCallback {
+            void LoadAuthorizeUrlForUser(User user, Uri authorize_uri);  // Used in flows where we need to send the user to the Gloebit Website.
             void exchangeAccessTokenCompleted(bool success, User user, OSDMap responseDataMap);
             // TODO: may change this to transactCompleted and add a bool for u2u
             void transactU2UCompleted (OSDMap responseDataMap, User sender, User recipient, Transaction transaction, TransactionStage stage, TransactionFailure failure);
@@ -962,7 +963,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="baseURI">The base url where this server's http services can be accessed.</param>
         /// <param name="agentId">The uuid of the agent being authorized.</param>
         /// </summary>
-        private static Uri BuildAuthCallbackURL(Uri baseURI, UUID agentId) {
+        private static Uri BuildAuthCallbackURL(Uri baseURI, string agentId) {
             UriBuilder redirect_uri = new UriBuilder(baseURI);
             redirect_uri.Path = "gloebit/auth_complete";
             redirect_uri.Query = String.Format("agentId={0}", agentId);
@@ -974,8 +975,10 @@ namespace Gloebit.GloebitMoneyModule {
         /// Sends Authorize URL to user which will launch a Gloebit authorize dialog.  If the user launches the URL and approves authorization from a Gloebit account, an authorization code will be returned to the redirect_uri.
         /// This is how a user links a Gloebit account to this OpenSim account.
         /// </summary>
-        /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
-        public void Authorize(IClientAPI user, Uri baseURI) {
+        /// <param name="user">GloebitAPI.User for which this app is asking for permission to enact Gloebit functionality.</param>
+        /// <param name="userName">string name of user on this app.</param>
+        /// <param name="baseURI">URL where Gloebit can send the auth response back to this app.</param>
+        public void Authorize(User user, string userName, Uri baseURI) {
 
             //********* BUILD AUTHORIZE QUERY ARG STRING ***************//
             ////Dictionary<string, string> auth_params = new Dictionary<string, string>();
@@ -987,10 +990,10 @@ namespace Gloebit.GloebitMoneyModule {
             }
 
             auth_params["scope"] = "user balance transact";
-            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.AgentId).ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID).ToString();
             auth_params["response_type"] = "code";
-            auth_params["user"] = user.Name;
-            auth_params["uid"] = user.AgentId.ToString();
+            auth_params["user"] = userName;
+            auth_params["uid"] = user.PrincipalID;
             // TODO - make use of 'state' param for XSRF protection
             // auth_params["state"] = ???;
 
@@ -1004,12 +1007,9 @@ namespace Gloebit.GloebitMoneyModule {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize request_uri: {0}", request_uri);
             
             //*********** SEND AUTHORIZE REQUEST URI TO USER ***********//
-            // currently can not launch browser directly for user, so send in message
+            // currently can not launch browser directly for user, so ask OpenSim to Load the AuthorizeURL for the user
             
-            // TODO: move this to GMM interface.
-            // TODO: Shouldn't this be an interface function from the GMM since launching a web page will be specific to the integration?
-            SendUrlToClient(user, "AUTHORIZE GLOEBIT", "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:", request_uri);
-
+            m_asyncEndpointCallbacks.LoadAuthorizeUrlForUser(user, request_uri);
         }
         
         /// <summary>
@@ -1034,7 +1034,7 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["code"] = auth_code;
             auth_params["grant_type"] = "authorization_code";
             auth_params["scope"] = "user balance transact";
-            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, agentID).ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID).ToString();
             
             HttpWebRequest request = BuildGloebitRequest("oauth2/access-token", "POST", null, "application/x-www-form-urlencoded", auth_params);
             if (request == null) {
