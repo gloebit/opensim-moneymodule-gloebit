@@ -168,7 +168,7 @@ namespace Gloebit.GloebitMoneyModule
                     if (txn.finishedTime == null) {
                         txn.finishedTime = SqlDateTime.MinValue.Value;
                     }
-                    m_log.InfoFormat("GloebitTransactionData.PGSQLImpl: storing transaction {0}", txn);
+                    m_log.InfoFormat("GloebitTransactionData.PGSQLImpl: storing transaction type:{0}, localID:{1}, SaleType:{2}, PayerEndingBalance:{3}, cTime:{4}, enactedTime:{5}, finishedTime:{6}", txn.TransactionType, txn.LocalID, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime);
                     // call parent
                     return base.Store(txn);
 		} catch(System.OverflowException e) {

@@ -47,3 +47,30 @@ CREATE INDEX ix_gs_sid ON GloebitSubscriptions ("SubscriptionID");
 CREATE INDEX ix_gs_cts ON GloebitSubscriptions ("cTime");
 
 COMMIT;
+
+
+:VERSION 3         # -------------------------------
+
+BEGIN TRANSACTION;
+
+DROP TABLE IF EXISTS GloebitSubscriptions;
+
+CREATE TABLE IF NOT EXISTS GloebitSubscriptions (
+"SubscriptionID"        UUID,
+"ObjectID"              UUID            NOT NULL,
+"AppKey"                VARCHAR(64)     NOT NULL,
+"GlbApiUrl"             VARCHAR(100)    NOT NULL,
+"Enabled"               BOOLEAN         NOT NULL,
+"ObjectName"            VARCHAR(64),
+"Description"           VARCHAR(255)    NOT NULL,
+"cTime"                 TIMESTAMP       NOT NULL,
+CONSTRAINT pk_obj_app_api PRIMARY KEY ("ObjectID", "AppKey", "GlbApiUrl"),
+CONSTRAINT k_sub_api UNIQUE ("SubscriptionID", "GlbApiUrl")
+);
+
+CREATE INDEX ix_gs_oid ON GloebitSubscriptions ("ObjectID");
+CREATE INDEX ix_gs_sid ON GloebitSubscriptions ("SubscriptionID");
+CREATE INDEX ix_gs_cts ON GloebitSubscriptions ("cTime");
+
+COMMIT;
+
