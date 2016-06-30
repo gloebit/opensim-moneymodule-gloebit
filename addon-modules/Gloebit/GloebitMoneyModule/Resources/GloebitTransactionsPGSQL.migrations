@@ -43,3 +43,11 @@ CREATE INDEX ix_cts ON GloebitTransactions ("cTime");
 
 COMMIT;
 
+
+:VERSION 2         # -------------------------------
+
+BEGIN TRANSACTION;
+
+ALTER TABLE GloebitTransactions DROP COLUMN IF EXISTS "LocalID";
+
+COMMIT;

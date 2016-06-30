@@ -2547,7 +2547,18 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // Rebuild delivery params from Asset and attempt delivery of object
-            bool success = module.BuyObject(buyerClient, txn.CategoryID, txn.LocalID, (byte)txn.SaleType, txn.Amount);
+            uint localID;
+            if (!txn.TryGetLocalID(out localID)) {
+                SceneObjectPart part;
+                if (s.TryGetSceneObjectPart(txn.PartID, out part)) {
+                    localID = part.LocalId;
+                } else {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverObject FAILED to deliver asset - could not retrieve SceneObjectPart from ID");
+                    returnMsg = "Failed to deliver asset.  Could not retrieve SceneObjectPart from ID.";
+                    return false;
+                }
+            }
+            bool success = module.BuyObject(buyerClient, txn.CategoryID, localID, (byte)txn.SaleType, txn.Amount);
             if (!success) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverObject FAILED to deliver asset");
                 returnMsg = "IBuySellModule.BuyObject failed delivery attempt.";

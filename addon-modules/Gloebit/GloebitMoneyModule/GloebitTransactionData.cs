@@ -168,11 +168,11 @@ namespace Gloebit.GloebitMoneyModule
                     if (txn.finishedTime == null) {
                         txn.finishedTime = SqlDateTime.MinValue.Value;
                     }
-                    m_log.InfoFormat("GloebitTransactionData.PGSQLImpl: storing transaction type:{0}, localID:{1}, SaleType:{2}, PayerEndingBalance:{3}, cTime:{4}, enactedTime:{5}, finishedTime:{6}", txn.TransactionType, txn.LocalID, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime);
+                    //m_log.InfoFormat("GloebitTransactionData.PGSQLImpl: storing transaction type:{0}, SaleType:{2}, PayerEndingBalance:{3}, cTime:{4}, enactedTime:{5}, finishedTime:{6}", txn.TransactionType, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime);
                     // call parent
                     return base.Store(txn);
 		} catch(System.OverflowException e) {
-                    m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction {0}! {1}", txn, e);
+                    m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction type:{0}, SaleType:{1}, PayerEndingBalance:{2}, cTime:{3}, enactedTime:{4}, finishedTime:{5}", txn.TransactionType, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime);
 		    throw;
 		}
             }

@@ -41,3 +41,12 @@ CREATE TABLE IF NOT EXISTS `GloebitTransactions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 COMMIT;
+
+
+:VERSION 2		# -------------------------
+
+BEGIN;
+
+ALTER TABLE `GloebitTransactions` DROP COLUMN `LocalID`;
+
+COMMIT;

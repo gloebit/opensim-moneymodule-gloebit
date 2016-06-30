@@ -319,7 +319,7 @@ namespace Gloebit.GloebitMoneyModule {
             
             // Details required by IBuySellModule when delivering an object
             public UUID CategoryID;     // Appears to be a folder id used when saleType is copy
-            public uint LocalID;        // Region specific ID of object.  Unclear why this is passed instead of UUID
+            private uint? m_localID;    // Region specific ID of object.  Unclear why this is passed instead of UUID
             public int SaleType;        // object, copy, or contents
             
             // Storage of submission/response from Gloebit
@@ -347,6 +347,7 @@ namespace Gloebit.GloebitMoneyModule {
             // See Create() to generate a new transaction record
             // See Get() to retrieve an existing transaction record
             public Transaction() {
+                m_localID = null;
             }
             
             private Transaction(UUID transactionID, UUID payerID, string payerName, UUID payeeID, string payeeName, int amount, int transactionType, string transactionTypeString, bool isSubscriptionDebit, UUID subscriptionID, UUID partID, string partName, string partDescription, UUID categoryID, uint localID, int saleType) {
@@ -385,7 +386,7 @@ namespace Gloebit.GloebitMoneyModule {
                 
                 // Details required by IBuySellModule when delivering an object
                 this.CategoryID = categoryID;
-                this.LocalID = localID;
+                this.m_localID = localID;
                 this.SaleType = saleType;
                 
                 // State variables used internally in GloebitAPI
@@ -434,6 +435,15 @@ namespace Gloebit.GloebitMoneyModule {
                 GloebitTransactionData.Instance.Store(txn);
                 
                 return txn;
+            }
+            
+            public bool TryGetLocalID(out uint localID) {
+                if (m_localID != null) {
+                    localID = (uint)m_localID;
+                    return true;
+                }
+                localID = 0;
+                return false;
             }
             
             public static Transaction Get(UUID transactionID) {
@@ -584,7 +594,6 @@ namespace Gloebit.GloebitMoneyModule {
                     m_log.InfoFormat("PartID: {0}", this.PartID);
                     m_log.InfoFormat("PartName: {0}", this.PartName);
                     m_log.InfoFormat("CategoryID: {0}", this.CategoryID);
-                    m_log.InfoFormat("LocalID: {0}", this.LocalID);
                     m_log.InfoFormat("SaleType: {0}", this.SaleType);
                     m_log.InfoFormat("Amount: {0}", this.Amount);
                     m_log.InfoFormat("PayerEndingBalance: {0}", this.PayerEndingBalance);
