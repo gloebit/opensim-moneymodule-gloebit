@@ -607,7 +607,6 @@ namespace Gloebit.GloebitMoneyModule
             /// <param name="chat">response sent</param>
             protected override void ProcessResponse(IClientAPI client, OSChatMessage chat)
             {
-                
                 switch (chat.Message) {
                     case "Ignore":
                         // User actively ignored.  remove from our message listener
@@ -619,7 +618,12 @@ namespace Gloebit.GloebitMoneyModule
                         string apiUrl = api.m_url.ToString();
                         
                         GloebitAPI.Subscription sub = GloebitAPI.Subscription.GetBySubscriptionID(subscriptionIDStr, apiUrl);
-                        // TODO: Do we need to check if this is null?  Shouldn't happen.
+                        // IF null, there was a db error on storing this -- test store functions for db impl
+                        if (sub == null) {
+                            string msg = String.Format("[GLOEBITMONEYMODULE] CreateSubscriptionAuthorizationDialog.ProcessResponse Could not retrieve subscription.  Likely DB error when storing subID:{0}", subscriptionIDStr);
+                            m_log.Error(msg);
+                            throw new Exception(msg);
+                        }
 
                         // Get GloebitAPI.User for this agent
                         GloebitAPI.User user = GloebitAPI.User.Get(this.api, AgentID);
@@ -761,7 +765,6 @@ namespace Gloebit.GloebitMoneyModule
             /// <param name="chat">response sent</param>
             protected override void ProcessResponse(IClientAPI client, OSChatMessage chat)
             {
-                
                 switch (chat.Message) {
                     case "Ignore":
                         // User actively ignored.  remove from our message listener
@@ -775,7 +778,8 @@ namespace Gloebit.GloebitMoneyModule
                         // TODO: Do we need to check if this is null?  Shouldn't happen.
                         
                         // Send Authorize URL
-                        api.SendSubscriptionAuthorizationToClient(client, SubscriptionAuthorizationID.ToString(), sub, false);
+                        GloebitAPI.User user = GloebitAPI.User.Get(api, client.AgentId);
+                        api.SendSubscriptionAuthorizationToUser(user, SubscriptionAuthorizationID.ToString(), sub, false);
                         
                         break;
                     case "Report Fraud":
@@ -1554,10 +1558,10 @@ namespace Gloebit.GloebitMoneyModule
                             // If authed, delivery url where user can purchase gloebits
                             if (user.IsAuthed()) {
                                 Uri url = m_api.BuildPurchaseURI(BaseURI, user);
-                                GloebitAPI.SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                                SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
                             } else {
                                 // If not Authed, request auth.
-                                m_api.Authorize(client, BaseURI);
+                                m_api.Authorize(user, client.Name, BaseURI);
                             }
             });
             welcomeMessageThread.Start();
@@ -1967,10 +1971,10 @@ namespace Gloebit.GloebitMoneyModule
             // TODO - generate a unique confirmation token
             quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
 
-            GloebitAPI.User u = GloebitAPI.User.Get(m_api, agentId);
-            if (String.IsNullOrEmpty(u.GloebitToken)) {
-                IClientAPI user = LocateClientObject(agentId);
-                m_api.Authorize(user, BaseURI);
+            GloebitAPI.User user = GloebitAPI.User.Get(m_api, agentId);
+            if (!user.IsAuthed()) {
+                IClientAPI client = LocateClientObject(agentId);
+                m_api.Authorize(user, client.Name, BaseURI);
             }
 
             returnval.Value = quoteResponse;
@@ -2165,6 +2169,51 @@ namespace Gloebit.GloebitMoneyModule
         /**** IAsyncEndpointCallback Interface ****/
         /******************************************/
         
+        public void LoadAuthorizeUrlForUser(GloebitAPI.User user, Uri authorizeUri)
+        {
+            // Since we can't launch a website in OpenSim, we have to send the URL via an IM
+            IClientAPI client = LocateClientObject(UUID.Parse(user.PrincipalID));
+            string title = "AUTHORIZE GLOEBIT";
+            string body = "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:";
+            SendUrlToClient(client, title, body, authorizeUri);
+        }
+        
+        public void LoadSubscriptionAuthorizationUrlForUser(GloebitAPI.User user, Uri subAuthUri, GloebitAPI.Subscription sub, bool isDeclined) {
+            // Since we can't launch a website in OpenSim, we have to send the URL via an IM
+            IClientAPI client = LocateClientObject(UUID.Parse(user.PrincipalID));
+            // TODO: adjust our wording
+            string title = "GLOEBIT Subscription Authorization Request (scripted object auto-debit):";
+            string body;
+            if (!isDeclined) {
+                body = String.Format("To approve or decline the request to authorize this object:\n   {0}\n   {1}\n\nPlease visit this web page:", sub.ObjectName, sub.ObjectID);
+            } else {
+                body = String.Format("You've already declined the request to authorize this object:\n   {0}\n   {1}\n\nIf you would like to review the request, or alter your response, please visit this web page:", sub.ObjectName, sub.ObjectID);
+            }
+            SendUrlToClient(client, title, body, subAuthUri);
+        }
+        
+        /// <summary>
+        /// Sends a message with url to user.
+        /// </summary>
+        /// <param name="client">IClientAPI of client we are sending the URL to</param>
+        /// <param name="title">string title of message we are sending with the url</param>
+        /// <param name="body">string body of message we are sending with the url</param>
+        /// <param name="uri">full url we are sending to the client</param>
+        private static void SendUrlToClient(IClientAPI client, string title, string body, Uri uri)
+        {
+            string imMessage = String.Format("{0}\n\n{1}", title, body);
+            UUID fromID = UUID.Zero;
+            string fromName = String.Empty;
+            UUID toID = client.AgentId;
+            bool isFromGroup = false;
+            UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
+            bool isOffline = true;       // I believe when true, if user is logged out, saves message and delivers it next time the user logs in.
+            bool addTimestamp = false;
+            GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, Encoding.UTF8.GetBytes(uri.ToString() + "\0"), addTimestamp);
+            client.SendInstantMessage(im);
+        }
+
+        
         public void exchangeAccessTokenCompleted(bool success, GloebitAPI.User user, OSDMap responseDataMap)
         {
             UUID agentID = UUID.Parse(user.PrincipalID);
@@ -2184,7 +2233,7 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
         
-        public void transactU2UCompleted(OSDMap responseDataMap, GloebitAPI.User sender, GloebitAPI.User recipient, GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure)
+        public void transactU2UCompleted(OSDMap responseDataMap, GloebitAPI.User payerUser, GloebitAPI.User payeeUser, GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure)
         {
             // TODO: should pass success, reason and status through as arguments.  Should probably check tID in GAPI instead of here.
             bool success = (bool)responseDataMap["success"];
@@ -2339,8 +2388,9 @@ namespace Gloebit.GloebitMoneyModule
                             
                             // TODO: We should really send another dialog here like the PendingDialog instead of just a url here.
                             // Send dialog asking user to auth or report --- needs different message.
+                            m_log.Info("[GLOEBITMONEYMODULE] TransactU2UCompleted - SUBSCRIPTION_AUTH_DECLINED - requesting SubAuth approval");
                             GloebitAPI.Subscription sub = GloebitAPI.Subscription.GetBySubscriptionID(subscriptionIDStr, m_api.m_url.ToString());
-                            m_api.SendSubscriptionAuthorizationToClient(buyerClient, subscriptionAuthIDStr, sub, true);
+                            m_api.SendSubscriptionAuthorizationToUser(payerUser, subscriptionAuthIDStr, sub, true);
                             
                             break;
                         case GloebitAPI.TransactionFailure.PAYER_ACCOUNT_LOCKED:                  /* Buyer's gloebit account is locked and not allowed to spend gloebits */
@@ -2348,7 +2398,7 @@ namespace Gloebit.GloebitMoneyModule
                             alertUsersTransactionFailed(txn, stage, failure, String.Empty);
                             break;
                         case GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED:            /* can not identify merchant from params supplied by app */
-                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit could not identify merchant from params.  transactionID:{0} merchantID:{1}", tID, sender.PrincipalID);
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit could not identify payee from params.  transactionID:{0} payeeID:{1}", tID, payeeUser.PrincipalID);
                             alertUsersTransactionFailed(txn, stage, failure, String.Empty);
                             break;
                         case GloebitAPI.TransactionFailure.PAYEE_CANNOT_RECEIVE:                  /* Seller's gloebit account can not receive gloebits */
@@ -2413,23 +2463,15 @@ namespace Gloebit.GloebitMoneyModule
             return;
         }
         
-        public void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitAPI.Subscription sub, GloebitAPI.User sender, IClientAPI client) {
+        public void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitAPI.Subscription sub, GloebitAPI.User user, IClientAPI client) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionAuthorizationCompleted");
             
             bool success = (bool)responseDataMap["success"];
             string reason = responseDataMap["reason"];
             string status = responseDataMap["status"];
             
-            //string tID = "";
-            //if (responseDataMap.ContainsKey("id")) {
-            //    tID = responseDataMap["id"];
-            //}
-            
-            UUID senderID = UUID.Parse(sender.PrincipalID);
-            //UUID sellerID = UUID.Parse(recipient.PrincipalID);
-            //UUID transactionID = UUID.Parse(tID);
-            IClientAPI senderClient = LocateClientObject(senderID);
-            //IClientAPI sellerClient = LocateClientObject(sellerID);
+            UUID agentID = UUID.Parse(user.PrincipalID);
+//            IClientAPI client = LocateClientObject(agentID);
             
             // TODO: we need to carry the transactionID through and retrieve toID, toName, amount
             //UUID toID = UUID.Zero;
@@ -2447,7 +2489,7 @@ namespace Gloebit.GloebitMoneyModule
                         string subAuthID = responseDataMap["id"];
                         
                         // Send Authorize URL
-                        m_api.SendSubscriptionAuthorizationToClient(client, subAuthID, sub, false);
+                        m_api.SendSubscriptionAuthorizationToUser(user, subAuthID, sub, false);
                         
                         break;
                     case "duplicate-and-already-approved-by-user":
@@ -2458,7 +2500,7 @@ namespace Gloebit.GloebitMoneyModule
                         string declinedSubAuthID = responseDataMap["id"];
                         // TODO: Should we send a dialog message or just the url?
                         // Send Authorize URL
-                        m_api.SendSubscriptionAuthorizationToClient(client, declinedSubAuthID, sub, true);
+                        m_api.SendSubscriptionAuthorizationToUser(user, declinedSubAuthID, sub, true);
                         break;
                     default:
                         break;
@@ -2505,7 +2547,18 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // Rebuild delivery params from Asset and attempt delivery of object
-            bool success = module.BuyObject(buyerClient, txn.CategoryID, txn.LocalID, (byte)txn.SaleType, txn.Amount);
+            uint localID;
+            if (!txn.TryGetLocalID(out localID)) {
+                SceneObjectPart part;
+                if (s.TryGetSceneObjectPart(txn.PartID, out part)) {
+                    localID = part.LocalId;
+                } else {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverObject FAILED to deliver asset - could not retrieve SceneObjectPart from ID");
+                    returnMsg = "Failed to deliver asset.  Could not retrieve SceneObjectPart from ID.";
+                    return false;
+                }
+            }
+            bool success = module.BuyObject(buyerClient, txn.CategoryID, localID, (byte)txn.SaleType, txn.Amount);
             if (!success) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverObject FAILED to deliver asset");
                 returnMsg = "IBuySellModule.BuyObject failed delivery attempt.";
@@ -2812,9 +2865,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             if (needsAuth && forceAuthOnInvalidToken) {
-                // TODO: remove client as arg.  replace with user or string of agentID assuming we can make this work for OnNewClient
-                // Locating the client is aparently always null when this is triggered from OnNewClient at login.  What about when crossing boundaries?
-                m_api.Authorize(client, BaseURI);
+                m_api.Authorize(user, client.Name, BaseURI);
             }
             
             return returnfunds;
@@ -3686,7 +3737,8 @@ namespace Gloebit.GloebitMoneyModule
             // TODO: Need to alert payer whether online or not as action is required.
             sendMessageToClient(payerClient, String.Format("Gloebit: Scripted object attempted payment from you, but failed because you have not authorized this application from Gloebit.  Once you authorize this application, the next time this script attempts to debit your account, you will be asked to authorize that subscription for future auto-debits from your account.\n\n{0}", failedTxnDetails), payerID);
             if (payerClient != null) {
-                m_api.Authorize(payerClient, BaseURI);
+                GloebitAPI.User user = GloebitAPI.User.Get(m_api, payerID);
+                m_api.Authorize(user, payerClient.Name, BaseURI);
             }
             
             // TODO: is this message bad if fraudster?
@@ -4276,7 +4328,8 @@ namespace Gloebit.GloebitMoneyModule
                 
                 // Since unidentified seller can now be fixed by auth, send the auth link if they are online
                 if (payeeClient != null && failure == GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED) {
-                    m_api.Authorize(payeeClient, BaseURI);
+                    GloebitAPI.User payeeUser = GloebitAPI.User.Get(m_api, payeeClient.AgentId);
+                    m_api.Authorize(payeeUser, payeeClient.Name, BaseURI);
                 }
             }
             

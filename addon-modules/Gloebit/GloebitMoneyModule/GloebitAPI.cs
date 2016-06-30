@@ -50,9 +50,12 @@ namespace Gloebit.GloebitMoneyModule {
         public readonly Uri m_url;
         
         public interface IAsyncEndpointCallback {
+            // Load funcs below are used in flows where we need to send the user to the Gloebit Website.
+            void LoadAuthorizeUrlForUser(User user, Uri authorizeUri);
+            void LoadSubscriptionAuthorizationUrlForUser(User user, Uri subAuthUri, Subscription sub, bool isDeclined);
             void exchangeAccessTokenCompleted(bool success, User user, OSDMap responseDataMap);
             // TODO: may change this to transactCompleted and add a bool for u2u
-            void transactU2UCompleted (OSDMap responseDataMap, User sender, User recipient, Transaction transaction, TransactionStage stage, TransactionFailure failure);
+            void transactU2UCompleted(OSDMap responseDataMap, User payerUser, User payeeUser, Transaction transaction, TransactionStage stage, TransactionFailure failure);
             void createSubscriptionCompleted(OSDMap responseDataMap, Subscription subscription);
             void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, Subscription subscription, User sender, IClientAPI client);
         }
@@ -316,7 +319,7 @@ namespace Gloebit.GloebitMoneyModule {
             
             // Details required by IBuySellModule when delivering an object
             public UUID CategoryID;     // Appears to be a folder id used when saleType is copy
-            public uint LocalID;        // Region specific ID of object.  Unclear why this is passed instead of UUID
+            private uint? m_localID;    // Region specific ID of object.  Unclear why this is passed instead of UUID
             public int SaleType;        // object, copy, or contents
             
             // Storage of submission/response from Gloebit
@@ -344,6 +347,7 @@ namespace Gloebit.GloebitMoneyModule {
             // See Create() to generate a new transaction record
             // See Get() to retrieve an existing transaction record
             public Transaction() {
+                m_localID = null;
             }
             
             private Transaction(UUID transactionID, UUID payerID, string payerName, UUID payeeID, string payeeName, int amount, int transactionType, string transactionTypeString, bool isSubscriptionDebit, UUID subscriptionID, UUID partID, string partName, string partDescription, UUID categoryID, uint localID, int saleType) {
@@ -382,7 +386,7 @@ namespace Gloebit.GloebitMoneyModule {
                 
                 // Details required by IBuySellModule when delivering an object
                 this.CategoryID = categoryID;
-                this.LocalID = localID;
+                this.m_localID = localID;
                 this.SaleType = saleType;
                 
                 // State variables used internally in GloebitAPI
@@ -431,6 +435,15 @@ namespace Gloebit.GloebitMoneyModule {
                 GloebitTransactionData.Instance.Store(txn);
                 
                 return txn;
+            }
+            
+            public bool TryGetLocalID(out uint localID) {
+                if (m_localID != null) {
+                    localID = (uint)m_localID;
+                    return true;
+                }
+                localID = 0;
+                return false;
             }
             
             public static Transaction Get(UUID transactionID) {
@@ -581,7 +594,6 @@ namespace Gloebit.GloebitMoneyModule {
                     m_log.InfoFormat("PartID: {0}", this.PartID);
                     m_log.InfoFormat("PartName: {0}", this.PartName);
                     m_log.InfoFormat("CategoryID: {0}", this.CategoryID);
-                    m_log.InfoFormat("LocalID: {0}", this.LocalID);
                     m_log.InfoFormat("SaleType: {0}", this.SaleType);
                     m_log.InfoFormat("Amount: {0}", this.Amount);
                     m_log.InfoFormat("PayerEndingBalance: {0}", this.PayerEndingBalance);
@@ -660,7 +672,7 @@ namespace Gloebit.GloebitMoneyModule {
             
             public UUID SubscriptionID; // ID returned by create-subscription Gloebit endpoint
             public bool Enabled;        // enabled returned by Gloebit Endpoint - if not enabled, can't use.
-            public DateTime ctime;      // time of creation
+            public DateTime cTime;      // time of creation
             
             // TODO: Are these necessary beyond sending to Gloebit? - can be rebuilt from object
             // TODO: a name or description change doesn't necessarily change the the UUID of the object --- how to deal with this?
@@ -684,7 +696,7 @@ namespace Gloebit.GloebitMoneyModule {
                 
                 // Set defaults until we fill them in
                 SubscriptionID = UUID.Zero;
-                this.ctime = DateTime.UtcNow;
+                this.cTime = DateTime.UtcNow;
                 this.Enabled = false;
                 
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] in Subscription() oID:{0}, oN:{1}, oD:{2}", ObjectID, ObjectName, Description);
@@ -698,7 +710,6 @@ namespace Gloebit.GloebitMoneyModule {
                 lock(s_subscriptionMap) {
                     s_subscriptionMap[objectIDstr] = s;
                 }
-                
                 GloebitSubscriptionData.Instance.Store(s);
                 return s;
             }
@@ -857,8 +868,8 @@ namespace Gloebit.GloebitMoneyModule {
                             subscription = localSub;
                         } else {
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] mapped Subscription is not equal to DB return --- shouldn't happen.  Investigate.");
-                            m_log.ErrorFormat("Local Sub\n sID:{0}\n oID:{1}\n appKey:{2}\n apiUrl:{3}\n oN:{4}\n oD:{5}\n enabled:{6}\n ctime:{7}", localSub.SubscriptionID, localSub.ObjectID, localSub.AppKey, localSub.GlbApiUrl, localSub.ObjectName, localSub.Description, localSub.Enabled, localSub.ctime);
-                            m_log.ErrorFormat("DB Sub\n sID:{0}\n oID:{1}\n appKey:{2}\n apiUrl:{3}\n oN:{4}\n oD:{5}\n enabled:{6}\n ctime:{7}", subscription.SubscriptionID, subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.ObjectName, subscription.Description, subscription.Enabled, subscription.ctime);
+                            m_log.ErrorFormat("Local Sub\n sID:{0}\n oID:{1}\n appKey:{2}\n apiUrl:{3}\n oN:{4}\n oD:{5}\n enabled:{6}\n ctime:{7}", localSub.SubscriptionID, localSub.ObjectID, localSub.AppKey, localSub.GlbApiUrl, localSub.ObjectName, localSub.Description, localSub.Enabled, localSub.cTime);
+                            m_log.ErrorFormat("DB Sub\n sID:{0}\n oID:{1}\n appKey:{2}\n apiUrl:{3}\n oN:{4}\n oD:{5}\n enabled:{6}\n ctime:{7}", subscription.SubscriptionID, subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.ObjectName, subscription.Description, subscription.Enabled, subscription.cTime);
                             // still return cached sub instead of new sub from DB
                             subscription = localSub;
                         }
@@ -962,7 +973,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="baseURI">The base url where this server's http services can be accessed.</param>
         /// <param name="agentId">The uuid of the agent being authorized.</param>
         /// </summary>
-        private static Uri BuildAuthCallbackURL(Uri baseURI, UUID agentId) {
+        private static Uri BuildAuthCallbackURL(Uri baseURI, string agentId) {
             UriBuilder redirect_uri = new UriBuilder(baseURI);
             redirect_uri.Path = "gloebit/auth_complete";
             redirect_uri.Query = String.Format("agentId={0}", agentId);
@@ -974,8 +985,10 @@ namespace Gloebit.GloebitMoneyModule {
         /// Sends Authorize URL to user which will launch a Gloebit authorize dialog.  If the user launches the URL and approves authorization from a Gloebit account, an authorization code will be returned to the redirect_uri.
         /// This is how a user links a Gloebit account to this OpenSim account.
         /// </summary>
-        /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
-        public void Authorize(IClientAPI user, Uri baseURI) {
+        /// <param name="user">GloebitAPI.User for which this app is asking for permission to enact Gloebit functionality.</param>
+        /// <param name="userName">string name of user on this app.</param>
+        /// <param name="baseURI">URL where Gloebit can send the auth response back to this app.</param>
+        public void Authorize(User user, string userName, Uri baseURI) {
 
             //********* BUILD AUTHORIZE QUERY ARG STRING ***************//
             ////Dictionary<string, string> auth_params = new Dictionary<string, string>();
@@ -987,10 +1000,10 @@ namespace Gloebit.GloebitMoneyModule {
             }
 
             auth_params["scope"] = "user balance transact";
-            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.AgentId).ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID).ToString();
             auth_params["response_type"] = "code";
-            auth_params["user"] = user.Name;
-            auth_params["uid"] = user.AgentId.ToString();
+            auth_params["user"] = userName;
+            auth_params["uid"] = user.PrincipalID;
             // TODO - make use of 'state' param for XSRF protection
             // auth_params["state"] = ???;
 
@@ -1004,12 +1017,9 @@ namespace Gloebit.GloebitMoneyModule {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize request_uri: {0}", request_uri);
             
             //*********** SEND AUTHORIZE REQUEST URI TO USER ***********//
-            // currently can not launch browser directly for user, so send in message
             
-            // TODO: move this to GMM interface.
-            // TODO: Shouldn't this be an interface function from the GMM since launching a web page will be specific to the integration?
-            SendUrlToClient(user, "AUTHORIZE GLOEBIT", "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:", request_uri);
-
+            // currently can not launch browser directly for user, so ask OpenSim to Load the AuthorizeURL for the user
+            m_asyncEndpointCallbacks.LoadAuthorizeUrlForUser(user, request_uri);
         }
         
         /// <summary>
@@ -1034,7 +1044,7 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["code"] = auth_code;
             auth_params["grant_type"] = "authorization_code";
             auth_params["scope"] = "user balance transact";
-            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, agentID).ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID).ToString();
             
             HttpWebRequest request = BuildGloebitRequest("oauth2/access-token", "POST", null, "application/x-www-form-urlencoded", auth_params);
             if (request == null) {
@@ -1147,19 +1157,19 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="txn">Transaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer id and name.  <see cref="GloebitAPI.Transaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
-        /// <param name="sender">User object for the user sending the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
+        /// <param name="payerUser">User object for the user sending the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <returns>true if async transact web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactCompleted should eventually be called with additional details on state of request.</returns>
-        public bool Transact(Transaction txn, string description, OSDMap descMap, User sender, Uri baseURI) {
+        public bool Transact(Transaction txn, string description, OSDMap descMap, User payerUser, Uri baseURI) {
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", sender.PrincipalID, txn.PayerName, txn.Amount, description);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", payerUser.PrincipalID, txn.PayerName, txn.Amount, description);
             
             // ************ BUILD AND SEND TRANSACT POST REQUEST ************ //
 
             OSDMap transact_params = new OSDMap();
-            PopulateTransactParamsBase(transact_params, txn, description, sender.GloebitID, descMap, baseURI);
+            PopulateTransactParamsBase(transact_params, txn, description, payerUser.GloebitID, descMap, baseURI);
             
-            HttpWebRequest request = BuildGloebitRequest("v2/transact", "POST", sender, "application/json", transact_params);
+            HttpWebRequest request = BuildGloebitRequest("v2/transact", "POST", payerUser, "application/json", transact_params);
             if (request == null) {
                 // ERROR
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact failed to create HttpWebRequest");
@@ -1189,9 +1199,9 @@ namespace Gloebit.GloebitMoneyModule {
                 // still pass explicitly to make sure they can't be modified before callback uses them.
                                         
                 // Handle any necessary functional adjustments based on failures
-                ProcessTransactFailure(txn, failure, sender);
+                ProcessTransactFailure(txn, failure, payerUser);
 
-                m_asyncEndpointCallbacks.transactU2UCompleted(responseDataMap, sender, null, txn, stage, failure);
+                m_asyncEndpointCallbacks.transactU2UCompleted(responseDataMap, payerUser, null, txn, stage, failure);
             }));
             
             // Successfully submitted transaction request to Gloebit
@@ -1703,7 +1713,7 @@ namespace Gloebit.GloebitMoneyModule {
                     bool enabled = (bool) responseDataMap["enabled"];
                     subscription.SubscriptionID = UUID.Parse(subscriptionIDStr);
                     subscription.Enabled = enabled;
-                    GloebitSubscriptionData.Instance.Store(subscription);
+                    GloebitSubscriptionData.Instance.UpdateFromGloebit(subscription);
                     if (status == "duplicate") {
                         m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscription duplicate request to create subscription");
                     }
@@ -1801,8 +1811,6 @@ namespace Gloebit.GloebitMoneyModule {
                 if (success) {
                     string subscriptionAuthIDStr = responseDataMap["id"];
                     // TODO: if we decide to store auths, this would be a place to do so.
-                    // sub.SubscriptionID = UUID.Parse(subscriptionIDStr);
-                    // GloebitSubscriptionData.Instance.Store(sub);
                     if (status == "duplicate") {
                         m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization duplicate request to create subscription");
                     } else if (status == "duplicate-and-already-approved-by-user") {
@@ -2099,26 +2107,15 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="subAuthID">ID of the authorization request the user will be asked to approve - provided by Gloebit.</param>
         /// <param name="sub">Subscription which containes necessary details for message to user.</param>
         /// <param name="isDeclined">Bool is true if this sub auth has already been declined by the user which should present different messaging.</param>
-        public void SendSubscriptionAuthorizationToClient(IClientAPI client, string subAuthID, Subscription sub, bool isDeclined)
+        public void SendSubscriptionAuthorizationToUser(User user, string subAuthID, Subscription sub, bool isDeclined)
         {
             // Build the URL -- consider making a helper to be done in the API once we move this to the GMM
             Uri request_uri = new Uri(m_url, String.Format("authorize-subscription/{0}/", subAuthID));
             
-            if (client != null) {
-                // TODO: adjust our wording
-                string title = "GLOEBIT Subscription Authorization Request (scripted object auto-debit):";
-                string body;
-                if (!isDeclined) {
-                    body = String.Format("To approve or decline the request to authorize this object:\n   {0}\n   {1}\n\nPlease visit this web page:", sub.ObjectName, sub.ObjectID);
-                } else {
-                    body = String.Format("You've already declined the request to authorize this object:\n   {0}\n   {1}\n\nIf you would like to review the request, or alter your response, please visit this web page:", sub.ObjectName, sub.ObjectID);
-                }
+            //*********** SEND SUBSCRIPTION AUTHORIZATION REQUEST URI TO USER ***********//
                 
-                SendUrlToClient(client, title, body, request_uri);
-            } else {
-                // TODO: what should we do in this case?  Ideally, Gloebit has also emailed the user when this request was created.
-                // Perhaps, when user is not logged in, add to queue and send when user next logs in.
-            }
+            // currently can not launch browser directly for user, so ask OpenSim to Load the SubAuthURL for the user
+            m_asyncEndpointCallbacks.LoadSubscriptionAuthorizationUrlForUser(user, request_uri, sub, isDeclined);
         }
         
         public enum TransactionStage : int

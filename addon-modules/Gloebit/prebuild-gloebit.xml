@@ -36,6 +36,7 @@
   <Reference name="OpenSim.Server.Base"/>
   <Reference name="OpenSim.Services.Interfaces"/>
   <Reference name="XMLRPC" path="../../../bin/"/>
+  <Reference name="Npgsql" path="../../../bin/"/>
  
   <!-- To allow regions to have mono addins -->
   <Reference name="Mono.Addins" path="../../../bin/"/>
