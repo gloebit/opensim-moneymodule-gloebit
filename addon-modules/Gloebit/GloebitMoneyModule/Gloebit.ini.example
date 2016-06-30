@@ -44,3 +44,7 @@
 
     ;; GLBOwnerEmail should be replaced with the email address (or other contact mechanism) for the person who manages this OpenSim process.
     ; GLBOwnerEmail = Manager@example.com
+
+    ;; Both of these must be configured together.  See StandaloneCommon.ini.example
+    ;GLBSpecificStorageProvider = OpenSim.Data.MSSQL.dll
+    ;GLBSpecificConnectionString = "Server=localhost\SQLEXPRESS;Database=opensim;User Id=opensim; password=***;"

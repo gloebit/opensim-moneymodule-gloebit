@@ -873,9 +873,19 @@ namespace Gloebit.GloebitMoneyModule
                 m_configured = false;
             }
 
-            m_dbProvider = m_gConfig.Configs["DatabaseService"].GetString("StorageProvider");
-            m_dbConnectionString = m_gConfig.Configs["DatabaseService"].GetString("ConnectionString");
-            if(m_configured && String.IsNullOrEmpty(m_dbConnectionString)) {
+            if (String.IsNullOrEmpty(m_dbProvider)) {
+                // GLBSpecificStorageProvider wasn't specified so fall back to using the global
+                // DatabaseService settings
+                m_dbProvider = m_gConfig.Configs["DatabaseService"].GetString("StorageProvider");
+                m_dbConnectionString = m_gConfig.Configs["DatabaseService"].GetString("ConnectionString");
+            }
+            if(String.IsNullOrEmpty(m_dbProvider) || String.IsNullOrEmpty(m_dbConnectionString)) {
+                m_log.Error("[GLOEBITMONEYMODULE] database connection misconfigured, disabling GloebitMoneyModule");
+                m_enabled = false;
+                m_configured = false;
+            }
+
+            if(m_configured) {
                 //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
                 m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
                 GloebitUserData.Initialise(m_dbProvider, m_dbConnectionString);
@@ -974,6 +984,9 @@ namespace Gloebit.GloebitMoneyModule
                     }
                 }
                 m_disablePerSimCurrencyExtras = config.GetBoolean("DisablePerSimCurrencyExtras", false);
+
+                m_dbProvider = config.GetString("GLBSpecificStorageProvider");
+                m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
             }
 
             if (section == "Economy") {
