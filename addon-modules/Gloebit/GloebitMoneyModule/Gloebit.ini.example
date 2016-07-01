@@ -51,3 +51,24 @@
 
     ;; GLBOwnerEmail should be replaced with the email address (or other contact mechanism) for the person who manages this OpenSim process.
     ; GLBOwnerEmail = Manager@example.com
+
+    ;;;;; CONFIGURE SINGLE GLOEBIT DB FOR APP OR GRID ;;;;;;
+    ;; Optional - If not configured here, Gloebit will use the DataService 
+    ;; ConnectionString
+    ;;
+    ;; Purpose - If each Sim process uses it's own database and separate
+    ;; set of DB tables from each other sim, then a user will have
+    ;; to authorize Gloebit form every sim process and will receive
+    ;; our welcome message upon entering every Sim process each
+    ;; session. However, if you configure the Gloebit system on every
+    ;; sim to point to a single DB either here, or if that is your default
+    ;; configuration for your sim, then your users will only have to authorize
+    ;; Gloebit once for your app and will only receive our welcome message
+    ;; once each session, the first time they enter a gloebit enabled region.
+    ;;
+    ;; Both of these settings must be configured together.  See StandaloneCommon.ini.example
+    ;; for ConnectionString examples and availiable StorageProviders
+    ;GLBSpecificStorageProvider = OpenSim.Data.MSSQL.dll
+    ;GLBSpecificConnectionString = "Data Source=localhost;Database=opensim;User ID=opensim;Password=***;Old Guids=true;"
+    ;GLBSpecificStorageProvider = "OpenSim.Data.PGSQL.dll"
+    ;GLBSpecificConnectionString = "Server=localhost;Database=opensim;User Id=opensim; password=***;"

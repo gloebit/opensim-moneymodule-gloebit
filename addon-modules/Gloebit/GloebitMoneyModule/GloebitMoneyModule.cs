@@ -820,6 +820,8 @@ namespace Gloebit.GloebitMoneyModule
         private string m_gridnick = "unknown_grid";
         private string m_gridname = "unknown_grid_name";
         private Uri m_economyURL;
+	private string m_dbProvider = null;
+	private string m_dbConnectionString = null;
         
         private static string m_contactGloebit = "Gloebit at OpenSimTransactionIssue@gloebit.com";
         private string m_contactOwner = "region or grid owner";
@@ -889,12 +891,28 @@ namespace Gloebit.GloebitMoneyModule
                 m_configured = false;
             }
 
+            if (String.IsNullOrEmpty(m_dbProvider)) {
+                // GLBSpecificStorageProvider wasn't specified so fall back to using the global
+                // DatabaseService settings
+                m_log.Info("[GLOEBITMONEYMODULE] using default StorageProvider and ConnectionString from DatabaseService");
+                m_dbProvider = m_gConfig.Configs["DatabaseService"].GetString("StorageProvider");
+                m_dbConnectionString = m_gConfig.Configs["DatabaseService"].GetString("ConnectionString");
+            } else {
+                m_log.Info("[GLOEBITMONEYMODULE] using GLBSpecificStorageProvider and GLBSpecificConnectionString");
+            }
+
+            if(String.IsNullOrEmpty(m_dbProvider) || String.IsNullOrEmpty(m_dbConnectionString)) {
+                m_log.Error("[GLOEBITMONEYMODULE] database connection misconfigured, disabling GloebitMoneyModule");
+                m_enabled = false;
+                m_configured = false;
+            }
+
             if(m_configured) {
                 //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
                 m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
-                GloebitUserData.Initialise(m_gConfig.Configs["DatabaseService"]);
-                GloebitTransactionData.Initialise(m_gConfig.Configs["DatabaseService"]);
-                GloebitSubscriptionData.Initialise(m_gConfig.Configs["DatabaseService"]);
+                GloebitUserData.Initialise(m_dbProvider, m_dbConnectionString);
+                GloebitTransactionData.Initialise(m_dbProvider, m_dbConnectionString);
+                GloebitSubscriptionData.Initialise(m_dbProvider, m_dbConnectionString);
             }
         }
 
@@ -988,6 +1006,9 @@ namespace Gloebit.GloebitMoneyModule
                     }
                 }
                 m_disablePerSimCurrencyExtras = config.GetBoolean("DisablePerSimCurrencyExtras", false);
+
+                m_dbProvider = config.GetString("GLBSpecificStorageProvider");
+                m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
             }
 
             if (section == "Economy") {

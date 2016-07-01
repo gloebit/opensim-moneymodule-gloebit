@@ -44,16 +44,16 @@ namespace Gloebit.GloebitMoneyModule
 
         private static IGloebitTransactionData m_impl;
 
-        public static void Initialise(IConfig config) {
-            switch(config.GetString("StorageProvider")) {
+        public static void Initialise(string storageProvider, string connectionString) {
+            switch(storageProvider) {
                 case "OpenSim.Data.SQLite.dll":
-                    m_impl = new SQLiteImpl(config);
+                    m_impl = new SQLiteImpl(connectionString);
                     break;
                 case "OpenSim.Data.MySQL.dll":
-                    m_impl = new MySQLImpl(config);
+                    m_impl = new MySQLImpl(connectionString);
                     break;
                 case "OpenSim.Data.PGSQL.dll":
-                    m_impl = new PGSQLImpl(config);
+                    m_impl = new PGSQLImpl(connectionString);
                     break;
                 default:
                     break;
@@ -73,8 +73,8 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
-            public SQLiteImpl(IConfig config)
-                : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsSQLite")
+            public SQLiteImpl(string connectionString)
+                : base(connectionString, "GloebitTransactions", "GloebitTransactionsSQLite")
             {
             }
             
@@ -93,8 +93,8 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
-            public MySQLImpl(IConfig config)
-                : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsMySQL")
+            public MySQLImpl(string connectionString)
+                : base(connectionString, "GloebitTransactions", "GloebitTransactionsMySQL")
             {
             }
             
@@ -153,8 +153,8 @@ namespace Gloebit.GloebitMoneyModule
         private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
             private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-            public PGSQLImpl(IConfig config)
-                : base(config.GetString("ConnectionString"), "GloebitTransactions", "GloebitTransactionsPGSQL")
+            public PGSQLImpl(string connectionString)
+                : base(connectionString, "GloebitTransactions", "GloebitTransactionsPGSQL")
             {
             }
             

@@ -45,16 +45,16 @@ namespace Gloebit.GloebitMoneyModule
 
         private static IGloebitSubscriptionData m_impl;
 
-        public static void Initialise(IConfig config) {
-            switch(config.GetString("StorageProvider")) {
+        public static void Initialise(string storageProvider, string connectionString) {
+            switch(storageProvider) {
                 case "OpenSim.Data.SQLite.dll":
-                    m_impl = new SQLiteImpl(config);
+                    m_impl = new SQLiteImpl(connectionString);
                     break;
                 case "OpenSim.Data.MySQL.dll":
-                    m_impl = new MySQLImpl(config);
+                    m_impl = new MySQLImpl(connectionString);
                     break;
                 case "OpenSim.Data.PGSQL.dll":
-                    m_impl = new PGSQLImpl(config);
+                    m_impl = new PGSQLImpl(connectionString);
                     break;
                 default:
                     break;
@@ -76,8 +76,8 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.Subscription>, IGloebitSubscriptionData {
-            public SQLiteImpl(IConfig config)
-                : base(config.GetString("ConnectionString"), "GloebitSubscriptions", "GloebitSubscriptionsSQLite")
+            public SQLiteImpl(string connectionString)
+                : base(connectionString, "GloebitSubscriptions", "GloebitSubscriptionsSQLite")
             {
             }
             /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
@@ -91,8 +91,8 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.Subscription>, IGloebitSubscriptionData {
-            public MySQLImpl(IConfig config)
-                : base(config.GetString("ConnectionString"), "GloebitSubscriptions", "GloebitSubscriptionsMySQL")
+            public MySQLImpl(string connectionString)
+                : base(connectionString, "GloebitSubscriptions", "GloebitSubscriptionsMySQL")
             {
             }
 
@@ -154,8 +154,8 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.Subscription>, IGloebitSubscriptionData {
-            public PGSQLImpl(IConfig config)
-                : base(config.GetString("ConnectionString"), "GloebitSubscriptions", "GloebitSubscriptionsPGSQL")
+            public PGSQLImpl(string connectionString)
+                : base(connectionString, "GloebitSubscriptions", "GloebitSubscriptionsPGSQL")
             {
             }
                 
