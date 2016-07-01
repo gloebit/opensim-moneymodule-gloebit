@@ -47,4 +47,4 @@
 
     ;; Both of these must be configured together.  See StandaloneCommon.ini.example
     ;GLBSpecificStorageProvider = OpenSim.Data.MSSQL.dll
-    ;GLBSpecificConnectionString = "Server=localhost\SQLEXPRESS;Database=opensim;User Id=opensim; password=***;"
+    ;GLBSpecificConnectionString = "Data Source=localhost;Database=opensim;User ID=opensim;Password=***;Old Guids=true;"

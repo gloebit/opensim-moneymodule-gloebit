@@ -876,9 +876,13 @@ namespace Gloebit.GloebitMoneyModule
             if (String.IsNullOrEmpty(m_dbProvider)) {
                 // GLBSpecificStorageProvider wasn't specified so fall back to using the global
                 // DatabaseService settings
+                m_log.Info("[GLOEBITMONEYMODULE] using default StorageProvider and ConnectionString from DatabaseService");
                 m_dbProvider = m_gConfig.Configs["DatabaseService"].GetString("StorageProvider");
                 m_dbConnectionString = m_gConfig.Configs["DatabaseService"].GetString("ConnectionString");
+            } else {
+                m_log.Info("[GLOEBITMONEYMODULE] using GLBSpecificStorageProvider and GLBSpecificConnectionString");
             }
+
             if(String.IsNullOrEmpty(m_dbProvider) || String.IsNullOrEmpty(m_dbConnectionString)) {
                 m_log.Error("[GLOEBITMONEYMODULE] database connection misconfigured, disabling GloebitMoneyModule");
                 m_enabled = false;
