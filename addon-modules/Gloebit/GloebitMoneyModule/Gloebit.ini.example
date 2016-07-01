@@ -68,7 +68,7 @@
     ;;
     ;; Both of these settings must be configured together.  See StandaloneCommon.ini.example
     ;; for ConnectionString examples and availiable StorageProviders
-    ;GLBSpecificStorageProvider = OpenSim.Data.MSSQL.dll
+    ;GLBSpecificStorageProvider = OpenSim.Data.MySQL.dll
     ;GLBSpecificConnectionString = "Data Source=localhost;Database=opensim;User ID=opensim;Password=***;Old Guids=true;"
     ;GLBSpecificStorageProvider = "OpenSim.Data.PGSQL.dll"
     ;GLBSpecificConnectionString = "Server=localhost;Database=opensim;User Id=opensim; password=***;"
