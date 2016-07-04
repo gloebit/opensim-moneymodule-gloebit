@@ -1064,7 +1064,8 @@ namespace Gloebit.GloebitMoneyModule
                 }
                
                 // Create http web request from URL
-                Uri requestURI = new Uri(String.Format("{0}json_grid_info", gridInfoURI));
+                Uri requestURI = new Uri(new Uri(gridInfoURI), "json_grid_info");
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] Constructed and requesting URI = {0}", requestURI);
                 HttpWebRequest request = (HttpWebRequest) WebRequest.Create(requestURI);
                 request.Method = "GET";
                 try {
