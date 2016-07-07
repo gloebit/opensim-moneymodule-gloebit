@@ -1054,7 +1054,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             if (section == "GridInfo") {
-                // If we're here, this is a rebust mode grid
+                // If we're here, this is a robust mode grid
                 string gridInfoURI = config.GetString("GridInfoURI", null);
                 // TODO: Should we store the info url?
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GRID INFO URL = {0}", gridInfoURI);
@@ -1089,11 +1089,9 @@ namespace Gloebit.GloebitMoneyModule
         }
         
         private void setGridInfo(string gridName, string gridNick, string ecoUrl) {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] Grid Name is [{0}]", gridName);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] Storing Grid Info: GridName:[{0}] GridNick:[{1}] EconomyURL:[{2}]", gridName, gridNick, ecoUrl);
             m_gridname = gridName;
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] Grid Nick is [{0}]", gridNick);
             m_gridnick = gridNick;
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] Economy URL is [{0}]", ecoUrl);
             if (!String.IsNullOrEmpty(ecoUrl)) {
                 m_economyURL = new Uri(ecoUrl);
             } else {
