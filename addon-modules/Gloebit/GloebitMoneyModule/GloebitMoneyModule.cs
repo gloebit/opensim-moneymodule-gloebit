@@ -870,7 +870,7 @@ namespace Gloebit.GloebitMoneyModule
 
             LoadConfig(m_gConfig);
 
-            string[] sections = {"Startup", "Gloebit", "Economy", "GridInfoService"};
+            string[] sections = {"Startup", "Gloebit", "Economy"};
             foreach (string section in sections) {
                 IConfig sec_config = m_gConfig.Configs[section];
 
@@ -880,6 +880,24 @@ namespace Gloebit.GloebitMoneyModule
                 }
                 ReadConfigAndPopulate(sec_config, section);
             }
+            
+            // Load Grid info from GridInfoService if Standalone and GridInfo if Robust
+            IConfig standalone_config = m_gConfig.Configs["GridInfoService"];
+            IConfig robust_config = m_gConfig.Configs["GridInfo"];
+            if (standalone_config == null && robust_config == null) {
+                m_log.Warn("[GLOEBITMONEYMODULE] GridInfoService and GridInfo are both missing.  Can not retrieve GridInfoURI, GridName and GridNick.");
+                // NOTE: we can continue and enable as this will just cause transaction history records to be missing some data.
+            } else {
+                if(standalone_config != null && robust_config != null) {
+                    m_log.Warn("[GLOEBITMONEYMODULE] GridInfoService and GridInfo are both present.  Deferring to GridInfo to retrieve GridInfoURI, GridName and GridNick.");
+                }
+                if (robust_config != null) {
+                    ReadConfigAndPopulate(robust_config, "GridInfo");
+                } else {
+                    ReadConfigAndPopulate(standalone_config, "GridInfoService");
+                }
+            }
+            
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}, GLBEnvironment: {1}, GLBApiUrl: {2} GLBKeyAlias {3}, GLBKey: {4}, GLBSecret {5}",
                 m_enabled, m_environment, m_apiUrl, m_keyAlias, m_key, (m_secret == null ? "null" : "configured"));
@@ -1031,22 +1049,56 @@ namespace Gloebit.GloebitMoneyModule
             }
 
             if (section == "GridInfoService") {
-                // TODO: This whole section is not there on Maria's grid.  Is that a problem???
-                m_gridnick = config.GetString("gridnick", m_gridnick);
-                m_gridname = config.GetString("gridname", m_gridname);
-                string ecoURL = config.GetString("economy", null);
-                if (!String.IsNullOrEmpty(ecoURL)) {
-                    m_economyURL = new Uri(ecoURL);
-                } else {
-                    m_economyURL = null;
+                // If we're here, this is a standalone mode grid
+                setGridInfo(config.GetString("gridname", m_gridname), config.GetString("gridnick", m_gridnick), config.GetString("economy", null));
+            }
+            
+            if (section == "GridInfo") {
+                // If we're here, this is a robust mode grid
+                string gridInfoURI = config.GetString("GridInfoURI", null);
+                // TODO: Should we store the info url?
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GRID INFO URL = {0}", gridInfoURI);
+                if (String.IsNullOrEmpty(gridInfoURI)) {
+                    m_log.ErrorFormat("[GloebitMoneyModule] Failed to retrieve GridInfoURI from [GridInfo] section of config.");
+                    return;
                 }
-
-                // TODO(brad) - figure out how to install a global economy url handler
-                // in robust mode.  do we need to make a separate addon for Robust.exe?
-                if(m_economyURL == null) {
-                    // TODO: Are we now using BaseURI for everything?  Should this error message be removed?  Should we remove m_eonomyURL?
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GridInfoService.economy setting MUST be configured!");
+               
+                // Create http web request from URL
+                Uri requestURI = new Uri(new Uri(gridInfoURI), "json_grid_info");
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] Constructed and requesting URI = {0}", requestURI);
+                HttpWebRequest request = (HttpWebRequest) WebRequest.Create(requestURI);
+                request.Method = "GET";
+                try {
+                    // Get the response
+                    HttpWebResponse response = (HttpWebResponse) request.GetResponse();
+                    string status = response.StatusDescription;
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Grid Info status:{0}", status);
+                    using(StreamReader response_stream = new StreamReader(response.GetResponseStream())) {
+                        string response_str = response_stream.ReadToEnd();
+                        m_log.InfoFormat("[GLOEBITMONEYMODULE] Grid Info:{0}", response_str);
+                        // Parse the response
+                        OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
+                        // TODO: Can we assume these will all always be present, or do we need to use a TryGet?
+                        setGridInfo(responseData["gridname"], responseData["gridnick"], responseData["economy"]);
+                        // TODO: do we want anything else from grid info?
+                    }
+                } catch (Exception e) {
+                    m_log.ErrorFormat("[GloebitMoneyModule] Failed to retrieve Grid Info.");
                 }
+            }
+        }
+        
+        private void setGridInfo(string gridName, string gridNick, string ecoUrl) {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] Storing Grid Info: GridName:[{0}] GridNick:[{1}] EconomyURL:[{2}]", gridName, gridNick, ecoUrl);
+            m_gridname = gridName;
+            m_gridnick = gridNick;
+            if (!String.IsNullOrEmpty(ecoUrl)) {
+                m_economyURL = new Uri(ecoUrl);
+            } else {
+                m_economyURL = null;
+                // TODO: We're not using this anymore.  Should we be, now that we know how to get it in robust?
+                // Should we delete this error message?
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] [GridInfoService] or [GridInfo] economy setting MUST be configured!");
             }
         }
 
