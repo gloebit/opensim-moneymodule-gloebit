@@ -22,7 +22,7 @@ DROP TABLE IF EXISTS GloebitUsers;
 CREATE TABLE GloebitUsers (
     PrincipalID CHAR(36)  primary key,
     GloebitID CHAR(36) NOT NULL,
-    GloebitToken CHAR(36) NOT NULL,
+    GloebitToken CHAR(36) NOT NULL
 );
 
 
