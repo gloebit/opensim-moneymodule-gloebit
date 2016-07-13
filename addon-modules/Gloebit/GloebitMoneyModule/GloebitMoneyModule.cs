@@ -1619,10 +1619,10 @@ namespace Gloebit.GloebitMoneyModule
             } else {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in a Custom Devloper Mode.", client.Name);
             }
-            // Delay messaging for 8 seconds if viewer isn't fully loaded, shows up as offline while away
-            int delay = 1; // Delay 1 seconds
+            // Delay messaging for a cleaner experience
+            int delay = 1; // Delay 1 seconds on crossing or teleport where viewer is already loaded
             if (LoginBalanceRequest.ExistsAndJustLoggedIn(client.AgentId)) {
-                delay = 9; // Delay 9 seconds
+                delay = 10; // Delay 10 seconds if viewer isn't fully loaded, shows up as offline while away
             }
             Thread welcomeMessageThread = new Thread(delegate() {
                             Thread.Sleep(delay * 1000);  // Delay miliseconds
