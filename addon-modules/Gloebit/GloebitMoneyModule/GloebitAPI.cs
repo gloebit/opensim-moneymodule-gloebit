@@ -999,7 +999,7 @@ namespace Gloebit.GloebitMoneyModule {
                 auth_params["r"] = m_keyAlias;
             }
 
-            auth_params["scope"] = "user balance transact";
+            auth_params["scope"] = "balance transact";
             auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID).ToString();
             auth_params["response_type"] = "code";
             auth_params["user"] = userName;
@@ -1043,7 +1043,7 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["client_secret"] = m_secret;
             auth_params["code"] = auth_code;
             auth_params["grant_type"] = "authorization_code";
-            auth_params["scope"] = "user balance transact";
+            auth_params["scope"] = "balance transact";
             auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID).ToString();
             
             HttpWebRequest request = BuildGloebitRequest("oauth2/access-token", "POST", null, "application/x-www-form-urlencoded", auth_params);
