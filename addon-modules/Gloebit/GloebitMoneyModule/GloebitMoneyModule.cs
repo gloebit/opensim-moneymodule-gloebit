@@ -49,8 +49,6 @@ using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.OptionalModules.ViewerSupport;   // Necessary for SimulatorFeaturesHelper
 using OpenSim.Services.Interfaces;
 using OpenMetaverse.StructuredData;     // TODO: turn transactionData into a dictionary of <string, object> and remove this.
-
-using OpenSim.Region.ScriptEngine.Shared;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;    // For ScriptBaseClass permissions constants
 
 [assembly: Addin("Gloebit", "0.1")]
@@ -1596,7 +1594,7 @@ namespace Gloebit.GloebitMoneyModule
             client.OnLogout += ClientLoggedOut;
             client.OnCompleteMovementToRegion += OnCompleteMovementToRegion;
             
-            // Testing handling response of granting auto-debit permissions
+            // Handle response of granting auto-debit permissions
             client.OnScriptAnswer += handleScriptAnswer;
         }
         
@@ -1608,20 +1606,20 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="itemID">UUID of the TaskInventoryItem associated with this SceneObjectPart which handles permissions</param>
         /// <param name="answer">Bitmap of the permissions which are being granted</param>
         private void handleScriptAnswer(IClientAPI client, UUID objectID, UUID itemID, int answer) {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer for client:{0} with objectID:{1}, itemID:{2}, answer:{3}", client.AgentId, objectID, itemID, answer);
+            // m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer for client:{0} with objectID:{1}, itemID:{2}, answer:{3}", client.AgentId, objectID, itemID, answer);
             
             if ((answer & ScriptBaseClass.PERMISSION_DEBIT) == 0)
             {
                 // This is not PERMISSION_DEBIT
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer This is not a debit request");
+                // m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer This is not a debit request");
                 return;
             }
             // User granted permission debit.  Let's create a sub and sub-auth and provide link to user.
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer This is a PERMISSION_DEBIT!!!!!");
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer for a grant of debit permissions");
             
-            // Check if we have an auth for this objectID.  If not, request it
-            ////////
-            // Check subscription table.  If not exists, send create call to Gloebit
+            ////// Check if we have an auth for this objectID.  If not, request it. //////
+
+            // Check subscription table.  If not exists, send create call to Gloebit.
             m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - looking for local subscription");
             GloebitAPI.Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
             if (sub == null) {
@@ -1637,8 +1635,6 @@ namespace Gloebit.GloebitMoneyModule
                     // Send message to the owner to let them know they must edit the object and add a name and description
                     String imMsg = String.Format("Object with auto-debit script is missing a name or description.  Name and description are required by Gloebit in order to create a subscription for this auto-debit object.  Please enter a name and description in the object.  Current values are Name:[{0}] and Description:[{1}].", part.Name, part.Description);
                     sendMessageToClient(client, imMsg, client.AgentId);
-                    //////reason = "Owner has not yet created a subscription and object name or description are blank.  Name and Description are required.";
-                    //////return false;
                     return;
                 }
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - creating local subscription for {0}", part.Name);
@@ -1648,68 +1644,19 @@ namespace Gloebit.GloebitMoneyModule
             if (sub.SubscriptionID == UUID.Zero) {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - SID is ZERO -- calling GloebitAPI Create Subscription");
                 
-                // Message to user that we are creating the subscription.
-                //////alertUsersSubscriptionTransactionFailedForSubscriptionCreation(fromID, toID, amount, sub);
-                
-                // TODO: Add this user to map of waiting for sub to creat auth.
+                // Add this user to map of waiting for sub to creat auth.
                 lock(m_authWaitingForSubMap) {
                     m_authWaitingForSubMap[objectID] = client;
                 }
-                
                 // call api to have Gloebit create
                 m_api.CreateSubscription(sub, BaseURI);
-                
-                // return false so this the current transaciton terminates and object is alerted to failure
-                //////reason = "Owner has not yet created a subscription.";
-                //////return false;
                 return;     // Async creating sub.  when it returns, we'll continue flow in SubscriptionCreationCompleted
             }
             // We have a Subscription.  Call create on an auth.
-            // TODO: need to include transactionID, payeeID, payeeName and amount somehow
             GloebitAPI.User user = GloebitAPI.User.Get(m_api, client.AgentId);
             string agentName = resolveAgentName(client.AgentId);
             m_api.CreateSubscriptionAuthorization(sub, user, agentName, BaseURI, client);
             return;     // Async creating auth.  When returns, will send link to user.
-            ////////
-            
-            /*
-            SceneObjectPart sop = findPrim(objectID);
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer SOP NAME:{0}", sop.Name);
-            TaskInventoryItem tii = sop.Inventory.GetInventoryItem(itemID);
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer assetID:{0}, itemID:{1}, oldItemID:{2}, LoadedItemID:{3}, Name:{4}, type:{5}", tii.AssetID, tii.ItemID, tii.OldItemID, tii.LoadedItemID, tii.Name, tii.Type);
-            
-            IEntityInventory inv = sop.Inventory;
-            int iNum = inv.Count;
-            bool containsScripts = inv.ContainsScripts();
-            int sNum = inv.ScriptCount();
-            int rsNum = inv.RunningScriptCount();
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer inv count:{0}, has scripts:{1}, num scripts:{2}, num scripts running:{3}", iNum, containsScripts, sNum, rsNum);
-            List<TaskInventoryItem>  tiiList = inv.GetInventoryItems();
-            
-            List<UUID> invIDList = inv.GetInventoryList();
-            foreach(UUID invID in invIDList) {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] invID:{0}", invID);
-            }
-            
-            List<TaskInventoryItem> scriptTIIList = inv.GetInventoryItems(InventoryType.LSL);
-            bool isRunning = false;
-            bool scriptIsRunning = false;
-            foreach (TaskInventoryItem scriptTII in scriptTIIList) {
-                if(inv.TryGetScriptInstanceRunning(scriptTII.ItemID, out isRunning)) {
-                    scriptIsRunning = isRunning;
-                } else {
-                    // not found.  unknown state for isRunning
-                    scriptIsRunning = false;
-                }
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] scriptID:{0}, script AssetID:{1}, name:{2}, desc:{3}, flags:{4}, permsGranter:{5}, permsMask:{6}, running:{7}", scriptTII.ItemID, scriptTII.AssetID, scriptTII.Name, scriptTII.Description, scriptTII.Flags, scriptTII.PermsGranter, scriptTII.PermsMask, scriptIsRunning);
-            }
-            
-            Dictionary<UUID, string> stateDict = inv.GetScriptStates();
-            foreach(KeyValuePair<UUID, string> scriptState in stateDict) {
-                m_log.InfoFormat("STATE DICT {0}: {1}", scriptState.Key, scriptState.Value);
-            }
-            */
-            
         }
         
         /// <summary>
@@ -2650,7 +2597,7 @@ namespace Gloebit.GloebitMoneyModule
                 
                 // Ask user to auth.  Do not try to restart stalled txn.
                 
-                // TODO: look at authWaitingForSubMap - if auth waiting, start that flow.
+                // Look at authWaitingForSubMap - if auth waiting, start that flow.
                 IClientAPI client = null;
                 bool foundClient = false;
                 lock(m_authWaitingForSubMap) {
@@ -2659,9 +2606,8 @@ namespace Gloebit.GloebitMoneyModule
                         m_authWaitingForSubMap.Remove(subscription.ObjectID);
                     }
                 }
-                // TODO: do we need to ask?  Prob not if started from debit perms.
+                // TODO: No longer sending dialog.  Should we separate flow from transaction failure and deliver dialog?
                 if (foundClient) {
-                    // TODO: need to include transactionID, payeeID, payeeName and amount somehow
                     GloebitAPI.User user = GloebitAPI.User.Get(m_api, client.AgentId);
                     string agentName = resolveAgentName(client.AgentId);
                     m_api.CreateSubscriptionAuthorization(subscription, user, agentName, BaseURI, client);
