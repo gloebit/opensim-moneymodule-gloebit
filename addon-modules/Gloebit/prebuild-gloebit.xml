@@ -35,6 +35,8 @@
   <Reference name="OpenSim.Framework.Communications"/>
   <Reference name="OpenSim.Server.Base"/>
   <Reference name="OpenSim.Services.Interfaces"/>
+  <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
+  <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime"/>
   <Reference name="XMLRPC" path="../../../bin/"/>
   <Reference name="Npgsql" path="../../../bin/"/>
  
