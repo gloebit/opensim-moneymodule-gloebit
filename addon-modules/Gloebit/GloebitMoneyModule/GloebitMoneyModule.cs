@@ -1278,14 +1278,37 @@ namespace Gloebit.GloebitMoneyModule
             string regionname = "";
             string regionID = "";
             
-            // TODO: is there a better way to get the scene and part?
-            // Are the object and payee always in the same scene?
-            // Is the payee even necessarily online?
+            // Try to get part from scene the payee is in first.
+            // TODO: is this worth trying before we just look for the part?
             Scene s = LocateSceneClientIn(toID);
             if (s != null) {
                 part = s.GetSceneObjectPart(objectID);
                 regionname = s.RegionInfo.RegionName;
                 regionID = s.RegionInfo.RegionID.ToString();
+            }
+            // If we haven't found the part, cycle through the scenes
+            if (part == null) {
+                lock (m_scenel)
+                {
+                    foreach (Scene _scene in m_scenel.Values)
+                    {
+                        part = _scene.GetSceneObjectPart(objectID);
+                        if (part != null) {
+                            // TODO: Do we need to verify that this is not a child part?
+                            s = _scene;
+                            regionname = s.RegionInfo.RegionName;
+                            regionID = s.RegionInfo.RegionID.ToString();
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // If we still haven't found the part, we have a problem
+            if (part == null) {
+                reason = String.Format("[GLOEBITMONEYMODULE] ObjectGiveMoney - Can not locate scripted object with id:{0} which triggered payment request.", objectID);
+                m_log.Error(reason);
+                return false;
             }
             
             // Check subscription table.  If not exists, send create call to Gloebit
