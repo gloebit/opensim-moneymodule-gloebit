@@ -2374,6 +2374,17 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="uri">full url we are sending to the client</param>
         private static void SendUrlToClient(IClientAPI client, string title, string body, Uri uri)
         {
+            // Since we are trying to make the GloebitAPI strictly C# and not specific to OpenSim, we have removed IClientAPI where possible.
+            // This means that in some flows where we start with a client but make an async call to the API, we only send the AgentId and
+            // later have to re-retrieve the client from the AgentId.  Sometimes, this fails, and returns null, perhaps because a user has
+            // logged out during the flow.  This causes a crash here because we dereference the client.  Instead, we will log a warning
+            // (in case we start missing messages for users who are logged in) and return instead of attempting to message the client.
+            if (client == null) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] SendUrlToClient called with null client.  Intended message was title:{0}; body:{1}; Uri:{2}", title, body, uri);
+                return;
+            }
+            
+            // Prep and send message
             string imMessage = String.Format("{0}\n\n{1}", title, body);
             UUID fromID = UUID.Zero;
             string fromName = String.Empty;
