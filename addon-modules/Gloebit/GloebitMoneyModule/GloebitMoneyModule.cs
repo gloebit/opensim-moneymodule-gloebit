@@ -1715,9 +1715,17 @@ namespace Gloebit.GloebitMoneyModule
             if (m_environment == GLBEnv.Sandbox) {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Sandbox Mode for testing.  All payments and transactions are fake.  Try it out.", client.Name);
             } else if (m_environment == GLBEnv.Production) {
-                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Production Mode.  You can transact with gloebits.", client.Name);
+                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module.  You can transact with gloebits.", client.Name);
             } else {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in a Custom Devloper Mode.", client.Name);
+            }
+            // Add instructions for clicking balance to see auth or purchase url
+            // TODO: Should this be a separate message?
+            if (user.IsAuthed()) {
+                msg = String.Format("{0}\nClick on your balance in the top right to purchase more gloebits.", msg);
+            } else {
+                msg = String.Format("{0}\nClick on your balance in the top right to link this avatar on this app to your Gloebit account.", msg);
+                
             }
             // Delay messaging for a cleaner experience
             int delay = 1; // Delay 1 seconds on crossing or teleport where viewer is already loaded
@@ -1730,8 +1738,8 @@ namespace Gloebit.GloebitMoneyModule
                             sendMessageToClient(client, msg, client.AgentId);
                             // If authed, delivery url where user can purchase gloebits
                             if (user.IsAuthed()) {
-                                Uri url = m_api.BuildPurchaseURI(BaseURI, user);
-                                SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                                // Uri url = m_api.BuildPurchaseURI(BaseURI, user);
+                                // SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
                             } else {
                                 // If not Authed, request auth.
                                 m_api.Authorize(user, client.Name, BaseURI);
