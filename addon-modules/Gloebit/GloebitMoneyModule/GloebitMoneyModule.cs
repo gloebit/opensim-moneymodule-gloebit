@@ -3412,17 +3412,23 @@ namespace Gloebit.GloebitMoneyModule
                         return;
                     }
                     
+                    // Add region UUID and LandBuyArgs to dictionary accessible for callback and wait for callback
+                    // Needs to happen before we submit because C# can delay wakeup fo this synchronous call and
+                    // the enact could be received before we know if the submission succeeded.
+                    lock(m_landAssetMap) {
+                        m_landAssetMap[txn.TransactionID] = new Object[2]{s.RegionInfo.originRegionID, e};
+                    }
                     bool submission_result = SubmitTransaction(txn, description, descMap, true);
+                    // See TransactU2UCompleted and helper messaging funcs for error messaging on failure - no action required.
+                    // See ProcessAssetEnactHold for proceeding with txn on success.
                     
                     if (!submission_result) {
                         // payment failed.  message user and halt attempt to transfer land
                         //// TODO: message error
+                        lock(m_landAssetMap) {
+                            m_landAssetMap.Remove(txn.TransactionID);
+                        }
                         return;
-                    } else {
-                        // Add region UUID and LandBuyArgs to dictionary accessible for callback and wait for callback
-                        m_landAssetMap[txn.TransactionID] = new Object[2]{s.RegionInfo.originRegionID, e};
-                        // See TransactU2UCompleted and helper messaging funcs for error messaging on failure - no action required.
-                        // See ProcessAssetEnactHold for proceeding with txn on success.
                     }
                 }
             } else {                            /* economy is validated.  Second time through or 0G txn */
