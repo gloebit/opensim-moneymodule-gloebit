@@ -3413,7 +3413,7 @@ namespace Gloebit.GloebitMoneyModule
                     }
                     
                     // Add region UUID and LandBuyArgs to dictionary accessible for callback and wait for callback
-                    // Needs to happen before we submit because C# can delay wakeup fo this synchronous call and
+                    // Needs to happen before we submit because C# can delay wakeup for this synchronous call and
                     // the enact could be received before we know if the submission succeeded.
                     lock(m_landAssetMap) {
                         m_landAssetMap[txn.TransactionID] = new Object[2]{s.RegionInfo.originRegionID, e};
