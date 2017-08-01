@@ -600,7 +600,8 @@ namespace Gloebit.GloebitMoneyModule
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] MoveMoney from {0}, to {1} amount {2} type {3} desc {4}", fromUser, toUser, amount, type, text);
             
-            // Just approve if no money.
+            // Just approve if the amount is 0 or negative as no money needs to be moved.
+            // Negative is undefined and may need to be re-assessed as other transaction types are added to this flow.
             if (amount <= 0) {
                 return true;
             }
