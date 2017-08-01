@@ -2077,27 +2077,6 @@ namespace Gloebit.GloebitMoneyModule {
         
         // TODO: These functions should probably be moved to the money module.
         
-        /// <summary>
-        /// Sends a message with url to user.
-        /// </summary>
-        /// <param name="client">IClientAPI of client we are sending the URL to</param>
-        /// <param name="title">string title of message we are sending with the url</param>
-        /// <param name="body">string body of message we are sending with the url</param>
-        /// <param name="uri">full url we are sending to the client</param>
-        public static void SendUrlToClient(IClientAPI client, string title, string body, Uri uri)
-        {
-            string imMessage = String.Format("{0}\n\n{1}", title, body);
-            UUID fromID = UUID.Zero;
-            string fromName = String.Empty;
-            UUID toID = client.AgentId;
-            bool isFromGroup = false;
-            UUID imSessionID = toID;     // Don't know what this is used for.  Saw it hacked to agent id in friendship module
-            bool isOffline = true;       // I believe when true, if user is logged out, saves message and delivers it next time the user logs in.
-            bool addTimestamp = false;
-            GridInstantMessage im = new GridInstantMessage(client.Scene, fromID, fromName, toID, (byte)InstantMessageDialog.GotoUrl, isFromGroup, imMessage, imSessionID, isOffline, Vector3.Zero, Encoding.UTF8.GetBytes(uri.ToString() + "\0"), addTimestamp);
-            client.SendInstantMessage(im);
-        }
-        
         // TODO: This should become an interface function and moved to the Money Module
         /// <summary>
         /// Request a subscriptin authorization from a user.
