@@ -576,8 +576,33 @@ namespace Gloebit.GloebitMoneyModule
             m_opensimVersionNumber = OpenSim.VersionInfo.VersionNumber;
             char[] delimiterChars = { '.' };
             string[] numbers = m_opensimVersionNumber.Split(delimiterChars, System.StringSplitOptions.RemoveEmptyEntries);
-            if ((int.Parse(numbers[0]) > 0) || (int.Parse(numbers[1]) >= 9 && int.Parse(numbers[2]) >= 1)) {
+            int vn1 = int.Parse(numbers[0]);
+            int vn2 = int.Parse(numbers[1]);
+            int vn3 = int.Parse(numbers[2]);
+            if ((vn1 > 0) || (vn2 > 9) || (vn2 == 9 && vn3 > 0)) {
+                // 0.9.1 and beyond are the new land pass flow.
+                // Note, there are some early versions of 0.9.1 before any release candidate which do not have the new
+                // flow, but we can't easily determine those and no one should be running those in production.
                 m_newLandPassFlow = true;
+            } else if (vn1 == 0 && vn2 == 9 && vn3 == 0) {
+                // 0.9.0-release pulled in 0.9.1 changes and is new flow, but rest of 0.9.0 is not.
+                // assume dev on 0.9.0.1, 0.9.0.2 will be new flow
+                int vn4 = int.Parse(numbers[3]);
+                if (vn4 > 0) {
+                    // 0.9.0.1, 0.9.0.2, etc.
+                    m_newLandPassFlow = true;
+                } else {
+                    // Need to pull version flavour and check it.
+                    // TODO: may need to split on spaces or hyphens and then pull last field because flavour is not friggin public
+                    char[] dChars = { '-', ' ' };
+                    string[] versionParts = m_opensimVersion.Split(dChars, System.StringSplitOptions.RemoveEmptyEntries);
+                    string flavour = versionParts[versionParts.Length - 1];     // TODO: do we every have to worry about this being lenght 0?
+                    if (flavour == OpenSim.VersionInfo.Flavour.Release.ToString()) {
+                        // 0.9.0 release
+                        m_newLandPassFlow = true;
+                    }
+                }
+                // TOOD: Unclear if post-fixes is a necessary flavour check yet.
             }
         }
         
@@ -1092,7 +1117,7 @@ namespace Gloebit.GloebitMoneyModule
         }
         
         private void ParcelBuyPass(IClientAPI client, UUID agentID, int ParcelLocalID) {
-            // TODO: Get OpenSim version and only do this if it's prior to 0.9.something
+            // This function is only registered if we are in the old LandPassFlow.  See m_newLandPassFlow
             
             m_log.DebugFormat("[GLOEBITMONEYMODULE] ParcelBuyPass event {0} {1}", agentID, ParcelLocalID);
             
@@ -1434,7 +1459,7 @@ namespace Gloebit.GloebitMoneyModule
             // OnCompleteMovementToRegion requests balance and asks for auth if not authed
             // -- This is required to cover teleports and crossing into new regions from non GMM region.
             // But, If this was due to a login, the viewer also requests the balance which triggers the same auth or purchase messaging.
-            // -- Unfortunately, the event at login from the viewer is the same as when a muser manually clicks on their balance.
+            // -- Unfortunately, the event at login from the viewer is the same as when a user manually clicks on their balance.
             // Two auths look bad.
             // So, we tell our balance request to ignore the one right after login from the viewer.
             // We set a timestamp in case any viewers have removed this request, so that this ignore flag expires within a few seconds.
