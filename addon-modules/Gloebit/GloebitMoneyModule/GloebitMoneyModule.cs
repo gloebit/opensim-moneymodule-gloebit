@@ -596,7 +596,7 @@ namespace Gloebit.GloebitMoneyModule
                     // TODO: may need to split on spaces or hyphens and then pull last field because flavour is not friggin public
                     char[] dChars = { '-', ' ' };
                     string[] versionParts = m_opensimVersion.Split(dChars, System.StringSplitOptions.RemoveEmptyEntries);
-                    string flavour = versionParts[versionParts.Length - 1];     // TODO: do we every have to worry about this being lenght 0?
+                    string flavour = versionParts[versionParts.Length - 1];     // TODO: do we every have to worry about this being length 0?
                     if (flavour == OpenSim.VersionInfo.Flavour.Release.ToString()) {
                         // 0.9.0 release
                         m_newLandPassFlow = true;
