@@ -3705,6 +3705,16 @@ namespace Gloebit.GloebitMoneyModule
         }
         
         /// <summary>
+        /// See version with additional agentID argument.  Most status messages go to payer and we should have a valid client and in the case
+        /// the payer is offline, can grab the agentID we need.  This version removes the need to supply that argument every time.
+        /// In the case we are notifying the payee or someone else, the correct agentID can be supplied directly.
+        /// </summary>
+        private void sendTxnStatusToClient(GloebitAPI.Transaction txn, IClientAPI client, string baseStatus, bool showTxnDetails, bool showTxnID)
+        {
+            sendTxnStatusToClient(txn, client, baseStatus, showTxnDetails, showTxnID, txn.PayerID);
+        }
+        
+        /// <summary>
         /// Builds a status string and sends it to the client
         /// Always includes an intro with shortened txn id and a base message.
         /// May include addtional transaction details and txn id based upon bool arguments and bool overrides.
@@ -3714,7 +3724,8 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="baseStatus">String Status message to deliver.</param>
         /// <param name="showTxnDetails">If true, include txn details in status (can be overriden by global overrides).</param>
         /// <param name="showTxnID">If true, include full transaction id in status (can be overriden by global overrides).</param>
-        private void sendTxnStatusToClient(GloebitAPI.Transaction txn, IClientAPI client, string baseStatus, bool showTxnDetails, bool showTxnID)
+        /// <param name="agentID">UUID of user we are messaging.  Only used if user is offline and client is null.</param>
+        private void sendTxnStatusToClient(GloebitAPI.Transaction txn, IClientAPI client, string baseStatus, bool showTxnDetails, bool showTxnID, UUID agentID)
         {
             // Determine if we're including Details and ID based on args and overrides
             bool alwaysShowTxnDetailsOverride = false;
@@ -3749,7 +3760,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // Send status string to client
-            sendMessageToClient(client, status, txn.PayerID);
+            sendMessageToClient(client, status, agentID);
         }
         
         /**** Functions to handle messaging users upon precheck failures in GMM before txn is created ****/
@@ -4033,7 +4044,7 @@ namespace Gloebit.GloebitMoneyModule
                 // TODO: remove description once in txn and managed in sendTxnStatusToClient
                 // string payeeBaseStatus = String.Format("Submitting transaction request...\n   {0}", payeeActionStr);
                 string payeeBaseStatus = String.Format("Submitting transaction request...\n   {0}\nDescription: {1}", payeeActionStr, description);
-                sendTxnStatusToClient(txn, payeeClient, payeeBaseStatus, showDetailsWithTxnBegun, showIDWithTxnBegun);
+                sendTxnStatusToClient(txn, payeeClient, payeeBaseStatus, showDetailsWithTxnBegun, showIDWithTxnBegun, txn.PayeeID);
             }
         }
         
@@ -4415,7 +4426,7 @@ namespace Gloebit.GloebitMoneyModule
                 if (!String.IsNullOrEmpty(payeeInstruction)) {
                     statusAndInstruction = String.Format("{0}\n{1}", status, payeeInstruction);
                 }
-                sendTxnStatusToClient(txn, payeeClient, statusAndInstruction, showDetailsWithTxnFailed, showIDWithTxnFailed);
+                sendTxnStatusToClient(txn, payeeClient, statusAndInstruction, showDetailsWithTxnFailed, showIDWithTxnFailed, txn.PayeeID);
             }
             
             // If necessary, send separate message to Payee
@@ -4451,12 +4462,12 @@ namespace Gloebit.GloebitMoneyModule
             
             // If this is a transaction type where we notified the payee the txn started, we should alert to successful completion
             if ((txn.TransactionType == (int)TransactionType.OBJECT_PAYS_USER) && (txn.PayerID != txn.PayeeID)) {
-                sendTxnStatusToClient(txn, payeeClient, "Transaction SUCCEEDED.", showDetailsWithTxnSucceeded, showIDWithTxnSucceeded);
+                sendTxnStatusToClient(txn, payeeClient, "Transaction SUCCEEDED.", showDetailsWithTxnSucceeded, showIDWithTxnSucceeded, txn.PayeeID);
             }
             // If this transaction was one user paying another, if the user is online, we should let them know they received a payment
             if (txn.TransactionType == (int)TransactionType.USER_PAYS_USER) {
                 string message = String.Format("You've received Gloebits from {0}.", resolveAgentName(payerClient.AgentId));
-                sendTxnStatusToClient(txn, payeeClient, message, true, showIDWithTxnSucceeded);
+                sendTxnStatusToClient(txn, payeeClient, message, true, showIDWithTxnSucceeded, txn.PayeeID);
             }
             // TODO: consider if we want to send an alert that payee earned money with transaction details for other transaction types
             
