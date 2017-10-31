@@ -496,14 +496,16 @@ namespace Gloebit.GloebitMoneyModule
                     }
                 }
 
+                // Register for events for user management
                 scene.EventManager.OnNewClient += OnNewClient;                              // Registers client events
-                scene.EventManager.OnMoneyTransfer += OnMoneyTransfer;                      // Handles 5001 (pay user) & 5008 (pay object) events
                 scene.EventManager.OnClientClosed += ClientClosed;                          // Only used for debug log; maybe should clean up things
                 scene.EventManager.OnAvatarEnteringNewParcel += AvatarEnteringParcel;       // Only used for debug log
-                scene.EventManager.OnMakeChildAgent += MakeChildAgent;                      // Only used for debug log
+                scene.EventManager.OnClientLogin += OnClientLogin;                          // Handles a login issue
+
+                // Register for commerce events that come through scene
+                scene.EventManager.OnMoneyTransfer += OnMoneyTransfer;                      // Handles 5001 (pay user) & 5008 (pay object) events
                 scene.EventManager.OnValidateLandBuy += ValidateLandBuy;                    // Handles validation for free land transactions
                 scene.EventManager.OnLandBuy += ProcessLandBuy;                             // Handles land purchases
-                scene.EventManager.OnClientLogin += OnClientLogin;                          // Handles a login issue
                 
             } else {
                 if(m_enabledRegions != null) {
@@ -1115,7 +1117,11 @@ namespace Gloebit.GloebitMoneyModule
             client.OnLogout += ClientLoggedOut;                                 // Handles cleanup
             client.OnCompleteMovementToRegion += OnCompleteMovementToRegion;    // Handles balance update and new session messaging
         }
-        
+
+        #region ParcelBuyPass pre-0.9 Flow
+        // This code is only used if m_newLandPassFlow is false.
+        // When true, see MoveMoney() for TransactionType::USER_BUYS_LANDPASS
+
         private void ParcelBuyPass(IClientAPI client, UUID agentID, int ParcelLocalID) {
             // This function is only registered if we are in the old LandPassFlow.  See m_newLandPassFlow
             
@@ -1323,6 +1329,8 @@ namespace Gloebit.GloebitMoneyModule
             returnMsg = "Time successfully added to parcel access list entry for agent";
             return true;
         }
+
+        #endregion //ParcelBuyPass pre-0.9 Flow
         
         /// <summary>
         /// Event triggered when a client responds yes to a script question (for permissions).
@@ -1975,6 +1983,23 @@ namespace Gloebit.GloebitMoneyModule
         /*********************************************************/
         /*** GloebitAPI Required HTTP Callback Entrance Points ***/
         /*********************************************************/
+
+        // <summary>
+        // Helper property for retrieving the base URI for HTTP callbacks from Gloebit Service back into GMM
+        // Used throughout the GMM to provide the callback URI to Gloebit or provide URLs to the user.
+        // The callbacks registered below should be avaialble at this base URI.
+        //</summary>
+        private Uri BaseURI {
+            get {
+                if(m_overrideBaseURI != null) {
+                    // Overriding default behavior to hardcode callback base uri
+                    // Generally used for testing
+                    return m_overrideBaseURI;
+                } else {
+                    return new Uri(GetAnyScene().RegionInfo.ServerURI);
+                }
+            }
+        }
 
         /// <summary>
         /// Registered to the redirectURI from GloebitAPI.Authorize.  Called when a user approves authorization.
@@ -3305,15 +3330,6 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         /// <summary>
-        /// Event Handler for when a root agent becomes a child agent
-        /// </summary>
-        /// <param name="avatar"></param>
-        private void MakeChildAgent(ScenePresence avatar)
-        {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] MakeChildAgent {0}", avatar.Name);
-        }
-
-        /// <summary>
         /// Event Handler for when the client logs out.
         /// </summary>
         /// <param name="AgentId"></param>
@@ -3342,8 +3358,10 @@ namespace Gloebit.GloebitMoneyModule
             m_log.DebugFormat("[GLOEBITMONEYMODULE] AvatarEnteringParcel {0}", avatar.Name);
         }
 
-        #endregion
-
+        // <summary>
+        // Client.OnObjectBuy event handler
+        // event triggered when user clicks on buy for an object which is for sale
+        // </summary>
         private void ObjectBuy(IClientAPI remoteClient, UUID agentID,
                 UUID sessionID, UUID groupID, UUID categoryID,
                 uint localID, byte saleType, int salePrice)
@@ -3442,7 +3460,8 @@ namespace Gloebit.GloebitMoneyModule
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] ObjectBuy Transaction queued {0}", txn.TransactionID.ToString());
         }
-        
+
+        #endregion // event handlers
         
         /// <summary>
         /// Helper function to build the minimal transaction description sent to the Gloebit transactU2U endpoint.
@@ -3601,19 +3620,6 @@ namespace Gloebit.GloebitMoneyModule
                     break;
             }
             return;
-        }
-
-        // BaseURI for callbacks from Gloebit Service into GMM
-        private Uri BaseURI {
-            get {
-                if(m_overrideBaseURI != null) {
-                    // Overriding default behavior to hardcode callback base uri
-                    // Generally used for testing
-                    return m_overrideBaseURI;
-                } else {
-                    return new Uri(GetAnyScene().RegionInfo.ServerURI);
-                }
-             }
         }
         
         #region GMM User Messaging
