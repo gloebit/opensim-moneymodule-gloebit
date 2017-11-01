@@ -1089,333 +1089,7 @@ namespace Gloebit.GloebitMoneyModule
 //#pragma warning restore 0067
 
         #endregion // IMoneyModule members
-        
-        private void OnNewPresence(ScenePresence presence) {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnNewPresence viewer:{0}", presence.Viewer);
-        }
 
-        /// <summary>
-        /// New Client Event Handler
-        /// </summary>
-        /// <param name="client"></param>
-        private void OnNewClient(IClientAPI client)
-        {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnNewClient for {0}", client.AgentId);
-
-            // Subscribe to money related messages
-            client.OnEconomyDataRequest += EconomyDataRequestHandler;           // Handles sending OpenSim economy data
-            client.OnMoneyBalanceRequest += MoneyBalanceRequest;                // Handles updating balance and sending to client
-            client.OnRequestPayPrice += requestPayPrice;                        // Handles OpenSim price request
-            client.OnObjectBuy += ObjectBuy;                                    // Handles 5000 (Object Buy) event
-            client.OnScriptAnswer += handleScriptAnswer;                        // Handle response of granting auto-debit permissions
-            
-            if (!m_newLandPassFlow) {
-                client.OnParcelBuyPass += ParcelBuyPass;                        // Handle purchase of timed access to parcel
-            }
-            
-            // Subscribe to other events
-            client.OnLogout += ClientLoggedOut;                                 // Handles cleanup
-            client.OnCompleteMovementToRegion += OnCompleteMovementToRegion;    // Handles balance update and new session messaging
-        }
-
-        #region ParcelBuyPass pre-0.9 Flow
-        // This code is only used if m_newLandPassFlow is false.
-        // When true, see MoveMoney() for TransactionType::USER_BUYS_LANDPASS
-
-        private void ParcelBuyPass(IClientAPI client, UUID agentID, int ParcelLocalID) {
-            // This function is only registered if we are in the old LandPassFlow.  See m_newLandPassFlow
-            
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] ParcelBuyPass event {0} {1}", agentID, ParcelLocalID);
-            
-            if (client == null) {
-                m_log.Warn("[GLOEBITMONEYMODULE] ParcelBuyPass event with null client.  Returning.");
-            }
-            Scene s = (Scene)client.Scene;
-            ILandObject parcel = s.LandChannel.GetLandObject(ParcelLocalID);
-            
-            // Some basic checks
-            if (parcel == null) {
-                m_log.Warn("[GLOEBITMONEYMODULE] ParcelBuyPass event with null parcel.  Returning.");
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LANDPASS, TransactionPrecheckFailure.OBJECT_NOT_FOUND, client);
-                return;
-            }
-            // Make sure parcel is set to sell passes
-            if ((parcel.LandData.Flags & (uint)ParcelFlags.UsePassList) == 0) {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which is not set to sell passes", agentID, parcel.LandData.GlobalID);
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LANDPASS, TransactionPrecheckFailure.SALE_TYPE_INVALID, client);
-                // TODO: Message user
-                return;
-            }
-            // Holding off on this check as the parcel owner can functionally be added to the access list.  Maybe there is a reason an owner would want to do this
-            // If owner, don't charge
-            //if ((parcel.LandData.OwnerID == agentID)) {
-                // TODO: Message user
-            //    return;
-            //}
-            // We can't handle group transacitons, so fail that
-            if(parcel.LandData.IsGroupOwned)
-            {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which is group owned.  Group Transactions are not defined.", agentID, parcel.LandData.GlobalID);
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LANDPASS, TransactionPrecheckFailure.GROUP_OWNED, client);
-                return;
-            }
-
-            int price = parcel.LandData.PassPrice;
-            float hours = parcel.LandData.PassHours;
-            string parcelName = parcel.LandData.Name;
-            
-            // If 0G$ txn, don't build and submit txn
-            if (price == 0) {
-                // Nothing to submit to Gloebit.  Just deliver the object
-                string returnMsg = "";
-                bool timeAdded = addPassTimeToParcelAccessList(s, parcel, agentID, out returnMsg);
-                // Inform the user of success or failure.
-                if (!timeAdded) {
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] ParcelBuyPass delivery of free land pass failed; reason:{0}.", returnMsg);
-                    sendMessageToClient(client, String.Format("Delivery of free land pass failed\nParcel Name: {0}\nReason: {1}", parcelName, returnMsg), agentID);
-                } else {
-                    m_log.DebugFormat("[GLOEBITMONEYMODULE] ParcelBuyPass delivery of free land pass succeeded.");
-                    sendMessageToClient(client, String.Format("Delivery of free land pass succeeded\nParcel Name: {0}", parcelName), agentID);
-                }
-                return;
-            }
-            
-            // Build Transaction
-            string agentName = resolveAgentName(agentID);
-            string regionname = s.RegionInfo.RegionName;
-            UUID regionID = s.RegionInfo.RegionID;
-            
-            string description = String.Format("{0} hour LandPass purchased for parcel {1} on {2}, {3}", hours, parcelName, regionname, m_gridnick);
-            
-            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "LandPassBuy", parcel.LandData);
-            
-            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_LANDPASS,
-                                                          payerID: agentID, payeeID: parcel.LandData.OwnerID, amount: price, subscriptionID: UUID.Zero,
-                                                          partID: parcel.LandData.GlobalID, partName: parcel.LandData.Name, partDescription: parcel.LandData.Description,
-                                                          categoryID: regionID, localID: (uint)parcel.LandData.LocalID, saleType: 0);
-                                                          // NOTE: using category & localID to retrieve parcel on callback incase GlobalID doesn't work.
-                                                          // Should consider storing all LandData in assetMap to ensure PassHours hasn't changed.
-            
-            if (txn == null) {
-                // build failed, likely due to a reused transactionID.  Shouldn't happen.
-                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LANDPASS, TransactionPrecheckFailure.EXISTING_TRANSACTION_ID, client);
-                return;
-            }
-            
-            bool transaction_result = SubmitTransaction(txn, description, descMap, true);
-            
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] ParcelBuyPass Transaction queued {0}", txn.TransactionID.ToString());
-        }
-        
-        // Called for flow pre-0.9.1 where we deliver asset.  0.9.1 and after, flow does delivery, so this is not called
-        private bool deliverLandPass(GloebitAPI.Transaction txn, out string returnMsg) {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] deliverLandPass to:{0}", txn.PayerID);
-            // Get Parcel back
-            uint localID;
-            if (!txn.TryGetLocalID(out localID)) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverLandPass FAILED to deliver asset - could not retrieve parcel LocalID");
-                returnMsg = "Failed to deliver land pass.  Could not retrieve parcel LocalID.";
-                return false;
-            }
-            int parcelLocalID = (int)localID;
-            UUID agentID = txn.PayerID;
-            UUID regionID = txn.CategoryID;
-            Scene s = GetSceneByUUID(regionID);
-            if (s == null) {
-                // Should probably never happen
-                m_log.WarnFormat("[GLOEBITMONEYMODULE].deliverLandPass FAILED because we couldn't retrieve the scene with the parcel.");
-                returnMsg = "Could not locate scene with parcel selling land pass.";
-                return false;
-            }
-            ILandObject parcel = s.LandChannel.GetLandObject(parcelLocalID);
-            if (parcel == null) {
-                // Parcel was deleted perhaps
-                m_log.WarnFormat("[GLOEBITMONEYMODULE].deliverLandPass FAILED because we couldn't retrieve the parcel selling the land pass.");
-                returnMsg = "Could not locate parcel selling land pass.";
-                return false;
-            }
-            
-            // Make sure nothing vital about the parcel changed
-            // Make sure parcel is still set to sell passes
-            if ((parcel.LandData.Flags & (uint)ParcelFlags.UsePassList) == 0) {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which turned off pass sales before transaciton completed.", agentID, parcel.LandData.GlobalID);
-                returnMsg = "Parcel is no longer selling passes.";
-                return false;
-            }
-            // Make sure owner hasn't changed
-            if ((parcel.LandData.OwnerID != txn.PayeeID)) {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which changed ownership before transaction completed.", agentID, parcel.LandData.GlobalID);
-                returnMsg = "Parcel ownership has changed.  Please retry purchase.";
-                return false;
-            }
-            // Make sure price hasn't changed
-            if(parcel.LandData.PassPrice != txn.Amount)
-            {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which changed price before transaction completed.", agentID, parcel.LandData.GlobalID);
-                returnMsg = "Price of land pass has changed.  Please retry purchase.";
-                return false;
-            }
-            // TODO: Should really double check PassHours, but we have no float in txn and haven't crated an asset map just for this.
-            // TODO: Could put this in salesType since OpenSim pre 0.9.1 had a bug making this an int.
-            
-            // Do the real work
-            bool timeAdded = addPassTimeToParcelAccessList(s, parcel, agentID, out returnMsg);
-            if (!timeAdded) {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} but adding access time failed with reason:{2}.", agentID, parcel.LandData.GlobalID, returnMsg);
-                //returnMsg is set  from out parameter of addPassTimeToParcelAccessList
-                return false;
-            }
-            // We're Done.  Success.
-            returnMsg = "land pass delivery succeeded";
-            return true;
-        }
-        
-        private bool addPassTimeToParcelAccessList(Scene s, ILandObject parcel, UUID agentID, out string returnMsg) {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] addPassToParcelAccessList agent:{0} for parcel:{1}", agentID, parcel.LandData.GlobalID);
-            
-            float hours = parcel.LandData.PassHours;
-            int parcelLocalID = parcel.LandData.LocalID;
-            string parcelName = parcel.LandData.Name;
-            
-            // COPIED from llAddToLandPassList and then modified/improved
-            int expires = 0;
-            int hoursInSeconds = (int)(3600.0 * hours);
-            int nowInSeconds = Util.UnixTimeSinceEpoch();
-            if (hours != 0) {
-                expires = Util.UnixTimeSinceEpoch() + (int)(3600.0 * hours);
-            }
-            int idx = parcel.LandData.ParcelAccessList.FindIndex(
-            delegate(LandAccessEntry e)
-            {
-                if (e.AgentID == agentID && e.Flags == AccessList.Access) {
-                    return true;
-                }
-                return false;
-            });
-            // If there is already a parcel access entry for agent, we may have to change the expiration
-            if (idx != -1) {
-                int prevExp = parcel.LandData.ParcelAccessList[idx].Expires;
-                if (prevExp == 0) {
-                    // This user has permanent access without a time limit.  Let them know and don't charge them
-                    m_log.WarnFormat("[GLOEBITMONEYMODULE].deliverLandPass FAILED because agent already has permanent access.");
-                    returnMsg = "Payer already has a land pass with no expiration for this parcel.";
-                    return false;
-                } else if (hours == 0) {
-                    // User is getting perm access.  Doesn't matter what their current expiration is.  Set to 0
-                    expires = 0;
-                } else if (nowInSeconds < prevExp) {
-                    // User is buying time and has some left on last pass.  Add together
-                    // TODO: message user that they had Expires-now and are adding hours for new exp
-                    expires = prevExp + hoursInSeconds;
-                }
-            }
-            
-            // Remove existing entry
-            if (idx != -1) {
-                // TODO: is there a reason we remove this rather than edit it?
-                // TODO: Do we need to lock this?  How do these work?  Does TriggerLandObjectUpdated fix this for us?
-                parcel.LandData.ParcelAccessList.RemoveAt(idx);
-            }
-            
-            // Add agent to parcel access list with expiration
-            LandAccessEntry entry = new LandAccessEntry();
-            entry.AgentID = agentID;
-            entry.Flags = AccessList.Access;
-            entry.Expires = expires;
-            parcel.LandData.ParcelAccessList.Add(entry);
-            //s.EventManager.TriggerLandObjectUpdated((uint)ParcelLocalID, parcel);
-            s.EventManager.TriggerLandObjectUpdated((uint)parcelLocalID, parcel);
-            
-            returnMsg = "Time successfully added to parcel access list entry for agent";
-            return true;
-        }
-
-        #endregion //ParcelBuyPass pre-0.9 Flow
-        
-        /// <summary>
-        /// Event triggered when a client responds yes to a script question (for permissions).
-        /// </summary>
-        /// <param name="client">Client which responded.</param>
-        /// <param name="objectID">SceneObjectPart UUID of the item the client is granting permissions on</param>
-        /// <param name="itemID">UUID of the TaskInventoryItem associated with this SceneObjectPart which handles permissions</param>
-        /// <param name="answer">Bitmap of the permissions which are being granted</param>
-        private void handleScriptAnswer(IClientAPI client, UUID objectID, UUID itemID, int answer) {
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer for client:{0} with objectID:{1}, itemID:{2}, answer:{3}", client.AgentId, objectID, itemID, answer);
-            
-            if ((answer & ScriptBaseClass.PERMISSION_DEBIT) == 0)
-            {
-                // This is not PERMISSION_DEBIT
-                // m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer This is not a debit request");
-                return;
-            }
-            // User granted permission debit.  Let's create a sub and sub-auth and provide link to user.
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer for a grant of debit permissions");
-            
-            ////// Check if we have an auth for this objectID.  If not, request it. //////
-
-            // Check subscription table.  If not exists, send create call to Gloebit.
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - looking for local subscription");
-            GloebitAPI.Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
-            if (sub == null) {
-                // Don't create unless the object has a name and description
-                // Make sure Name and Description are not null to avoid pgsql issue with storing null values
-                // Make sure neither are empty as they are required by Gloebit to create a subscription
-                SceneObjectPart part = findPrim(objectID);
-                if (part == null) {
-                    return;
-                }
-                if (String.IsNullOrEmpty(part.Name) || String.IsNullOrEmpty(part.Description)) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - Can not create local subscription because part name or description is blank - Name:{0} Description:{1}", part.Name, part.Description);
-                    // Send message to the owner to let them know they must edit the object and add a name and description
-                    String imMsg = String.Format("Object with auto-debit script is missing a name or description.  Name and description are required by Gloebit in order to create a subscription for this auto-debit object.  Please enter a name and description in the object.  Current values are Name:[{0}] and Description:[{1}].", part.Name, part.Description);
-                    sendMessageToClient(client, imMsg, client.AgentId);
-                    return;
-                }
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - creating local subscription for {0}", part.Name);
-                // Create local sub
-                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
-            }
-            if (sub.SubscriptionID == UUID.Zero) {
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - SID is ZERO -- calling GloebitAPI Create Subscription");
-                
-                // Add this user to map of waiting for sub to creat auth.
-                lock(m_authWaitingForSubMap) {
-                    m_authWaitingForSubMap[objectID] = client;
-                }
-                // call api to have Gloebit create
-                m_api.CreateSubscription(sub, BaseURI);
-                return;     // Async creating sub.  when it returns, we'll continue flow in SubscriptionCreationCompleted
-            }
-            // We have a Subscription.  Call create on an auth.
-            GloebitAPI.User user = GloebitAPI.User.Get(m_api, client.AgentId);
-            string agentName = resolveAgentName(client.AgentId);
-            m_api.CreateSubscriptionAuthorization(sub, user, agentName, BaseURI, client);
-            return;     // Async creating auth.  When returns, will send link to user.
-        }
-        
-        /// <summary>
-        /// Event triggered when agent enters new region.
-        /// Handles updating of information necessary when a user has arrived at a new region, sim, or grid.
-        /// Requests balance from Gloebit if authed and delivers to viewer.
-        /// If this is a new session, if not authed, requests auth.  If authed, sends purchase url.
-        /// </summary>
-        private void OnCompleteMovementToRegion(IClientAPI client, bool blah) {
-            // TODO: may now be albe to remove client from these funcs (since we moved this out of OnNewClient, but this still might be simpler.
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion for {0} with bool {1}", client.AgentId, blah);
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion SessionId:{0} SecureSessionId:{1}", client.SessionId, client.SecureSessionId);
-            
-            GloebitAPI.User user = GloebitAPI.User.Get(m_api, client.AgentId);
-            // If authed, update balance immediately
-            if (user.IsAuthed()) {
-                // Don't send Buy Gloebits messaging so that we don't spam
-                UpdateBalance(client.AgentId, client, 0);
-            }
-            if (user.IsNewSession(client.SessionId)) {
-                // Send welcome messaging and buy gloebits messaging or auth messaging
-                SendNewSessionMessaging(client, user);
-            }
-        }
-        
         /// <summary>
         /// Deliver intro messaging for user in new session or new enviromnet.
         /// --- "Welcome to area running Gloebit in Sandbox for app MYAPP"
@@ -1457,22 +1131,6 @@ namespace Gloebit.GloebitMoneyModule
                             }
             });
             welcomeMessageThread.Start();
-        }
-
-        private void OnClientLogin(IClientAPI client)
-        {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnClientLogin for {0}", client.AgentId);
-            
-            // Bit of a hack
-            // OnCompleteMovementToRegion requests balance and asks for auth if not authed
-            // -- This is required to cover teleports and crossing into new regions from non GMM region.
-            // But, If this was due to a login, the viewer also requests the balance which triggers the same auth or purchase messaging.
-            // -- Unfortunately, the event at login from the viewer is the same as when a user manually clicks on their balance.
-            // Two auths look bad.
-            // So, we tell our balance request to ignore the one right after login from the viewer.
-            // We set a timestamp in case any viewers have removed this request, so that this ignore flag expires within a few seconds.
-            LoginBalanceRequest lbr = LoginBalanceRequest.Get(client.AgentId);
-            lbr.IgnoreNextBalanceRequest = true;
         }
         
         /// <summary>
@@ -1680,166 +1338,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             return result;
         }
-        
 
-        /// <summary>
-        /// Requests the agent's balance from Gloebit and sends it to the client
-        /// NOTE:
-        /// --- This is triggered by the OnMoneyBalanceRequest event
-        /// ------ This appears to get called at login and when a user clicks on his/her balance.  The TransactionID is zero in both cases.
-        /// ------ This may get called in other situations, but buying an object does not seem to trigger it.
-        /// ------ It appears that The system which calls ApplyUploadCharge calls immediately after (still with TransactionID of Zero).
-        /// </summary>
-        /// <param name="client"></param>
-        /// <param name="agentID"></param>
-        /// <param name="SessionID"></param>
-        /// <param name="TransactionID"></param>
-        private void MoneyBalanceRequest(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
-        {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] SendMoneyBalance request from {0} about {1} for transaction {2}", client.AgentId, agentID, TransactionID);
-
-            if (client.AgentId == agentID && client.SessionId == SessionID)
-            {
-                // HACK to ignore request when this is just after we delivered the balance at login
-                LoginBalanceRequest lbr = LoginBalanceRequest.Get(client.AgentId);
-                if (lbr.IgnoreNextBalanceRequest) {
-                    lbr.IgnoreNextBalanceRequest = false;
-                    return;
-                }
-                
-                // Request balance from Gloebit.  Request Auth if not authed.  If Authed, always deliver Gloebit purchase url.
-                // NOTE: we are not passing the TransactionID to SendMoneyBalance as it appears ot always be UUID.Zero.
-                UpdateBalance(agentID, client, -1);
-            }
-            else
-            {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] SendMoneyBalance - Unable to send money balance");
-                client.SendAlertMessage("Unable to send your money balance to you!");
-            }
-        }
-
-        private SceneObjectPart findPrim(UUID objectID)
-        {
-            lock (m_scenel)
-            {
-                foreach (Scene s in m_scenel.Values)
-                {
-                    SceneObjectPart part = s.GetSceneObjectPart(objectID);
-                    if (part != null)
-                    {
-                        return part;
-                    }
-                }
-            }
-            return null;
-        }
-
-        private string resolveObjectName(UUID objectID)
-        {
-            SceneObjectPart part = findPrim(objectID);
-            if (part != null)
-            {
-                return part.Name;
-            }
-            return String.Empty;
-        }
-
-        private string resolveAgentName(UUID agentID)
-        {
-            string avatarname = String.Empty;
-            Scene scene = GetAnyScene();
-            
-            // Try using IUserManagement module which works for both local users and hypergrid visitors
-            IUserManagement umModule = scene.RequestModuleInterface<IUserManagement>();
-            if (umModule != null) {
-                avatarname = umModule.GetUserName(agentID);
-            }
-            
-            // If above didn't work, try old method which doesn't work for hypergrid visitors
-            if (String.IsNullOrEmpty(avatarname)) {
-                UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
-                if (account != null)
-                {
-                    avatarname = account.FirstName + " " + account.LastName;
-                } else {
-                    // both methods failed.  Log error.
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE]: Could not resolve name for user {0}", agentID);
-                }
-            }
-            
-            return avatarname;
-        }
-        
-        // Possible that this is automatic as firstname=FN.LN and lastname=@home_uri
-        // If not set through account service, than may change resolveAgentName to use umModule.GetUserName(UUID) which should work.
-        // Or, alternatively, for better tracking of unique avatars across all OpenSim Hypergrid, we could try to discover
-        // the home_uri when user is on home grid, and turn name into same format as a foreign user.
-        // TODO: consider adding user's homeURL to tracked data on Gloebit --- might help spot grids with user accounts we should blacklist.
-/*
-        private string resolveAgentNameAtHome(UUID agentID)
-        {
-            // try avatar username surname
-            Scene scene = GetAnyScene();
-            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
-            IUserManagement umModule = scene.RequestModuleInterface<IUserManagement>();
-            
-            m_log.InfoFormat("[GLOEBITMONEYMODULE]: resolveAgentNameAtHome\n GetUserName:{0} \nGetUserHomeURL:{1} \nGetUserUUI:{2}",
-                              umModule.GetUserName(agentID), umModule.GetUserHomeURL(agentID), umModule.GetUserUUI(agentID));
-
-            
-            if (account != null && umModule != null)
-            {
-                string avatarname = account.FirstName + " " + account.LastName + " @" + umModule.GetUserHomeURL(agentID);
-                return avatarname;
-            }
-            else
-            {
-                m_log.ErrorFormat(
-                                  "[GLOEBITMONEYMODULE]: Could not resolve user {0}",
-                                  agentID);
-            }
-            return String.Empty;
-        }
-*/
-        private string resolveAgentEmail(UUID agentID)
-        {
-            // try avatar username surname
-            Scene scene = GetAnyScene();
-            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
-            if (account != null)
-            {
-                return account.Email;
-            }
-            else
-            {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE]: Could not resolve user {0}", agentID);
-            }
-
-            return String.Empty;
-        }
-/*
-        private void BalanceUpdate(UUID senderID, UUID receiverID, bool transactionresult, string description)
-        {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] BalanceUpdate from {0} to {1}", senderID, receiverID);
-            IClientAPI sender = LocateClientObject(senderID);
-            IClientAPI receiver = LocateClientObject(receiverID);
-
-            if (senderID != receiverID)
-            {
-                if (sender != null)
-                {
-                    int senderReturnFunds = (int)GetFundsForAgentID (senderID);
-                    sender.SendMoneyBalance(UUID.Random(), transactionresult, Utils.StringToBytes(description), senderReturnFunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
-                }
-
-                if (receiver != null)
-                {
-                    int receiverReturnFunds = (int)GetFundsForAgentID (receiverID);
-                    receiver.SendMoneyBalance(UUID.Random(), transactionresult, Utils.StringToBytes(description), receiverReturnFunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
-                }
-            }
-        }
-*/
         #region Standalone box enablers only
         
         /*****************************************************************************************************
@@ -3013,9 +2512,451 @@ namespace Gloebit.GloebitMoneyModule
             return null;
         }
 
+        private SceneObjectPart findPrim(UUID objectID)
+        {
+            lock (m_scenel)
+            {
+                foreach (Scene s in m_scenel.Values)
+                {
+                    SceneObjectPart part = s.GetSceneObjectPart(objectID);
+                    if (part != null)
+                    {
+                        return part;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private string resolveObjectName(UUID objectID)
+        {
+            SceneObjectPart part = findPrim(objectID);
+            if (part != null)
+            {
+                return part.Name;
+            }
+            return String.Empty;
+        }
+
+        private string resolveAgentName(UUID agentID)
+        {
+            string avatarname = String.Empty;
+            Scene scene = GetAnyScene();
+
+            // Try using IUserManagement module which works for both local users and hypergrid visitors
+            IUserManagement umModule = scene.RequestModuleInterface<IUserManagement>();
+            if (umModule != null) {
+                avatarname = umModule.GetUserName(agentID);
+            }
+
+            // If above didn't work, try old method which doesn't work for hypergrid visitors
+            if (String.IsNullOrEmpty(avatarname)) {
+                UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
+                if (account != null)
+                {
+                    avatarname = account.FirstName + " " + account.LastName;
+                } else {
+                    // both methods failed.  Log error.
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE]: Could not resolve name for user {0}", agentID);
+                }
+            }
+
+            return avatarname;
+        }
+
+        // Possible that this is automatic as firstname=FN.LN and lastname=@home_uri
+        // If not set through account service, than may change resolveAgentName to use umModule.GetUserName(UUID) which should work.
+        // Or, alternatively, for better tracking of unique avatars across all OpenSim Hypergrid, we could try to discover
+        // the home_uri when user is on home grid, and turn name into same format as a foreign user.
+        // TODO: consider adding user's homeURL to tracked data on Gloebit --- might help spot grids with user accounts we should blacklist.
+        /*
+        private string resolveAgentNameAtHome(UUID agentID)
+        {
+            // try avatar username surname
+            Scene scene = GetAnyScene();
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
+            IUserManagement umModule = scene.RequestModuleInterface<IUserManagement>();
+            
+            m_log.InfoFormat("[GLOEBITMONEYMODULE]: resolveAgentNameAtHome\n GetUserName:{0} \nGetUserHomeURL:{1} \nGetUserUUI:{2}",
+                              umModule.GetUserName(agentID), umModule.GetUserHomeURL(agentID), umModule.GetUserUUI(agentID));
+
+            
+            if (account != null && umModule != null)
+            {
+                string avatarname = account.FirstName + " " + account.LastName + " @" + umModule.GetUserHomeURL(agentID);
+                return avatarname;
+            }
+            else
+            {
+                m_log.ErrorFormat(
+                                  "[GLOEBITMONEYMODULE]: Could not resolve user {0}",
+                                  agentID);
+            }
+            return String.Empty;
+        }
+*/
+        private string resolveAgentEmail(UUID agentID)
+        {
+            // try avatar username surname
+            Scene scene = GetAnyScene();
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
+            if (account != null)
+            {
+                return account.Email;
+            }
+            else
+            {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE]: Could not resolve user {0}", agentID);
+            }
+
+            return String.Empty;
+        }
+
         #endregion
 
         #region event Handlers
+
+        private void OnNewPresence(ScenePresence presence) {
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnNewPresence viewer:{0}", presence.Viewer);
+        }
+
+        /// <summary>
+        /// New Client Event Handler
+        /// </summary>
+        /// <param name="client"></param>
+        private void OnNewClient(IClientAPI client)
+        {
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnNewClient for {0}", client.AgentId);
+
+            // Subscribe to money related messages
+            client.OnEconomyDataRequest += EconomyDataRequestHandler;           // Handles sending OpenSim economy data
+            client.OnMoneyBalanceRequest += MoneyBalanceRequest;                // Handles updating balance and sending to client
+            client.OnRequestPayPrice += requestPayPrice;                        // Handles OpenSim price request
+            client.OnObjectBuy += ObjectBuy;                                    // Handles 5000 (Object Buy) event
+            client.OnScriptAnswer += handleScriptAnswer;                        // Handle response of granting auto-debit permissions
+
+            if (!m_newLandPassFlow) {
+                client.OnParcelBuyPass += ParcelBuyPass;                        // Handle purchase of timed access to parcel
+            }
+
+            // Subscribe to other events
+            client.OnLogout += ClientLoggedOut;                                 // Handles cleanup
+            client.OnCompleteMovementToRegion += OnCompleteMovementToRegion;    // Handles balance update and new session messaging
+        }
+
+        /// <summary>
+        /// Event triggered when agent enters new region.
+        /// Handles updating of information necessary when a user has arrived at a new region, sim, or grid.
+        /// Requests balance from Gloebit if authed and delivers to viewer.
+        /// If this is a new session, if not authed, requests auth.  If authed, sends purchase url.
+        /// </summary>
+        private void OnCompleteMovementToRegion(IClientAPI client, bool blah) {
+            // TODO: may now be albe to remove client from these funcs (since we moved this out of OnNewClient, but this still might be simpler.
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion for {0} with bool {1}", client.AgentId, blah);
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion SessionId:{0} SecureSessionId:{1}", client.SessionId, client.SecureSessionId);
+
+            GloebitAPI.User user = GloebitAPI.User.Get(m_api, client.AgentId);
+            // If authed, update balance immediately
+            if (user.IsAuthed()) {
+                // Don't send Buy Gloebits messaging so that we don't spam
+                UpdateBalance(client.AgentId, client, 0);
+            }
+            if (user.IsNewSession(client.SessionId)) {
+                // Send welcome messaging and buy gloebits messaging or auth messaging
+                SendNewSessionMessaging(client, user);
+            }
+        }
+
+        #region ParcelBuyPass pre-0.9 Flow
+        // This code is only used if m_newLandPassFlow is false.
+        // When true, see MoveMoney() for TransactionType::USER_BUYS_LANDPASS
+
+        private void ParcelBuyPass(IClientAPI client, UUID agentID, int ParcelLocalID) {
+            // This function is only registered if we are in the old LandPassFlow.  See m_newLandPassFlow
+
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] ParcelBuyPass event {0} {1}", agentID, ParcelLocalID);
+
+            if (client == null) {
+                m_log.Warn("[GLOEBITMONEYMODULE] ParcelBuyPass event with null client.  Returning.");
+            }
+            Scene s = (Scene)client.Scene;
+            ILandObject parcel = s.LandChannel.GetLandObject(ParcelLocalID);
+
+            // Some basic checks
+            if (parcel == null) {
+                m_log.Warn("[GLOEBITMONEYMODULE] ParcelBuyPass event with null parcel.  Returning.");
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LANDPASS, TransactionPrecheckFailure.OBJECT_NOT_FOUND, client);
+                return;
+            }
+            // Make sure parcel is set to sell passes
+            if ((parcel.LandData.Flags & (uint)ParcelFlags.UsePassList) == 0) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which is not set to sell passes", agentID, parcel.LandData.GlobalID);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LANDPASS, TransactionPrecheckFailure.SALE_TYPE_INVALID, client);
+                // TODO: Message user
+                return;
+            }
+            // Holding off on this check as the parcel owner can functionally be added to the access list.  Maybe there is a reason an owner would want to do this
+            // If owner, don't charge
+            //if ((parcel.LandData.OwnerID == agentID)) {
+            // TODO: Message user
+            //    return;
+            //}
+            // We can't handle group transacitons, so fail that
+            if(parcel.LandData.IsGroupOwned)
+            {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which is group owned.  Group Transactions are not defined.", agentID, parcel.LandData.GlobalID);
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LANDPASS, TransactionPrecheckFailure.GROUP_OWNED, client);
+                return;
+            }
+
+            int price = parcel.LandData.PassPrice;
+            float hours = parcel.LandData.PassHours;
+            string parcelName = parcel.LandData.Name;
+
+            // If 0G$ txn, don't build and submit txn
+            if (price == 0) {
+                // Nothing to submit to Gloebit.  Just deliver the object
+                string returnMsg = "";
+                bool timeAdded = addPassTimeToParcelAccessList(s, parcel, agentID, out returnMsg);
+                // Inform the user of success or failure.
+                if (!timeAdded) {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] ParcelBuyPass delivery of free land pass failed; reason:{0}.", returnMsg);
+                    sendMessageToClient(client, String.Format("Delivery of free land pass failed\nParcel Name: {0}\nReason: {1}", parcelName, returnMsg), agentID);
+                } else {
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] ParcelBuyPass delivery of free land pass succeeded.");
+                    sendMessageToClient(client, String.Format("Delivery of free land pass succeeded\nParcel Name: {0}", parcelName), agentID);
+                }
+                return;
+            }
+
+            // Build Transaction
+            string agentName = resolveAgentName(agentID);
+            string regionname = s.RegionInfo.RegionName;
+            UUID regionID = s.RegionInfo.RegionID;
+
+            string description = String.Format("{0} hour LandPass purchased for parcel {1} on {2}, {3}", hours, parcelName, regionname, m_gridnick);
+
+            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "LandPassBuy", parcel.LandData);
+
+            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_LANDPASS,
+                payerID: agentID, payeeID: parcel.LandData.OwnerID, amount: price, subscriptionID: UUID.Zero,
+                partID: parcel.LandData.GlobalID, partName: parcel.LandData.Name, partDescription: parcel.LandData.Description,
+                categoryID: regionID, localID: (uint)parcel.LandData.LocalID, saleType: 0);
+            // NOTE: using category & localID to retrieve parcel on callback incase GlobalID doesn't work.
+            // Should consider storing all LandData in assetMap to ensure PassHours hasn't changed.
+
+            if (txn == null) {
+                // build failed, likely due to a reused transactionID.  Shouldn't happen.
+                alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_LANDPASS, TransactionPrecheckFailure.EXISTING_TRANSACTION_ID, client);
+                return;
+            }
+
+            bool transaction_result = SubmitTransaction(txn, description, descMap, true);
+
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] ParcelBuyPass Transaction queued {0}", txn.TransactionID.ToString());
+        }
+
+        // Called for flow pre-0.9.1 where we deliver asset.  0.9.1 and after, flow does delivery, so this is not called
+        private bool deliverLandPass(GloebitAPI.Transaction txn, out string returnMsg) {
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] deliverLandPass to:{0}", txn.PayerID);
+            // Get Parcel back
+            uint localID;
+            if (!txn.TryGetLocalID(out localID)) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE].deliverLandPass FAILED to deliver asset - could not retrieve parcel LocalID");
+                returnMsg = "Failed to deliver land pass.  Could not retrieve parcel LocalID.";
+                return false;
+            }
+            int parcelLocalID = (int)localID;
+            UUID agentID = txn.PayerID;
+            UUID regionID = txn.CategoryID;
+            Scene s = GetSceneByUUID(regionID);
+            if (s == null) {
+                // Should probably never happen
+                m_log.WarnFormat("[GLOEBITMONEYMODULE].deliverLandPass FAILED because we couldn't retrieve the scene with the parcel.");
+                returnMsg = "Could not locate scene with parcel selling land pass.";
+                return false;
+            }
+            ILandObject parcel = s.LandChannel.GetLandObject(parcelLocalID);
+            if (parcel == null) {
+                // Parcel was deleted perhaps
+                m_log.WarnFormat("[GLOEBITMONEYMODULE].deliverLandPass FAILED because we couldn't retrieve the parcel selling the land pass.");
+                returnMsg = "Could not locate parcel selling land pass.";
+                return false;
+            }
+
+            // Make sure nothing vital about the parcel changed
+            // Make sure parcel is still set to sell passes
+            if ((parcel.LandData.Flags & (uint)ParcelFlags.UsePassList) == 0) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which turned off pass sales before transaciton completed.", agentID, parcel.LandData.GlobalID);
+                returnMsg = "Parcel is no longer selling passes.";
+                return false;
+            }
+            // Make sure owner hasn't changed
+            if ((parcel.LandData.OwnerID != txn.PayeeID)) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which changed ownership before transaction completed.", agentID, parcel.LandData.GlobalID);
+                returnMsg = "Parcel ownership has changed.  Please retry purchase.";
+                return false;
+            }
+            // Make sure price hasn't changed
+            if(parcel.LandData.PassPrice != txn.Amount)
+            {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} which changed price before transaction completed.", agentID, parcel.LandData.GlobalID);
+                returnMsg = "Price of land pass has changed.  Please retry purchase.";
+                return false;
+            }
+            // TODO: Should really double check PassHours, but we have no float in txn and haven't crated an asset map just for this.
+            // TODO: Could put this in salesType since OpenSim pre 0.9.1 had a bug making this an int.
+
+            // Do the real work
+            bool timeAdded = addPassTimeToParcelAccessList(s, parcel, agentID, out returnMsg);
+            if (!timeAdded) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] AgentID:{0} attempted to buy a pass on parcel:{1} but adding access time failed with reason:{2}.", agentID, parcel.LandData.GlobalID, returnMsg);
+                //returnMsg is set from out parameter of addPassTimeToParcelAccessList
+                return false;
+            }
+            // We're Done.  Success.
+            returnMsg = "land pass delivery succeeded";
+            return true;
+        }
+
+        private bool addPassTimeToParcelAccessList(Scene s, ILandObject parcel, UUID agentID, out string returnMsg) {
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] addPassToParcelAccessList agent:{0} for parcel:{1}", agentID, parcel.LandData.GlobalID);
+
+            float hours = parcel.LandData.PassHours;
+            int parcelLocalID = parcel.LandData.LocalID;
+            string parcelName = parcel.LandData.Name;
+
+            // COPIED from llAddToLandPassList and then modified/improved
+            int expires = 0;
+            int hoursInSeconds = (int)(3600.0 * hours);
+            int nowInSeconds = Util.UnixTimeSinceEpoch();
+            if (hours != 0) {
+                expires = Util.UnixTimeSinceEpoch() + (int)(3600.0 * hours);
+            }
+            int idx = parcel.LandData.ParcelAccessList.FindIndex(
+                delegate(LandAccessEntry e)
+                {
+                    if (e.AgentID == agentID && e.Flags == AccessList.Access) {
+                        return true;
+                    }
+                    return false;
+                });
+            // If there is already a parcel access entry for agent, we may have to change the expiration
+            if (idx != -1) {
+                int prevExp = parcel.LandData.ParcelAccessList[idx].Expires;
+                if (prevExp == 0) {
+                    // This user has permanent access without a time limit.  Let them know and don't charge them
+                    m_log.WarnFormat("[GLOEBITMONEYMODULE].deliverLandPass FAILED because agent already has permanent access.");
+                    returnMsg = "Payer already has a land pass with no expiration for this parcel.";
+                    return false;
+                } else if (hours == 0) {
+                    // User is getting perm access.  Doesn't matter what their current expiration is.  Set to 0
+                    expires = 0;
+                } else if (nowInSeconds < prevExp) {
+                    // User is buying time and has some left on last pass.  Add together
+                    // TODO: message user that they had Expires-now and are adding hours for new exp
+                    expires = prevExp + hoursInSeconds;
+                }
+            }
+
+            // Remove existing entry
+            if (idx != -1) {
+                // TODO: is there a reason we remove this rather than edit it?
+                // TODO: Do we need to lock this?  How do these work?  Does TriggerLandObjectUpdated fix this for us?
+                parcel.LandData.ParcelAccessList.RemoveAt(idx);
+            }
+
+            // Add agent to parcel access list with expiration
+            LandAccessEntry entry = new LandAccessEntry();
+            entry.AgentID = agentID;
+            entry.Flags = AccessList.Access;
+            entry.Expires = expires;
+            parcel.LandData.ParcelAccessList.Add(entry);
+            //s.EventManager.TriggerLandObjectUpdated((uint)ParcelLocalID, parcel);
+            s.EventManager.TriggerLandObjectUpdated((uint)parcelLocalID, parcel);
+
+            returnMsg = "Time successfully added to parcel access list entry for agent";
+            return true;
+        }
+
+        #endregion //ParcelBuyPass pre-0.9 Flow
+
+        /// <summary>
+        /// Event triggered when a client responds yes to a script question (for permissions).
+        /// </summary>
+        /// <param name="client">Client which responded.</param>
+        /// <param name="objectID">SceneObjectPart UUID of the item the client is granting permissions on</param>
+        /// <param name="itemID">UUID of the TaskInventoryItem associated with this SceneObjectPart which handles permissions</param>
+        /// <param name="answer">Bitmap of the permissions which are being granted</param>
+        private void handleScriptAnswer(IClientAPI client, UUID objectID, UUID itemID, int answer) {
+            // m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer for client:{0} with objectID:{1}, itemID:{2}, answer:{3}", client.AgentId, objectID, itemID, answer);
+
+            if ((answer & ScriptBaseClass.PERMISSION_DEBIT) == 0)
+            {
+                // This is not PERMISSION_DEBIT
+                // m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer This is not a debit request");
+                return;
+            }
+            // User granted permission debit.  Let's create a sub and sub-auth and provide link to user.
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer for a grant of debit permissions");
+
+            ////// Check if we have an auth for this objectID.  If not, request it. //////
+
+            // Check subscription table.  If not exists, send create call to Gloebit.
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - looking for local subscription");
+            GloebitAPI.Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
+            if (sub == null) {
+                // Don't create unless the object has a name and description
+                // Make sure Name and Description are not null to avoid pgsql issue with storing null values
+                // Make sure neither are empty as they are required by Gloebit to create a subscription
+                SceneObjectPart part = findPrim(objectID);
+                if (part == null) {
+                    return;
+                }
+                if (String.IsNullOrEmpty(part.Name) || String.IsNullOrEmpty(part.Description)) {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - Can not create local subscription because part name or description is blank - Name:{0} Description:{1}", part.Name, part.Description);
+                    // Send message to the owner to let them know they must edit the object and add a name and description
+                    String imMsg = String.Format("Object with auto-debit script is missing a name or description.  Name and description are required by Gloebit in order to create a subscription for this auto-debit object.  Please enter a name and description in the object.  Current values are Name:[{0}] and Description:[{1}].", part.Name, part.Description);
+                    sendMessageToClient(client, imMsg, client.AgentId);
+                    return;
+                }
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - creating local subscription for {0}", part.Name);
+                // Create local sub
+                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
+            }
+            if (sub.SubscriptionID == UUID.Zero) {
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - SID is ZERO -- calling GloebitAPI Create Subscription");
+
+                // Add this user to map of waiting for sub to creat auth.
+                lock(m_authWaitingForSubMap) {
+                    m_authWaitingForSubMap[objectID] = client;
+                }
+                // call api to have Gloebit create
+                m_api.CreateSubscription(sub, BaseURI);
+                return;     // Async creating sub.  when it returns, we'll continue flow in SubscriptionCreationCompleted
+            }
+            // We have a Subscription.  Call create on an auth.
+            GloebitAPI.User user = GloebitAPI.User.Get(m_api, client.AgentId);
+            string agentName = resolveAgentName(client.AgentId);
+            m_api.CreateSubscriptionAuthorization(sub, user, agentName, BaseURI, client);
+            return;     // Async creating auth.  When returns, will send link to user.
+        }
+
+        private void OnClientLogin(IClientAPI client)
+        {
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnClientLogin for {0}", client.AgentId);
+
+            // Bit of a hack
+            // OnCompleteMovementToRegion requests balance and asks for auth if not authed
+            // -- This is required to cover teleports and crossing into new regions from non GMM region.
+            // But, If this was due to a login, the viewer also requests the balance which triggers the same auth or purchase messaging.
+            // -- Unfortunately, the event at login from the viewer is the same as when a user manually clicks on their balance.
+            // Two auths look bad.
+            // So, we tell our balance request to ignore the one right after login from the viewer.
+            // We set a timestamp in case any viewers have removed this request, so that this ignore flag expires within a few seconds.
+            LoginBalanceRequest lbr = LoginBalanceRequest.Get(client.AgentId);
+            lbr.IgnoreNextBalanceRequest = true;
+        }
 
         private void requestPayPrice(IClientAPI client, UUID objectID)
         {
@@ -3067,6 +3008,42 @@ namespace Gloebit.GloebitMoneyModule
                                  PriceObjectClaim, PriceObjectRent, PriceObjectScaleFactor, PriceParcelClaim, PriceParcelClaimFactor,
                                  PriceParcelRent, PricePublicObjectDecay, PricePublicObjectDelete, PriceRentLight, PriceUpload,
                                  TeleportMinPrice, TeleportPriceExponent);
+        }
+
+        /// <summary>
+        /// Requests the agent's balance from Gloebit and sends it to the client
+        /// NOTE:
+        /// --- This is triggered by the OnMoneyBalanceRequest event
+        /// ------ This appears to get called at login and when a user clicks on his/her balance.  The TransactionID is zero in both cases.
+        /// ------ This may get called in other situations, but buying an object does not seem to trigger it.
+        /// ------ It appears that The system which calls ApplyUploadCharge calls immediately after (still with TransactionID of Zero).
+        /// </summary>
+        /// <param name="client"></param>
+        /// <param name="agentID"></param>
+        /// <param name="SessionID"></param>
+        /// <param name="TransactionID"></param>
+        private void MoneyBalanceRequest(IClientAPI client, UUID agentID, UUID SessionID, UUID TransactionID)
+        {
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] SendMoneyBalance request from {0} about {1} for transaction {2}", client.AgentId, agentID, TransactionID);
+
+            if (client.AgentId == agentID && client.SessionId == SessionID)
+            {
+                // HACK to ignore request when this is just after we delivered the balance at login
+                LoginBalanceRequest lbr = LoginBalanceRequest.Get(client.AgentId);
+                if (lbr.IgnoreNextBalanceRequest) {
+                    lbr.IgnoreNextBalanceRequest = false;
+                    return;
+                }
+
+                // Request balance from Gloebit.  Request Auth if not authed.  If Authed, always deliver Gloebit purchase url.
+                // NOTE: we are not passing the TransactionID to SendMoneyBalance as it appears ot always be UUID.Zero.
+                UpdateBalance(agentID, client, -1);
+            }
+            else
+            {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] SendMoneyBalance - Unable to send money balance");
+                client.SendAlertMessage("Unable to send your money balance to you!");
+            }
         }
 
         /*********************************/
