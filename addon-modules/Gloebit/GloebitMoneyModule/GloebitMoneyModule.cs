@@ -1090,48 +1090,16 @@ namespace Gloebit.GloebitMoneyModule
 
         #endregion // IMoneyModule members
 
-        /// <summary>
-        /// Deliver intro messaging for user in new session or new enviromnet.
-        /// --- "Welcome to area running Gloebit in Sandbox for app MYAPP"
-        /// </summary>
-        private void SendNewSessionMessaging(IClientAPI client, GloebitAPI.User user) {
-            // TODO: Add in AppName to messages if we have it -- may need a new endpoint.
-            string msg;
-            if (m_environment == GLBEnv.Sandbox) {
-                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Sandbox Mode for testing.  All payments and transactions are fake.  Try it out.", client.Name);
-            } else if (m_environment == GLBEnv.Production) {
-                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module.  You can transact with gloebits.", client.Name);
-            } else {
-                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in a Custom Devloper Mode.", client.Name);
-            }
-            // Add instructions for clicking balance to see auth or purchase url
-            // TODO: Should this be a separate message?
-            if (user.IsAuthed()) {
-                msg = String.Format("{0}\nClick on your balance in the top right to purchase more gloebits.", msg);
-            } else {
-                msg = String.Format("{0}\nClick on your balance in the top right to link this avatar on this app to your Gloebit account.", msg);
-                
-            }
-            // Delay messaging for a cleaner experience
-            int delay = 1; // Delay 1 seconds on crossing or teleport where viewer is already loaded
-            if (LoginBalanceRequest.ExistsAndJustLoggedIn(client.AgentId)) {
-                delay = 10; // Delay 10 seconds if viewer isn't fully loaded, shows up as offline while away
-            }
-            Thread welcomeMessageThread = new Thread(delegate() {
-                            Thread.Sleep(delay * 1000);  // Delay miliseconds
-                            // Deliver welcome message
-                            sendMessageToClient(client, msg, client.AgentId);
-                            // If authed, delivery url where user can purchase gloebits
-                            if (user.IsAuthed()) {
-                                // Uri url = m_api.BuildPurchaseURI(BaseURI, user);
-                                // SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
-                            } else {
-                                // If not Authed, request auth.
-                                m_api.Authorize(user, client.Name, BaseURI);
-                            }
-            });
-            welcomeMessageThread.Start();
-        }
+        #region GMM Transaction Submission
+
+        /***
+         * All commerce flows must 
+         * 1. Have a transaction type defined
+         * 2. build a transaction (which includes a set of information common to all transactions)
+         * 3. build a transaction description map of additional dynamic information specific to this transaction
+         * 4. submit the transaction (with description and description map
+         *** TODO: fill in rest of requirements (enact etc).
+         ***/
         
         /// <summary>
         /// Build a GloebitAPI.Transaction for a specific TransactionType.  This Transaction will be:
@@ -1338,6 +1306,171 @@ namespace Gloebit.GloebitMoneyModule
             }
             return result;
         }
+
+        #region GMM Transaciton Desc Map helpers
+
+        /// <summary>
+        /// Helper function to build the minimal transaction description sent to the Gloebit transactU2U endpoint.
+        /// Used for tracking as well as information provided in transaction histories.
+        /// If transaction includes an object, use the version which takes a fourth paramater as a SceneObjectPart.
+        /// </summary>
+        /// <param name="regionname">Name of the OpenSim region where this transaction is taking place.</param>
+        /// <param name="regionID">OpenSim UUID of the region where this transaction is taking place.</param>
+        /// <param name="txnType">String describing the type of transaction.  eg. ObjectBuy, PayObject, PayUser, etc.</param>
+        /// <returns>OSDMap to be sent with the transaction request parameters.  Map contains six dictionary entries, each including an OSDArray.</returns>
+        private OSDMap buildBaseTransactionDescMap(string regionname, string regionID, string txnType)
+        {
+            // Create descMap
+            OSDMap descMap = new OSDMap();
+
+            // Create arrays in descMap
+            descMap["platform-names"] = new OSDArray();
+            descMap["platform-values"] = new OSDArray();
+            descMap["location-names"] = new OSDArray();
+            descMap["location-values"] = new OSDArray();
+            descMap["transaction-names"] = new OSDArray();
+            descMap["transaction-values"] = new OSDArray();
+
+            // Add base platform details
+            addDescMapEntry(descMap, "platform", "platform", "OpenSim");
+            addDescMapEntry(descMap, "platform", "version", m_opensimVersion);
+            addDescMapEntry(descMap, "platform", "version-number", m_opensimVersionNumber);
+            // TODO: Should we add hosting-provider or more?
+
+            // Add base location details
+            addDescMapEntry(descMap, "location", "grid-name", m_gridname);
+            addDescMapEntry(descMap, "location", "grid-nick", m_gridnick);
+            addDescMapEntry(descMap, "location", "region-name", regionname);
+            addDescMapEntry(descMap, "location", "region-id", regionID);
+
+            // Add base transaction details
+            //// TODO: change arg to toke a TxnTypeID, add that here, and create func to get the string name from a txnTypeId
+            addDescMapEntry(descMap, "transaction", "transaction-type", txnType);
+
+            return descMap;
+        }
+
+        /// <summary>
+        /// Helper function to build the minimal transaction description sent to the Gloebit transactU2U endpoint.
+        /// Used for tracking as well as information provided in transaction histories.
+        /// If transaction does not include an object, use the version which takes three paramaters instead.
+        /// </summary>
+        /// <param name="regionname">Name of the OpenSim region where this transaction is taking place.</param>
+        /// <param name="regionID">OpenSim UUID of the region where this transaction is taking place.</param>
+        /// <param name="txnType">String describing the type of transaction.  eg. ObjectBuy, PayObject, PayUser, etc.</param>
+        /// <param name="part">Object (as SceneObjectPart) which is involved in this transaction (being sold, being paid, paying user, etc.).</param>
+        /// <returns>OSDMap to be sent with the transaction request parameters.  Map contains six dictionary entries, each including an OSDArray.</returns>
+        private OSDMap buildBaseTransactionDescMap(string regionname, string regionID, string txnType, SceneObjectPart part)
+        {
+            // Build universal base descMap
+            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, txnType);
+
+            // Add base descMap details for transaciton involving an object/part
+            if (descMap != null && part != null) {
+                addDescMapEntry(descMap, "location", "object-group-position", part.GroupPosition.ToString());
+                addDescMapEntry(descMap, "location", "object-absolute-position", part.AbsolutePosition.ToString());
+                addDescMapEntry(descMap, "transaction", "object-name", part.Name);
+                addDescMapEntry(descMap, "transaction", "object-description", part.Description);
+                addDescMapEntry(descMap, "transaction", "object-id", part.UUID.ToString());
+                addDescMapEntry(descMap, "transaction", "creator-name", resolveAgentName(part.CreatorID));
+                addDescMapEntry(descMap, "transaction", "creator-id", part.CreatorID.ToString());
+            }
+            return descMap;
+        }
+
+        /// <summary>
+        /// Helper function to build the minimal transaction description sent to the Gloebit transactU2U endpoint.
+        /// Used for tracking as well as information provided in transaction histories.
+        /// If transaction does not include Parcel.LandData, use the version which takes three paramaters instead.
+        /// </summary>
+        /// <param name="regionname">Name of the OpenSim region where this transaction is taking place.</param>
+        /// <param name="regionID">OpenSim UUID of the region where this transaction is taking place.</param>
+        /// <param name="txnType">String describing the type of transaction.  eg. ObjectBuy, PayObject, PayUser, etc.</param>
+        /// <param name="pld">Object (as Parcel.LandData) which is involved in this transaction (pass being purchased for it).</param>
+        /// <returns>OSDMap to be sent with the transaction request parameters.  Map contains six dictionary entries, each including an OSDArray.</returns>
+        private OSDMap buildBaseTransactionDescMap(string regionname, string regionID, string txnType, LandData pld)
+        {
+            // Build universal base descMap
+            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, txnType);
+
+            // Add base descMap details for transaciton involving an object/part
+            if (descMap != null && pld != null) {
+                addDescMapEntry(descMap, "location", "parcel-upper-corner-position", pld.AABBMax.ToString());
+                addDescMapEntry(descMap, "location", "parcel-lower-corner-position", pld.AABBMin.ToString());
+                addDescMapEntry(descMap, "location", "parcel-area", pld.Area.ToString());
+                addDescMapEntry(descMap, "transaction", "parcel-name", pld.Name);
+                addDescMapEntry(descMap, "transaction", "parcel-description", pld.Description);
+                addDescMapEntry(descMap, "transaction", "parcel-global-id", pld.GlobalID.ToString());
+                addDescMapEntry(descMap, "transaction", "parcel-local-id", pld.LocalID.ToString());
+                if (pld.IsGroupOwned) {
+                    addDescMapEntry(descMap, "transaction", "parcel-group-owner-id", pld.GroupID.ToString());
+                } else {
+                    addDescMapEntry(descMap, "transaction", "parcel-owner-name", resolveAgentName(pld.OwnerID));
+                }
+                addDescMapEntry(descMap, "transaction", "parcel-owner-id", pld.OwnerID.ToString());
+                addDescMapEntry(descMap, "transaction", "pass-hours", pld.PassHours.ToString());
+            }
+            return descMap;
+        }
+
+        /// <summary>
+        /// Helper function to add an entryName/entryValue pair to one of the three entryGroup array pairs for a descMap.
+        /// Used by buildBaseTransactionDescMap, and to add additional entries to a descMap created by buildBaseTransactionDescMap.
+        /// PRECONDITION: The descMap passed to this function must have been created and returned by buildBaseTransactionDescMap.
+        /// Any entryName/Value pairs added to a descMap passed to the transactU2U endpoint will be sent to Gloebit, tracked with the transaction, and will appear in the transaction history for all users who are a party to the transaction.
+        /// </summary>
+        /// <param name="descMap">descMap created by buildBaseTransactionDescMap.</param>
+        /// <param name="entryGroup">String group to which to add entryName/Value pair.  Must be one of {"platform", "location", "transactino"}.  Specifies group to which these details are most applicable.</param>
+        /// <param name="entryName">String providing the name for entry to be added.  This is the name users will see in their transaction history for this entry.</param>
+        /// <param name="entryValue">String providing the value for entry to be added.  This is the value users will see in their transaction history for this entry.</param>
+        private void addDescMapEntry(OSDMap descMap, string entryGroup, string entryName, string entryValue)
+        {
+
+            /****** ERROR CHECKING *******/
+            if (descMap == null) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add an entry to a NULL descMap.  entryGroup:{0} entryName:{1} entryValue:{2}", entryGroup, entryName, entryValue);
+                return;
+            }
+            if (entryGroup == null || entryName == null || entryValue == null) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add an entry to a descMap where one of the entry strings is NULL.  entryGroup:{0} entryName:{1} entryValue:{2}", entryGroup, entryName, entryValue);
+                return;
+            }
+            if (entryGroup == String.Empty || entryName == String.Empty) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add an entry to a descMap where entryGroup or entryName is the empty string.  entryGroup:{0} entryName:{1} entryValue:{2}", entryGroup, entryName, entryValue);
+                return;
+            }
+
+            List<string> permittedGroups = new List<string> {"platform", "location", "transaction"};
+            if (!permittedGroups.Contains(entryGroup)) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add a transaction description parameter in an entryGroup that is not be tracked by Gloebit.  entryGroup:{0} permittedGroups:{1} entryName:{2} entryValue:{3}", entryGroup, permittedGroups, entryName, entryValue);
+                return;
+            }
+
+            /******* ADD ENTRY TO PROPER ARRAYS ******/
+            switch (entryGroup) {
+            case "platform":
+                ((OSDArray)descMap["platform-names"]).Add(entryName);
+                ((OSDArray)descMap["platform-values"]).Add(entryValue);
+                break;
+            case "location":
+                ((OSDArray)descMap["location-names"]).Add(entryName);
+                ((OSDArray)descMap["location-values"]).Add(entryValue);
+                break;
+            case "transaction":
+                ((OSDArray)descMap["transaction-names"]).Add(entryName);
+                ((OSDArray)descMap["transaction-values"]).Add(entryValue);
+                break;
+            default:
+                // SHOULD NEVER GET HERE
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add a transaction description parameter in an entryGroup that is not be tracked by Gloebit and made it to defualt of switch statement.  entryGroup:{0} permittedGroups:{1} entryName:{2} entryValue:{3}", entryGroup, permittedGroups, entryName, entryValue);
+                break;
+            }
+            return;
+        }
+
+        #endregion // GMM Transaction Desc Map helpers
+
+        #endregion // GMM Transaction Submission
 
         #region Standalone box enablers only
         
@@ -3439,166 +3572,7 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         #endregion // event handlers
-        
-        /// <summary>
-        /// Helper function to build the minimal transaction description sent to the Gloebit transactU2U endpoint.
-        /// Used for tracking as well as information provided in transaction histories.
-        /// If transaction includes an object, use the version which takes a fourth paramater as a SceneObjectPart.
-        /// </summary>
-        /// <param name="regionname">Name of the OpenSim region where this transaction is taking place.</param>
-        /// <param name="regionID">OpenSim UUID of the region where this transaction is taking place.</param>
-        /// <param name="txnType">String describing the type of transaction.  eg. ObjectBuy, PayObject, PayUser, etc.</param>
-        /// <returns>OSDMap to be sent with the transaction request parameters.  Map contains six dictionary entries, each including an OSDArray.</returns>
-        private OSDMap buildBaseTransactionDescMap(string regionname, string regionID, string txnType)
-        {
-            // Create descMap
-            OSDMap descMap = new OSDMap();
-            
-            // Create arrays in descMap
-            descMap["platform-names"] = new OSDArray();
-            descMap["platform-values"] = new OSDArray();
-            descMap["location-names"] = new OSDArray();
-            descMap["location-values"] = new OSDArray();
-            descMap["transaction-names"] = new OSDArray();
-            descMap["transaction-values"] = new OSDArray();
-            
-            // Add base platform details
-            addDescMapEntry(descMap, "platform", "platform", "OpenSim");
-            addDescMapEntry(descMap, "platform", "version", m_opensimVersion);
-            addDescMapEntry(descMap, "platform", "version-number", m_opensimVersionNumber);
-            // TODO: Should we add hosting-provider or more?
-            
-            // Add base location details
-            addDescMapEntry(descMap, "location", "grid-name", m_gridname);
-            addDescMapEntry(descMap, "location", "grid-nick", m_gridnick);
-            addDescMapEntry(descMap, "location", "region-name", regionname);
-            addDescMapEntry(descMap, "location", "region-id", regionID);
-            
-            // Add base transaction details
-            //// TODO: change arg to toke a TxnTypeID, add that here, and create func to get the string name from a txnTypeId
-            addDescMapEntry(descMap, "transaction", "transaction-type", txnType);
-            
-            return descMap;
-        }
-        
-        /// <summary>
-        /// Helper function to build the minimal transaction description sent to the Gloebit transactU2U endpoint.
-        /// Used for tracking as well as information provided in transaction histories.
-        /// If transaction does not include an object, use the version which takes three paramaters instead.
-        /// </summary>
-        /// <param name="regionname">Name of the OpenSim region where this transaction is taking place.</param>
-        /// <param name="regionID">OpenSim UUID of the region where this transaction is taking place.</param>
-        /// <param name="txnType">String describing the type of transaction.  eg. ObjectBuy, PayObject, PayUser, etc.</param>
-        /// <param name="part">Object (as SceneObjectPart) which is involved in this transaction (being sold, being paid, paying user, etc.).</param>
-        /// <returns>OSDMap to be sent with the transaction request parameters.  Map contains six dictionary entries, each including an OSDArray.</returns>
-        private OSDMap buildBaseTransactionDescMap(string regionname, string regionID, string txnType, SceneObjectPart part)
-        {
-            // Build universal base descMap
-            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, txnType);
-            
-            // Add base descMap details for transaciton involving an object/part
-            if (descMap != null && part != null) {
-                addDescMapEntry(descMap, "location", "object-group-position", part.GroupPosition.ToString());
-                addDescMapEntry(descMap, "location", "object-absolute-position", part.AbsolutePosition.ToString());
-                addDescMapEntry(descMap, "transaction", "object-name", part.Name);
-                addDescMapEntry(descMap, "transaction", "object-description", part.Description);
-                addDescMapEntry(descMap, "transaction", "object-id", part.UUID.ToString());
-                addDescMapEntry(descMap, "transaction", "creator-name", resolveAgentName(part.CreatorID));
-                addDescMapEntry(descMap, "transaction", "creator-id", part.CreatorID.ToString());
-            }
-            return descMap;
-        }
-        
-        /// <summary>
-        /// Helper function to build the minimal transaction description sent to the Gloebit transactU2U endpoint.
-        /// Used for tracking as well as information provided in transaction histories.
-        /// If transaction does not include Parcel.LandData, use the version which takes three paramaters instead.
-        /// </summary>
-        /// <param name="regionname">Name of the OpenSim region where this transaction is taking place.</param>
-        /// <param name="regionID">OpenSim UUID of the region where this transaction is taking place.</param>
-        /// <param name="txnType">String describing the type of transaction.  eg. ObjectBuy, PayObject, PayUser, etc.</param>
-        /// <param name="pld">Object (as Parcel.LandData) which is involved in this transaction (pass being purchased for it).</param>
-        /// <returns>OSDMap to be sent with the transaction request parameters.  Map contains six dictionary entries, each including an OSDArray.</returns>
-        private OSDMap buildBaseTransactionDescMap(string regionname, string regionID, string txnType, LandData pld)
-        {
-            // Build universal base descMap
-            OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, txnType);
-            
-            // Add base descMap details for transaciton involving an object/part
-            if (descMap != null && pld != null) {
-                addDescMapEntry(descMap, "location", "parcel-upper-corner-position", pld.AABBMax.ToString());
-                addDescMapEntry(descMap, "location", "parcel-lower-corner-position", pld.AABBMin.ToString());
-                addDescMapEntry(descMap, "location", "parcel-area", pld.Area.ToString());
-                addDescMapEntry(descMap, "transaction", "parcel-name", pld.Name);
-                addDescMapEntry(descMap, "transaction", "parcel-description", pld.Description);
-                addDescMapEntry(descMap, "transaction", "parcel-global-id", pld.GlobalID.ToString());
-                addDescMapEntry(descMap, "transaction", "parcel-local-id", pld.LocalID.ToString());
-                if (pld.IsGroupOwned) {
-                    addDescMapEntry(descMap, "transaction", "parcel-group-owner-id", pld.GroupID.ToString());
-                } else {
-                    addDescMapEntry(descMap, "transaction", "parcel-owner-name", resolveAgentName(pld.OwnerID));
-                }
-                addDescMapEntry(descMap, "transaction", "parcel-owner-id", pld.OwnerID.ToString());
-                addDescMapEntry(descMap, "transaction", "pass-hours", pld.PassHours.ToString());
-            }
-            return descMap;
-        }
-        
-        /// <summary>
-        /// Helper function to add an entryName/entryValue pair to one of the three entryGroup array pairs for a descMap.
-        /// Used by buildBaseTransactionDescMap, and to add additional entries to a descMap created by buildBaseTransactionDescMap.
-        /// PRECONDITION: The descMap passed to this function must have been created and returned by buildBaseTransactionDescMap.
-        /// Any entryName/Value pairs added to a descMap passed to the transactU2U endpoint will be sent to Gloebit, tracked with the transaction, and will appear in the transaction history for all users who are a party to the transaction.
-        /// </summary>
-        /// <param name="descMap">descMap created by buildBaseTransactionDescMap.</param>
-        /// <param name="entryGroup">String group to which to add entryName/Value pair.  Must be one of {"platform", "location", "transactino"}.  Specifies group to which these details are most applicable.</param>
-        /// <param name="entryName">String providing the name for entry to be added.  This is the name users will see in their transaction history for this entry.</param>
-        /// <param name="entryValue">String providing the value for entry to be added.  This is the value users will see in their transaction history for this entry.</param>
-        private void addDescMapEntry(OSDMap descMap, string entryGroup, string entryName, string entryValue)
-        {
-            
-            /****** ERROR CHECKING *******/
-            if (descMap == null) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add an entry to a NULL descMap.  entryGroup:{0} entryName:{1} entryValue:{2}", entryGroup, entryName, entryValue);
-                return;
-            }
-            if (entryGroup == null || entryName == null || entryValue == null) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add an entry to a descMap where one of the entry strings is NULL.  entryGroup:{0} entryName:{1} entryValue:{2}", entryGroup, entryName, entryValue);
-                return;
-            }
-            if (entryGroup == String.Empty || entryName == String.Empty) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add an entry to a descMap where entryGroup or entryName is the empty string.  entryGroup:{0} entryName:{1} entryValue:{2}", entryGroup, entryName, entryValue);
-                return;
-            }
-            
-            List<string> permittedGroups = new List<string> {"platform", "location", "transaction"};
-            if (!permittedGroups.Contains(entryGroup)) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add a transaction description parameter in an entryGroup that is not be tracked by Gloebit.  entryGroup:{0} permittedGroups:{1} entryName:{2} entryValue:{3}", entryGroup, permittedGroups, entryName, entryValue);
-                return;
-            }
-            
-            /******* ADD ENTRY TO PROPER ARRAYS ******/
-            switch (entryGroup) {
-                case "platform":
-                    ((OSDArray)descMap["platform-names"]).Add(entryName);
-                    ((OSDArray)descMap["platform-values"]).Add(entryValue);
-                    break;
-                case "location":
-                    ((OSDArray)descMap["location-names"]).Add(entryName);
-                    ((OSDArray)descMap["location-values"]).Add(entryValue);
-                    break;
-                case "transaction":
-                    ((OSDArray)descMap["transaction-names"]).Add(entryName);
-                    ((OSDArray)descMap["transaction-values"]).Add(entryValue);
-                    break;
-                default:
-                    // SHOULD NEVER GET HERE
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] addDescMapEntry: Attempted to add a transaction description parameter in an entryGroup that is not be tracked by Gloebit and made it to defualt of switch statement.  entryGroup:{0} permittedGroups:{1} entryName:{2} entryValue:{3}", entryGroup, permittedGroups, entryName, entryValue);
-                    break;
-            }
-            return;
-        }
-        
+
         #region GMM User Messaging
         
         /******************************************/
@@ -3685,6 +3659,49 @@ namespace Gloebit.GloebitMoneyModule
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Deliver intro messaging for user in new session or new enviromnet.
+        /// --- "Welcome to area running Gloebit in Sandbox for app MYAPP"
+        /// </summary>
+        private void SendNewSessionMessaging(IClientAPI client, GloebitAPI.User user) {
+            // TODO: Add in AppName to messages if we have it -- may need a new endpoint.
+            string msg;
+            if (m_environment == GLBEnv.Sandbox) {
+                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Sandbox Mode for testing.  All payments and transactions are fake.  Try it out.", client.Name);
+            } else if (m_environment == GLBEnv.Production) {
+                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module.  You can transact with gloebits.", client.Name);
+            } else {
+                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in a Custom Devloper Mode.", client.Name);
+            }
+            // Add instructions for clicking balance to see auth or purchase url
+            // TODO: Should this be a separate message?
+            if (user.IsAuthed()) {
+                msg = String.Format("{0}\nClick on your balance in the top right to purchase more gloebits.", msg);
+            } else {
+                msg = String.Format("{0}\nClick on your balance in the top right to link this avatar on this app to your Gloebit account.", msg);
+
+            }
+            // Delay messaging for a cleaner experience
+            int delay = 1; // Delay 1 seconds on crossing or teleport where viewer is already loaded
+            if (LoginBalanceRequest.ExistsAndJustLoggedIn(client.AgentId)) {
+                delay = 10; // Delay 10 seconds if viewer isn't fully loaded, shows up as offline while away
+            }
+            Thread welcomeMessageThread = new Thread(delegate() {
+                Thread.Sleep(delay * 1000);  // Delay miliseconds
+                // Deliver welcome message
+                sendMessageToClient(client, msg, client.AgentId);
+                // If authed, delivery url where user can purchase gloebits
+                if (user.IsAuthed()) {
+                    // Uri url = m_api.BuildPurchaseURI(BaseURI, user);
+                    // SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                } else {
+                    // If not Authed, request auth.
+                    m_api.Authorize(user, client.Name, BaseURI);
+                }
+            });
+            welcomeMessageThread.Start();
         }
         
         /// <summary>
