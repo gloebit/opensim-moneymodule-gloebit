@@ -235,11 +235,7 @@ namespace Gloebit.GloebitMoneyModule
             }
 
             if(m_configured) {
-                //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
-                m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
-                GloebitUserData.Initialise(m_dbProvider, m_dbConnectionString);
-                GloebitTransactionData.Initialise(m_dbProvider, m_dbConnectionString);
-                GloebitSubscriptionData.Initialise(m_dbProvider, m_dbConnectionString);
+                InitGloebitAPI();
             }
         }
 
@@ -1091,6 +1087,22 @@ namespace Gloebit.GloebitMoneyModule
         #endregion // IMoneyModule members
 
         #region GMM Transaction Submission
+
+        /// <summary>
+        /// Configure the GloebitAPI details for connecting to the Gloebit service
+        /// --- key & secret identifying the Gloebit app
+        /// --- URL of environment to use -- TODO: make this simply an environment and set URL in GAPI
+        /// --- Callback interfaces for async operations and enacting of delivery of assets
+        /// Initialize DB connections
+        /// </summary>
+        private void InitGloebitAPI()
+        {
+            //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
+            m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
+            GloebitUserData.Initialise(m_dbProvider, m_dbConnectionString);
+            GloebitTransactionData.Initialise(m_dbProvider, m_dbConnectionString);
+            GloebitSubscriptionData.Initialise(m_dbProvider, m_dbConnectionString);
+        }
 
         /***
          * All commerce flows must 
