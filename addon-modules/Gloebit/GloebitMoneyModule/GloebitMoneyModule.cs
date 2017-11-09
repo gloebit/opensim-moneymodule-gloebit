@@ -1230,14 +1230,80 @@ namespace Gloebit.GloebitMoneyModule
 
         #region GMM Transaction Submission
 
-        /***
-         * All commerce flows must 
-         * 1. Have a transaction type defined
-         * 2. build a transaction (which includes a set of information common to all transactions)
-         * 3. build a transaction description map of additional dynamic information specific to this transaction
-         * 4. submit the transaction (with description and description map
-         *** TODO: fill in rest of requirements (enact etc).
-         ***/
+        /****************
+         * To add a new commerce flow:
+         * 1. Add a TransactionType enum.
+         *    Define a new TransationType for the flow which should be supplied by triggering event.
+         *    Add this TransactionType to the switch statement of a receiving event for processing this flow.
+         * 2. Handle TransactionPrecheckFailures
+         *    Define any newly necessary TransactionPrecheckFailure enums not already created.
+         *    Call alertUsersTransactionPreparationFailure() as necessary from the interface function handling processing.
+         *    Edit alertUsersTransactionPrepartionFailure() as neccessary to provide specific messaging for this new TransactionType.
+         * 3. Compile info to be supplied in user's transaction history on gloebit.com 
+         *    Call buildBaseTransactionDescMap
+         *    If more info is needed, either create a new override for buildBaseTransactionDescMap, or
+         *    call addDescMapEntry to add elements one at a time to the base map.
+         *    Create a description string to be displayed as the primary transaction description
+         * 4. Build the Transaction
+         *    Supply the proper information to buildTransaction().
+         *    If you will need additional information when processing this transaction which you can not store in the default 
+         *    transaction parameters, then you will need to create a new dictionary to map the transaction UUID to the asset 
+         *    information you'll require.
+         *    If this is a subscription transaction, you'll also need to create or retrieve the subscription authorization.
+         * 5. Submit the Transaction to Gloebit
+         *    Call SubmitTransaction() or SubmitSyncTransaction() and supply the transaction, description and descMap 
+         *    for this transaction type.
+         * 6. Implement delivery of asset related to payment (see region GMM IAssetCallback Interface)
+         *    Add this TransactionType to processAssetEnactHold(), processAssetConsumeHold(), processAssetCancelHold()
+         *    to handle the particulars of asset delivery for this TransactionType
+         *    These will be triggered by Gloebit during processing of this transaction
+         * 7. Provide messaging to user throughout transaction (see region GMM User Messaging)
+         *    Add this TransactionType to alertUsersTransactionBegun()
+         *    As necessary, add this TransactionType to alertUsersTransactionStageCompleted(), alertUsersTransactionFailed()
+         *    and alertUsersTransactionSucceeded() to supply transaction specific messaging.
+         ****************/
+
+        #region GMM Transaction enums
+
+        // TODO: consider replacing with libOpenMetaverse MoneyTransactionType
+        // https://github.com/openmetaversefoundation/libopenmetaverse/blob/master/OpenMetaverse/AgentManager.cs#L342
+        public enum TransactionType : int
+        {
+            /* Fees */
+            FEE_GROUP_CREATION  = 1002,             // comes through ApplyCharge
+            FEE_UPLOAD_ASSET    = 1101,             // comes through ApplyUploadCharge
+            FEE_CLASSIFIED_AD   = 1103,             // comes through ApplyCharge
+            FEE_GENERAL         = 1104,             // here for anything we're unaware of yet.
+
+            /* Purchases */
+            USER_BUYS_OBJECT    = 5000,             // comes through ObjectBuy
+            USER_PAYS_USER      = 5001,             // comes through OnMoneyTransfer
+            USER_BUYS_LAND      = 5002,             // comes through scene events OnValidateLandBuy and OnLandBuy
+            REFUND              = 5005,             // not yet implemented
+            USER_BUYS_LANDPASS  = 5006,             // comes through ParcelBuyPass pre 0.9.1; MoveMoney post 0.9.1
+            USER_PAYS_OBJECT    = 5008,             // comes through OnMoneyTransfer
+
+            /* Auto-Debit Subscription */
+            OBJECT_PAYS_USER    = 5009,             // script auto debit owner - comes thorugh ObjectGiveMoney
+
+            /* Catch-all for unimplemented MoveMoney types */
+            MOVE_MONEY_GENERAL  = 5011,             // Unimplemented MoveMoney - will fail.
+        }
+
+        public enum TransactionPrecheckFailure : int
+        {
+            BUYING_DISABLED,
+            OBJECT_NOT_FOUND,
+            AMOUNT_MISMATCH,
+            SALE_TYPE_INVALID,
+            SALE_TYPE_MISMATCH,
+            BUY_SELL_MODULE_INACCESSIBLE,
+            LAND_VALIDATION_FAILED,
+            EXISTING_TRANSACTION_ID,
+            GROUP_OWNED,
+        }
+
+        #endregion // GMM Transaction enums
         
         /// <summary>
         /// Build a GloebitAPI.Transaction for a specific TransactionType.  This Transaction will be:
@@ -4595,49 +4661,7 @@ namespace Gloebit.GloebitMoneyModule
         }
         
         #endregion // GMM User Messaging
-        
-        #region GMM enums
-        
-        // TODO: consider replacing with libOpenMetaverse MoneyTransactionType
-        // https://github.com/openmetaversefoundation/libopenmetaverse/blob/master/OpenMetaverse/AgentManager.cs#L342
-        public enum TransactionType : int
-        {
-            /* Fees */
-            FEE_GROUP_CREATION  = 1002,             // comes through ApplyCharge
-            FEE_UPLOAD_ASSET    = 1101,             // comes through ApplyUploadCharge
-            FEE_CLASSIFIED_AD   = 1103,             // comes through ApplyCharge
-            FEE_GENERAL         = 1104,             // here for anything we're unaware of yet.
-            
-            /* Purchases */
-            USER_BUYS_OBJECT    = 5000,             // comes through ObjectBuy
-            USER_PAYS_USER      = 5001,             // comes through OnMoneyTransfer
-            USER_BUYS_LAND      = 5002,             // comes through scene events OnValidateLandBuy and OnLandBuy
-            REFUND              = 5005,             // not yet implemented
-            USER_BUYS_LANDPASS  = 5006,             // comes through ParcelBuyPass pre 0.9.1; MoveMoney post 0.9.1
-            USER_PAYS_OBJECT    = 5008,             // comes through OnMoneyTransfer
-            
-            /* Auto-Debit Subscription */
-            OBJECT_PAYS_USER    = 5009,             // script auto debit owner - comes thorugh ObjectGiveMoney
-            
-            /* Catch-all for unimplemented MoveMoney types */
-            MOVE_MONEY_GENERAL  = 5011,             // Unimplemented MoveMoney - will fail.
-        }
-        
-        public enum TransactionPrecheckFailure : int
-        {
-            BUYING_DISABLED,
-            OBJECT_NOT_FOUND,
-            AMOUNT_MISMATCH,
-            SALE_TYPE_INVALID,
-            SALE_TYPE_MISMATCH,
-            BUY_SELL_MODULE_INACCESSIBLE,
-            LAND_VALIDATION_FAILED,
-            EXISTING_TRANSACTION_ID,
-            GROUP_OWNED,
-        }
-        
-        #endregion // GMM enums
-        
+
         #region GMM helper classes
         
         // TODO: Can these be moved to another file?  Do they need to be in the GMM class?
