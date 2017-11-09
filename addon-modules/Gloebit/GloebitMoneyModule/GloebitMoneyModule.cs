@@ -893,8 +893,8 @@ namespace Gloebit.GloebitMoneyModule
             m_log.DebugFormat("[GLOEBITMONEYMODULE] GetBalance for agent {0}", agentID);
             
             // forceAuthOnInvalidToken = false.  If another system is calling this frequently, it will prevent spamming of users with auth requests.
-            // client is null as it is only needed to request auth.
-            return (int)GetAgentBalance(agentID, null, false);
+            // userName is empty string as it is only needed to request auth.
+            return (int)GetAgentBalance(agentID, false, String.Empty);
         }
 
         // Please do not refactor these to be just one method
@@ -2491,13 +2491,13 @@ namespace Gloebit.GloebitMoneyModule
         /// <summary>
         /// Retrieves the gloebit balance of the gloebit account linked to the OpenSim agent defined by the agentID.
         /// If there is no token, or an invalid token on file, and forceAuthOnInvalidToken is true, we request authorization from the user.
+        /// If we request authorization, the userName is provided to that API Authorize function.  Otherwise, it is not used.
         /// </summary>
         /// <param name="agentID">OpenSim AgentID for the user whose balance is being requested</param>
-        /// <param name="client">IClientAPI for agent.  Need to pass this in because locating returns null when called from OnNewClient.
-        ///                         moved to OnCompleteMovementToRegion, but may still be more efficient until removed from auth.</param>
         /// <param name ="forceAuthOnInvalidToken">Bool indicating whether we should request auth on failures from lack of auth</param>
+        /// <param name="userName">string name of the Agent in this application.</param>
         /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
-        private double GetAgentBalance(UUID agentID, IClientAPI client, bool forceAuthOnInvalidToken)
+        private double GetAgentBalance(UUID agentID, bool forceAuthOnInvalidToken, string userName)
         {
             m_log.DebugFormat("[GLOEBITMONEYMODULE] GetAgentBalance AgentID:{0}", agentID);
             double returnfunds = 0.0;
@@ -2522,7 +2522,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             if (needsAuth && forceAuthOnInvalidToken) {
-                m_api.Authorize(user, client.Name, BaseURI);
+                m_api.Authorize(user, userName, BaseURI);
             }
             
             return returnfunds;
@@ -2551,7 +2551,7 @@ namespace Gloebit.GloebitMoneyModule
             try
             {
                 // Request balance from Gloebit.  Request Auth from Gloebit if necessary
-                realBal = GetAgentBalance(agentID, client, true);
+                realBal = GetAgentBalance(agentID, true, client.Name);
             }
             catch (Exception e)
             {
@@ -4578,13 +4578,13 @@ namespace Gloebit.GloebitMoneyModule
                     payerClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], txn.PayerEndingBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
                 } else {
                     // TODO: consider what this delays while it makes non async call GetBalance from GetAgentBalance call get balance
-                    int payerBalance = (int)GetAgentBalance(txn.PayerID, payerClient, true);
+                    int payerBalance = (int)GetAgentBalance(txn.PayerID, true, payerClient.Name);
                     payerClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payerBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
                 }
             }
             if ((payeeClient != null) && (txn.PayerID != txn.PayeeID)) {
                 // TODO: consider what this delays while it makes non async call GetBalance from GetAgentBalance call get balance
-                int payeeBalance = (int)GetAgentBalance(txn.PayeeID, payeeClient, false);
+                int payeeBalance = (int)GetAgentBalance(txn.PayeeID, false, payeeClient.Name);
                 payeeClient.SendMoneyBalance(txn.TransactionID, true, new byte[0], payeeBalance, txn.TransactionType, txn.PayerID, false, txn.PayeeID, false, txn.Amount, txn.PartDescription);
             }
         }
