@@ -1104,11 +1104,6 @@ namespace Gloebit.GloebitMoneyModule
          * Configuration parameters must be loaded before the API is initialized
          * API must be initialized with those parameters
          * DB connections must be initialized/established
-         * GloebitAPI.User.Get() should be called to create or retrieve an AppUser
-         * --- There is not one central GMM function for this as it is done throughout the
-         * --- GMM, but it may later be centralized.
-         * --- See SendNewSessionMessaging() func for closest thing to a StartUserSession().
-         * GloebitAPI.User.Cleanup() should be called to free up memory when a User is no longer active
          *******************/
 
         /// <summary>
@@ -1129,9 +1124,111 @@ namespace Gloebit.GloebitMoneyModule
 
         #endregion // GMM API Setup
 
+        #region GMM User Auth and Balance
+
+        /***************
+         * GloebitAPI.User.Get() should be called to create or retrieve an AppUser
+         * --- There is not one central GMM function for this as it is done throughout the
+         * --- GMM, but it may later be centralized.
+         * --- See SendNewSessionMessaging() func for closest thing to a StartUserSession().
+         * GloebitAPI.User.Cleanup() should be called to free up memory when a User is no longer active
+         * calling UpdateBalance() or GetAgentBalance() func with forceAuthoOnInvalidToken=true
+         * --- is simplest way to ensure user is authorized and ready to proceed with transactions.
+         ***************/
+
+        /// <summary>
+        /// Retrieves the gloebit balance of the gloebit account linked to the OpenSim agent defined by the agentID.
+        /// If there is no token, or an invalid token on file, and forceAuthOnInvalidToken is true, we request authorization from the user.
+        /// If we request authorization, the userName is provided to that API Authorize function.  Otherwise, it is not used.
+        /// </summary>
+        /// <param name="agentID">OpenSim AgentID for the user whose balance is being requested</param>
+        /// <param name ="forceAuthOnInvalidToken">Bool indicating whether we should request auth on failures from lack of auth</param>
+        /// <param name="userName">string name of the Agent in this application.</param>
+        /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
+        private double GetAgentBalance(UUID agentID, bool forceAuthOnInvalidToken, string userName)
+        {
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] GetAgentBalance AgentID:{0}", agentID);
+            double returnfunds = 0.0;
+            bool needsAuth = false;
+
+            // Get User for agent
+            GloebitAPI.User user = GloebitAPI.User.Get(m_api, agentID);
+            if(!user.IsAuthed()) {
+                // If no auth token on file, request authorization.
+                needsAuth = true;
+            } else {
+                returnfunds = m_api.GetBalance(user, out needsAuth);
+                // if GetBalance fails due to invalidToken, needsAuth is set to true
+
+                // Fix for having a few old tokens out in the wild without an app_user_id stored as the user.GloebitID
+                // TODO: Remove this  once it's been released for awhile, as this fix should only be necessary for a short time.
+                if (String.IsNullOrEmpty(user.GloebitID) || user.GloebitID == UUID.Zero.ToString()) {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GetAgentBalance AgentID:{0} INVALIDATING TOKEN FROM GMM", agentID);
+                    user.InvalidateToken();
+                    needsAuth = true;
+                }
+            }
+
+            if (needsAuth && forceAuthOnInvalidToken) {
+                m_api.Authorize(user, userName, BaseURI);
+            }
+
+            return returnfunds;
+        }
+
+        /// <summary>
+        /// Requests the user's balance from Gloebit if authorized.
+        /// If not authorized, sends an auth request to the user.
+        /// Sends the balance to the client (or sends 0 if failure due to lack of auth).
+        /// If the balance is less than the purchaseIndicator, sends the purchase url to the user.
+        /// NOTE: Does not provide any transaction details in the SendMoneyBalance call.  Do not use this helper for updates within a transaction.
+        /// </summary>
+        /// <param name="agentID">OpenSim AgentID for the user whose balance is being updated.</param>
+        /// <param name="client">IClientAPI for agent.  Need to pass this in because locating returns null when called from OnNewClient.
+        ///                      moved to OnCompleteMovementToRegion, but haven't tested if locating is still null.
+        ///                      also have not yet compared efficiency to removing and calling resolveAgentName.</param>
+        /// <param name ="purchaseIndicator">int indicating whether we should deliver the purchase url to the user when we have an authorized user.
+        ///                 -1: always deliver
+        ///                 0: never deliver
+        ///                 positive number: deliver if user's balance is below this indicator
+        /// </param>
+        /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
+        private double UpdateBalance(UUID agentID, IClientAPI client, int purchaseIndicator)
+        {
+            int returnfunds = 0;
+            double realBal = 0.0;
+
+            try
+            {
+                // Request balance from Gloebit.  Request Auth from Gloebit if necessary
+                realBal = GetAgentBalance(agentID, true, client.Name);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] UpdateBalance Failure, Exception:{0}",e.Message);
+                client.SendAlertMessage(e.Message + " ");
+            }
+
+            // Get balance rounded down (may not be int for merchants)
+            returnfunds = (int)realBal;
+            // NOTE: if updating as part of a transaction, call SendMoneyBalance directly with transaction information instead of using UpdateBalance
+            client.SendMoneyBalance(UUID.Zero, true, new byte[0], returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+
+            if (purchaseIndicator == -1 || purchaseIndicator > returnfunds) {
+                // Send purchase URL to make it easy to find out how to buy more gloebits.
+                GloebitAPI.User u = GloebitAPI.User.Get(m_api, client.AgentId);
+                if (u.IsAuthed()) {
+                    // Deliver Purchase URI in case the helper-uri is not working
+                    Uri url = m_api.BuildPurchaseURI(BaseURI, u);
+                    SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
+                }
+            }
+            return realBal;
+        }
+
+        #endregion //GMM User Auth and Balance
+
         #region GMM Transaction Submission
-
-
 
         /***
          * All commerce flows must 
@@ -2485,98 +2582,6 @@ namespace Gloebit.GloebitMoneyModule
         }
         
         #endregion // GMM Asset Enact Helpers
-
-        #region local Fund Management
-
-        /// <summary>
-        /// Retrieves the gloebit balance of the gloebit account linked to the OpenSim agent defined by the agentID.
-        /// If there is no token, or an invalid token on file, and forceAuthOnInvalidToken is true, we request authorization from the user.
-        /// If we request authorization, the userName is provided to that API Authorize function.  Otherwise, it is not used.
-        /// </summary>
-        /// <param name="agentID">OpenSim AgentID for the user whose balance is being requested</param>
-        /// <param name ="forceAuthOnInvalidToken">Bool indicating whether we should request auth on failures from lack of auth</param>
-        /// <param name="userName">string name of the Agent in this application.</param>
-        /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
-        private double GetAgentBalance(UUID agentID, bool forceAuthOnInvalidToken, string userName)
-        {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] GetAgentBalance AgentID:{0}", agentID);
-            double returnfunds = 0.0;
-            bool needsAuth = false;
-            
-            // Get User for agent
-            GloebitAPI.User user = GloebitAPI.User.Get(m_api, agentID);
-            if(!user.IsAuthed()) {
-                // If no auth token on file, request authorization.
-                needsAuth = true;
-            } else {
-                returnfunds = m_api.GetBalance(user, out needsAuth);
-                // if GetBalance fails due to invalidToken, needsAuth is set to true
-                
-                // Fix for having a few old tokens out in the wild without an app_user_id stored as the user.GloebitID
-                // TODO: Remove this  once it's been released for awhile, as this fix should only be necessary for a short time.
-                if (String.IsNullOrEmpty(user.GloebitID) || user.GloebitID == UUID.Zero.ToString()) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GetAgentBalance AgentID:{0} INVALIDATING TOKEN FROM GMM", agentID);
-                    user.InvalidateToken();
-                    needsAuth = true;
-                }
-            }
-            
-            if (needsAuth && forceAuthOnInvalidToken) {
-                m_api.Authorize(user, userName, BaseURI);
-            }
-            
-            return returnfunds;
-        }
-        
-        /// <summary>
-        /// Requests the user's balance from Gloebit if authorized.
-        /// If not authorized, sends an auth request to the user.
-        /// Sends the balance to the client (or sends 0 if failure due to lack of auth).
-        /// If the balance is less than the purchaseIndicator, sends the purchase url to the user.
-        /// NOTE: Does not provide any transaction details in the SendMoneyBalance call.  Do not use this helper for updates within a transaction.
-        /// </summary>
-        /// <param name="agentID">OpenSim AgentID for the user whose balance is being updated.</param>
-        /// <param name="client">IClientAPI for agent.  Need to pass this in because locating returns null when called from OnNewClient</param>
-        /// <param name ="purchaseIndicator">int indicating whether we should deliver the purchase url to the user when we have an authorized user.
-        ///                 -1: always deliver
-        ///                 0: never deliver
-        ///                 positive number: deliver if user's balance is below this indicator
-        /// </param>
-        /// <returns>Gloebit balance for the gloebit account linked to this OpenSim agent or 0.0.</returns>
-        private double UpdateBalance(UUID agentID, IClientAPI client, int purchaseIndicator)
-        {
-            int returnfunds = 0;
-            double realBal = 0.0;
-            
-            try
-            {
-                // Request balance from Gloebit.  Request Auth from Gloebit if necessary
-                realBal = GetAgentBalance(agentID, true, client.Name);
-            }
-            catch (Exception e)
-            {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] UpdateBalance Failure, Exception:{0}",e.Message);
-                client.SendAlertMessage(e.Message + " ");
-            }
-            
-            // Get balance rounded down (may not be int for merchants)
-            returnfunds = (int)realBal;
-            // NOTE: if updating as part of a transaction, call SendMoneyBalance directly with transaction information instead of using UpdateBalance
-            client.SendMoneyBalance(UUID.Zero, true, new byte[0], returnfunds, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
-            
-            if (purchaseIndicator == -1 || purchaseIndicator > returnfunds) {
-                // Send purchase URL to make it easy to find out how to buy more gloebits.
-                GloebitAPI.User u = GloebitAPI.User.Get(m_api, client.AgentId);
-                if (u.IsAuthed()) {
-                    // Deliver Purchase URI in case the helper-uri is not working
-                    Uri url = m_api.BuildPurchaseURI(BaseURI, u);
-                    SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
-                }
-            }
-            return realBal;
-        }
-
-        #endregion
 
         #region Utility Helpers
 
