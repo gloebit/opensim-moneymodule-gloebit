@@ -1263,6 +1263,9 @@ namespace Gloebit.GloebitMoneyModule
          *    and alertUsersTransactionSucceeded() to supply transaction specific messaging.
          ****************/
 
+        // TODO: Consider if we could use classes for different transaction types to group the entire transaction flow and 
+        // messaging into one area.
+
         #region GMM Transaction enums
 
         // TODO: consider replacing with libOpenMetaverse MoneyTransactionType
@@ -1676,144 +1679,6 @@ namespace Gloebit.GloebitMoneyModule
 
         #endregion // GMM Transaction Submission
 
-        #region Standalone box enablers only
-        
-        /*****************************************************************************************************
-         * On a standalone grid (single sim server.  not robust)
-         * - These functions can handle the the calls to the currency helper-uri if it is configured to point
-         *   at the sim.
-         * - These functions handle some pre-flight checks which enable a land sales and provide some useful
-         *   messaging for the buy-currency and insufficient-funds flows.  Unfortunately, we can not handle
-         *   purchasing of currency directly through this flow.
-         * - On a robust grid, these calls are not captured by these XmlRpc handlers.  The grid requires
-         *   landtool.php and currency.php helper scripts in the directory pointed at by the currency
-         *   helper-uri.  The landtool.php can provide the same functionality, but the currency.php file
-         *   doesn't have access to the region of the transaction and therefor doesn't know what money
-         *   module is enabled on a grid with multiple or in the case of a Gloebit region, if the user
-         *   is authorized, so the flow here can not reach parity with the module handling these calls
-         *   directly.  We are hoping to work with the core team to improve this interface eventually.
-         * - We do provide a currency helper uri and currency symbol in the OpenSim Extras for viewers
-         *   which would like to attempt to direct the land and currency calls at the region, but we don't
-         *   know if any have implemented this or tested it yet.
-         *****************************************************************************************************/
-
-        private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
-        {
-            Hashtable requestData = (Hashtable) request.Params[0];
-
-            string agentIdStr = requestData["agentId"] as string;
-            UUID agentId = UUID.Parse(agentIdStr);
-            UUID sessionId = UUID.Parse(requestData["secureSessionId"] as string);
-            int amount = (int) requestData["currencyBuy"];
-
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func agentId: {0} sessionId: {1} currencyBuy: {2}", agentId, sessionId, amount);
-            // foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
-
-            XmlRpcResponse returnval = new XmlRpcResponse();
-            Hashtable quoteResponse = new Hashtable();
-            Hashtable currencyResponse = new Hashtable();
-
-            currencyResponse.Add("estimatedCost", amount / 2);
-            currencyResponse.Add("currencyBuy", amount);
-
-            quoteResponse.Add("success", true);
-            quoteResponse.Add("currency", currencyResponse);
-
-            // TODO - generate a unique confirmation token
-            quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
-
-            GloebitAPI.User user = GloebitAPI.User.Get(m_api, agentId);
-            if (!user.IsAuthed()) {
-                IClientAPI client = LocateClientObject(agentId);
-                m_api.Authorize(user, client.Name, BaseURI);
-            }
-
-            returnval.Value = quoteResponse;
-            return returnval;
-        }
-
-        private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
-        {
-            Hashtable requestData = (Hashtable) request.Params[0];
-            UUID agentId = UUID.Parse(requestData["agentId"] as string);
-            string confirm = requestData["confirm"] as string;
-            int currencyBuy = (int) requestData["currencyBuy"];
-            int estimatedCost = (int) requestData["estimatedCost"];
-            string secureSessionId = requestData["secureSessionId"] as string;
-
-            // currencyBuy:viewerMinorVersion:secureSessionId:viewerBuildVersion:estimatedCost:confirm:agentId:viewerPatchVersion:viewerMajorVersion:viewerChannel:language
- 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
-                agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
-
-            GloebitAPI.User u = GloebitAPI.User.Get(m_api, agentId);
-            Uri url = m_api.BuildPurchaseURI(BaseURI, u);
-            string message = String.Format("Unfortunately we cannot yet sell Gloebits directly in the viewer.  Please visit {0} to buy Gloebits.", url);
-
-            XmlRpcResponse returnval = new XmlRpcResponse();
-            Hashtable returnresp = new Hashtable();
-            returnresp.Add("success", false);
-            returnresp.Add("errorMessage", message);
-            returnresp.Add("errorUrl", url);
-            returnval.Value = returnresp;
-            return returnval;
-        }
-
-        private XmlRpcResponse preflightBuyLandPrep_func(XmlRpcRequest request, IPEndPoint remoteClient)
-        {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] preflightBuyLandPrep_func");
-            XmlRpcResponse ret = new XmlRpcResponse();
-            Hashtable retparam = new Hashtable();
-            Hashtable membershiplevels = new Hashtable();
-            ArrayList levels = new ArrayList();
-            Hashtable level = new Hashtable();
-            level.Add("id", "00000000-0000-0000-0000-000000000000");
-            level.Add("description", "some level");
-            levels.Add(level);
-            //membershiplevels.Add("levels",levels);
-
-            Hashtable landuse = new Hashtable();
-            landuse.Add("upgrade", false);
-            landuse.Add("action", "http://invaliddomaininvalid.com/");
-
-            Hashtable currency = new Hashtable();
-            currency.Add("estimatedCost", 0);
-
-            Hashtable membership = new Hashtable();
-            membershiplevels.Add("upgrade", false);
-            membershiplevels.Add("action", "http://invaliddomaininvalid.com/");
-            membershiplevels.Add("levels", membershiplevels);
-
-            retparam.Add("success", true);
-            retparam.Add("currency", currency);
-            retparam.Add("membership", membership);
-            retparam.Add("landuse", landuse);
-            retparam.Add("confirm", "asdfajsdkfjasdkfjalsdfjasdf");
-
-            ret.Value = retparam;
-
-            return ret;
-        }
-
-        private XmlRpcResponse landBuy_func(XmlRpcRequest request, IPEndPoint remoteClient)
-        {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] landBuy_func");
-            XmlRpcResponse ret = new XmlRpcResponse();
-            Hashtable retparam = new Hashtable();
-            // Hashtable requestData = (Hashtable) request.Params[0];
-
-            // UUID agentId = UUID.Zero;
-            // int amount = 0;
-           
-            retparam.Add("success", true);
-            ret.Value = retparam;
-
-            return ret;
-        }
-        
-        #endregion // Standalone box enablers only
-        
         #region GMM HTTP Callback Entrance Points
         
         /*********************************************************/
@@ -3736,6 +3601,144 @@ namespace Gloebit.GloebitMoneyModule
         #endregion // Commerce Event Handlers
 
         #endregion // Event Handlers
+
+        #region XML RPC Handlers
+
+        /*****************************************************************************************************
+         * On a standalone grid (single sim server.  not robust)
+         * - These functions can handle the the calls to the currency helper-uri if it is configured to point
+         *   at the sim.
+         * - These functions handle some pre-flight checks which enable a land sales and provide some useful
+         *   messaging for the buy-currency and insufficient-funds flows.  Unfortunately, we can not handle
+         *   purchasing of currency directly through this flow.
+         * - On a robust grid, these calls are not captured by these XmlRpc handlers.  The grid requires
+         *   landtool.php and currency.php helper scripts in the directory pointed at by the currency
+         *   helper-uri.  The landtool.php can provide the same functionality, but the currency.php file
+         *   doesn't have access to the region of the transaction and therefor doesn't know what money
+         *   module is enabled on a grid with multiple or in the case of a Gloebit region, if the user
+         *   is authorized, so the flow here can not reach parity with the module handling these calls
+         *   directly.  We are hoping to work with the core team to improve this interface eventually.
+         * - We do provide a currency helper uri and currency symbol in the OpenSim Extras for viewers
+         *   which would like to attempt to direct the land and currency calls at the region, but we don't
+         *   know if any have implemented this or tested it yet.
+         *****************************************************************************************************/
+
+        private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
+        {
+            Hashtable requestData = (Hashtable) request.Params[0];
+
+            string agentIdStr = requestData["agentId"] as string;
+            UUID agentId = UUID.Parse(agentIdStr);
+            UUID sessionId = UUID.Parse(requestData["secureSessionId"] as string);
+            int amount = (int) requestData["currencyBuy"];
+
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] quote_func agentId: {0} sessionId: {1} currencyBuy: {2}", agentId, sessionId, amount);
+            // foreach(DictionaryEntry e in requestData) { m_log.InfoFormat("{0}: {1}", e.Key, e.Value); }
+
+            XmlRpcResponse returnval = new XmlRpcResponse();
+            Hashtable quoteResponse = new Hashtable();
+            Hashtable currencyResponse = new Hashtable();
+
+            currencyResponse.Add("estimatedCost", amount / 2);
+            currencyResponse.Add("currencyBuy", amount);
+
+            quoteResponse.Add("success", true);
+            quoteResponse.Add("currency", currencyResponse);
+
+            // TODO - generate a unique confirmation token
+            quoteResponse.Add("confirm", "asdfad9fj39ma9fj");
+
+            GloebitAPI.User user = GloebitAPI.User.Get(m_api, agentId);
+            if (!user.IsAuthed()) {
+                IClientAPI client = LocateClientObject(agentId);
+                m_api.Authorize(user, client.Name, BaseURI);
+            }
+
+            returnval.Value = quoteResponse;
+            return returnval;
+        }
+
+        private XmlRpcResponse buy_func(XmlRpcRequest request, IPEndPoint remoteClient)
+        {
+            Hashtable requestData = (Hashtable) request.Params[0];
+            UUID agentId = UUID.Parse(requestData["agentId"] as string);
+            string confirm = requestData["confirm"] as string;
+            int currencyBuy = (int) requestData["currencyBuy"];
+            int estimatedCost = (int) requestData["estimatedCost"];
+            string secureSessionId = requestData["secureSessionId"] as string;
+
+            // currencyBuy:viewerMinorVersion:secureSessionId:viewerBuildVersion:estimatedCost:confirm:agentId:viewerPatchVersion:viewerMajorVersion:viewerChannel:language
+
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
+                agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
+
+            GloebitAPI.User u = GloebitAPI.User.Get(m_api, agentId);
+            Uri url = m_api.BuildPurchaseURI(BaseURI, u);
+            string message = String.Format("Unfortunately we cannot yet sell Gloebits directly in the viewer.  Please visit {0} to buy Gloebits.", url);
+
+            XmlRpcResponse returnval = new XmlRpcResponse();
+            Hashtable returnresp = new Hashtable();
+            returnresp.Add("success", false);
+            returnresp.Add("errorMessage", message);
+            returnresp.Add("errorUrl", url);
+            returnval.Value = returnresp;
+            return returnval;
+        }
+
+        private XmlRpcResponse preflightBuyLandPrep_func(XmlRpcRequest request, IPEndPoint remoteClient)
+        {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] preflightBuyLandPrep_func");
+            XmlRpcResponse ret = new XmlRpcResponse();
+            Hashtable retparam = new Hashtable();
+            Hashtable membershiplevels = new Hashtable();
+            ArrayList levels = new ArrayList();
+            Hashtable level = new Hashtable();
+            level.Add("id", "00000000-0000-0000-0000-000000000000");
+            level.Add("description", "some level");
+            levels.Add(level);
+            //membershiplevels.Add("levels",levels);
+
+            Hashtable landuse = new Hashtable();
+            landuse.Add("upgrade", false);
+            landuse.Add("action", "http://invaliddomaininvalid.com/");
+
+            Hashtable currency = new Hashtable();
+            currency.Add("estimatedCost", 0);
+
+            Hashtable membership = new Hashtable();
+            membershiplevels.Add("upgrade", false);
+            membershiplevels.Add("action", "http://invaliddomaininvalid.com/");
+            membershiplevels.Add("levels", membershiplevels);
+
+            retparam.Add("success", true);
+            retparam.Add("currency", currency);
+            retparam.Add("membership", membership);
+            retparam.Add("landuse", landuse);
+            retparam.Add("confirm", "asdfajsdkfjasdkfjalsdfjasdf");
+
+            ret.Value = retparam;
+
+            return ret;
+        }
+
+        private XmlRpcResponse landBuy_func(XmlRpcRequest request, IPEndPoint remoteClient)
+        {
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] landBuy_func");
+            XmlRpcResponse ret = new XmlRpcResponse();
+            Hashtable retparam = new Hashtable();
+            // Hashtable requestData = (Hashtable) request.Params[0];
+
+            // UUID agentId = UUID.Zero;
+            // int amount = 0;
+
+            retparam.Add("success", true);
+            ret.Value = retparam;
+
+            return ret;
+        }
+
+        #endregion // XML RPC Handlers
 
         #region GMM User Messaging
         
