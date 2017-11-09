@@ -159,6 +159,13 @@ namespace Gloebit.GloebitMoneyModule
 
 
         #region IRegionModuleBase Interface
+
+        /**********************
+         * region handles 
+         * --- reading of config and triggering initialization of GloebitAPI and DB connections
+         * --- enabling of GMM on regions for this sim when added
+         * --- registering Scene events for enabled regions to handle user management and commerce functionality
+         **********************/
         
         public string Name {
             get { return "GloebitMoneyModule"; }
@@ -607,6 +614,11 @@ namespace Gloebit.GloebitMoneyModule
         #endregion // ISharedRegionModule Interface
 
         #region IMoneyModule Members
+
+        /******
+         * region handles
+         * --- entrance points and logic for some commerce flows
+         ******/
         
         // Dummy IMoneyModule interface which is not yet used.
         public void MoveMoney(UUID fromAgentID, UUID toAgentID, int amount, string text)
@@ -1086,7 +1098,18 @@ namespace Gloebit.GloebitMoneyModule
 
         #endregion // IMoneyModule members
 
-        #region GMM Transaction Submission
+        #region GMM API Setup
+
+        /******************
+         * Configuration parameters must be loaded before the API is initialized
+         * API must be initialized with those parameters
+         * DB connections must be initialized/established
+         * GloebitAPI.User.Get() should be called to create or retrieve an AppUser
+         * --- There is not one central GMM function for this as it is done throughout the
+         * --- GMM, but it may later be centralized.
+         * --- See SendNewSessionMessaging() func for closest thing to a StartUserSession().
+         * GloebitAPI.User.Cleanup() should be called to free up memory when a User is no longer active
+         *******************/
 
         /// <summary>
         /// Configure the GloebitAPI details for connecting to the Gloebit service
@@ -1103,6 +1126,12 @@ namespace Gloebit.GloebitMoneyModule
             GloebitTransactionData.Initialise(m_dbProvider, m_dbConnectionString);
             GloebitSubscriptionData.Initialise(m_dbProvider, m_dbConnectionString);
         }
+
+        #endregion // GMM API Setup
+
+        #region GMM Transaction Submission
+
+
 
         /***
          * All commerce flows must 
@@ -3728,6 +3757,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <summary>
         /// Deliver intro messaging for user in new session or new enviromnet.
         /// --- "Welcome to area running Gloebit in Sandbox for app MYAPP"
+        /// Also sends auth message since we can't yet reliably tie into insufficient funds flow.
         /// </summary>
         private void SendNewSessionMessaging(IClientAPI client, GloebitAPI.User user) {
             // TODO: Add in AppName to messages if we have it -- may need a new endpoint.
@@ -3758,6 +3788,9 @@ namespace Gloebit.GloebitMoneyModule
                 sendMessageToClient(client, msg, client.AgentId);
                 // If authed, delivery url where user can purchase gloebits
                 if (user.IsAuthed()) {
+                    //// No longer sending auth message at new session as some users felt it was spammy.
+                    //// Instead, we are letting users know that they can click on their balance at any time for this URL
+                    //// Once viewer patch is adopted so we can tie into insufficinet funds flow, we may also remove auth messaging.
                     // Uri url = m_api.BuildPurchaseURI(BaseURI, user);
                     // SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
                 } else {
