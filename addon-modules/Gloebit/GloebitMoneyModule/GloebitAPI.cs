@@ -123,7 +123,7 @@ namespace Gloebit.GloebitMoneyModule {
 
             // TODO: Move into GloebitAPI class
             public static User Get(GloebitAPI api, UUID agentID) {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] in User.Get");
+                m_log.Info("[GLOEBITMONEYMODULE] in User.Get");
                 string agentIdStr = agentID.ToString();
                 
                 User u;
@@ -133,7 +133,7 @@ namespace Gloebit.GloebitMoneyModule {
                 
                 if (u == null) {
                     string appKeyStr = api.m_key;
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior user for {0}", agentIdStr);
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for prior user for {0}", agentIdStr);
                     string[] keys = new string[2]{"AppKey", "PrincipalID"};
                     string[] values = new string[2]{appKeyStr, agentIdStr};
                     User[] users = GloebitUserData.Instance.Get(keys, values);
@@ -142,10 +142,10 @@ namespace Gloebit.GloebitMoneyModule {
                         case 1:
                             u = users[0];
                             u.SetControllingAPI(api);
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1} --- SesionID{2}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken), u.LastSessionID);
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1} --- SesionID{2}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken), u.LastSessionID);
                             break;
                         case 0:
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] CREATING NEW USER {0}", agentIdStr);
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] CREATING NEW USER {0}", agentIdStr);
                             u = new User(api, agentIdStr, String.Empty, String.Empty, String.Empty);
                             break;
                         default:
@@ -186,19 +186,19 @@ namespace Gloebit.GloebitMoneyModule {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] in IsNewSession for last:{0} current:{1}", this.LastSessionID, newSessionID.ToString());
                 string newSessionIDStr = newSessionID.ToString();
                 if (this.LastSessionID == newSessionIDStr) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] User is not new session");
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] User is not new session");
                     return false;
                 }
                 // Before we return true, Ensure our cache is up to date
                 User.InvalidateCache(UUID.Parse(this.PrincipalID));
                 User u_from_db = User.Get(this.m_controllingAPI, UUID.Parse(this.PrincipalID));
                 if (u_from_db.LastSessionID == newSessionIDStr) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] User Cache was out of date.  Updated cache.  User is not new session");
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] User Cache was out of date.  Updated cache.  User is not new session");
                     // cache was out of date.  update local user copy form db
                     this.UpdateFrom(u_from_db);
                     return false;
                 } else {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] User is New Session");
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] User is New Session");
                     // we have a new session.  Store it and return true.
                     
                     // Code to ensure we update user in cache
@@ -207,7 +207,7 @@ namespace Gloebit.GloebitMoneyModule {
                         s_userMap.TryGetValue(this.PrincipalID, out u);
                     }
                     if (u == null) {
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.IsNewSession() Did not find User in s_userMap to update.  User logged out.");
+                        m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.IsNewSession() Did not find User in s_userMap to update.  User logged out.");
                         u = u_from_db;  // User logged out.  Still want to store token.  Don't want to add back to map.
                     }
                     lock (u.userLock) {
@@ -239,7 +239,7 @@ namespace Gloebit.GloebitMoneyModule {
                     s_userMap.TryGetValue(agentIdStr, out u);
                 }
                 if (u == null) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.Authorize() Did not find User in s_userMap.  User logged out.");
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.Authorize() Did not find User in s_userMap.  User logged out.");
                     u = localUser;  // User logged out.  Still want to store token.  Don't want to add back to map.
                 }
                 lock (u.userLock) {
@@ -458,19 +458,19 @@ namespace Gloebit.GloebitMoneyModule {
                 }
                 
                 if(transaction == null) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior transaction for {0}", transactionIDStr);
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for prior transaction for {0}", transactionIDStr);
                     Transaction[] transactions = GloebitTransactionData.Instance.Get("TransactionID", transactionIDStr);
                     
                     switch(transactions.Length) {
                         case 1:
                             transaction = transactions[0];
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND TRANSACTION! {0} {1} {2}", transaction.TransactionID, transaction.PayerID, transaction.PayeeID);
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND TRANSACTION! {0} {1} {2}", transaction.TransactionID, transaction.PayerID, transaction.PayeeID);
                             lock(s_transactionMap) {
                                 s_transactionMap[transactionIDStr] = transaction;
                             }
                             return transaction;
                         case 0:
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] Could not find transaction matching tID:{0}", transactionIDStr);
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] Could not find transaction matching tID:{0}", transactionIDStr);
                             return null;
                         default:
                             throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one transaction for {0}", transactionIDStr));
@@ -589,20 +589,20 @@ namespace Gloebit.GloebitMoneyModule {
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.enactHold: {0}", this.enacted);
                 if (this.enacted) {
                     m_log.InfoFormat("TransactionID: {0}", this.TransactionID);
-                    m_log.InfoFormat("PayerID: {0}", this.PayerID);
-                    m_log.InfoFormat("PayeeID: {0}", this.PayeeID);
-                    m_log.InfoFormat("PartID: {0}", this.PartID);
-                    m_log.InfoFormat("PartName: {0}", this.PartName);
-                    m_log.InfoFormat("CategoryID: {0}", this.CategoryID);
-                    m_log.InfoFormat("SaleType: {0}", this.SaleType);
-                    m_log.InfoFormat("Amount: {0}", this.Amount);
-                    m_log.InfoFormat("PayerEndingBalance: {0}", this.PayerEndingBalance);
-                    m_log.InfoFormat("enacted: {0}", this.enacted);
-                    m_log.InfoFormat("consumed: {0}", this.consumed);
-                    m_log.InfoFormat("canceled: {0}", this.canceled);
-                    m_log.InfoFormat("cTime: {0}", this.cTime);
-                    m_log.InfoFormat("enactedTime: {0}", this.enactedTime);
-                    m_log.InfoFormat("finishedTime: {0}", this.finishedTime);
+                    m_log.DebugFormat("PayerID: {0}", this.PayerID);
+                    m_log.DebugFormat("PayeeID: {0}", this.PayeeID);
+                    m_log.DebugFormat("PartID: {0}", this.PartID);
+                    m_log.DebugFormat("PartName: {0}", this.PartName);
+                    m_log.DebugFormat("CategoryID: {0}", this.CategoryID);
+                    m_log.DebugFormat("SaleType: {0}", this.SaleType);
+                    m_log.DebugFormat("Amount: {0}", this.Amount);
+                    m_log.DebugFormat("PayerEndingBalance: {0}", this.PayerEndingBalance);
+                    m_log.DebugFormat("enacted: {0}", this.enacted);
+                    m_log.DebugFormat("consumed: {0}", this.consumed);
+                    m_log.DebugFormat("canceled: {0}", this.canceled);
+                    m_log.DebugFormat("cTime: {0}", this.cTime);
+                    m_log.DebugFormat("enactedTime: {0}", this.enactedTime);
+                    m_log.DebugFormat("finishedTime: {0}", this.finishedTime);
 
                     // TODO: Should we store and update the time even if it fails to track time enact attempted/failed?
                     this.enactedTime = DateTime.UtcNow;
@@ -726,7 +726,7 @@ namespace Gloebit.GloebitMoneyModule {
                 }
                 
                 /*if(subscription == null) {*/
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for subscriptions for {0}", objectIDStr);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for subscriptions for {0}", objectIDStr);
                 Subscription[] subscriptions = GloebitSubscriptionData.Instance.Get("ObjectID", objectIDStr);
                     /*
                     Subscription[] subsForAppWithKey = new Subscription[];
@@ -737,9 +737,9 @@ namespace Gloebit.GloebitMoneyModule {
                     }
                      */
                 bool cacheDuplicate = false;
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] Found {0} subscriptions for {0} saved in the DB", subscriptions.Length, objectIDStr);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Found {0} subscriptions for {0} saved in the DB", subscriptions.Length, objectIDStr);
                 if (subscription != null) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Found 1 cached subscriptions for {0}", subscriptions.Length, objectIDStr);
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Found 1 cached subscriptions for {0}", subscriptions.Length, objectIDStr);
                     if (subscriptions.Length == 0) {
                         subscriptions = new Subscription[1];
                         subscriptions[0] = subscription;
@@ -751,12 +751,12 @@ namespace Gloebit.GloebitMoneyModule {
                             {
                                 cacheDuplicate = true;
                                 subscriptions[i] = subscription;
-                                m_log.InfoFormat("[GLOEBITMONEYMODULE] Cached subscription was in db.  Replacing with cached version.");
+                                m_log.DebugFormat("[GLOEBITMONEYMODULE] Cached subscription was in db.  Replacing with cached version.");
                                 break;
                             }
                         }
                         if (!cacheDuplicate) {
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] Combining Cached subscription with those from db.");
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] Combining Cached subscription with those from db.");
                             Subscription[] dbSubs = subscriptions;
                             subscriptions = new Subscription[dbSubs.Length + 1];
                             subscriptions[0] = subscription;
@@ -768,10 +768,10 @@ namespace Gloebit.GloebitMoneyModule {
                     }
                     
                 } else {
-                     m_log.InfoFormat("[GLOEBITMONEYMODULE] Found no cached subscriptions for {0}", subscriptions.Length, objectIDStr);
+                     m_log.DebugFormat("[GLOEBITMONEYMODULE] Found no cached subscriptions for {0}", subscriptions.Length, objectIDStr);
                 }
                 
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] Returning {0} subscriptions for {0}", subscriptions.Length, objectIDStr);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Returning {0} subscriptions for {0}", subscriptions.Length, objectIDStr);
                 return subscriptions;
                  /*
                     switch(subscriptions.Length) {
@@ -814,7 +814,7 @@ namespace Gloebit.GloebitMoneyModule {
                 }
                 
                 if(subscription == null) {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior subscription for {0} {1} {2}", objectIDStr, appKey, apiUrl);
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for prior subscription for {0} {1} {2}", objectIDStr, appKey, apiUrl);
                     string[] keys = new string[] {"ObjectID", "AppKey", "GlbApiUrl"};
                     string[] values = new string[] {objectIDStr, appKey, apiUrl};
                     Subscription[] subscriptions = GloebitSubscriptionData.Instance.Get(keys, values);
@@ -822,20 +822,20 @@ namespace Gloebit.GloebitMoneyModule {
                     switch(subscriptions.Length) {
                         case 1:
                             subscription = subscriptions[0];
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND SUBSCRIPTION in DB! oID:{0} appKey:{1} url:{2} sID:{3} oN:{4} oD:{5}", subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.SubscriptionID, subscription.ObjectName, subscription.Description);
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND SUBSCRIPTION in DB! oID:{0} appKey:{1} url:{2} sID:{3} oN:{4} oD:{5}", subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.SubscriptionID, subscription.ObjectName, subscription.Description);
                             lock(s_subscriptionMap) {
                                 s_subscriptionMap[objectIDStr] = subscription;
                             }
                             return subscription;
                         case 0:
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] Could not find subscription matching oID:{0} appKey:{1} apiUrl:{2}", objectIDStr, appKey, apiUrl);
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] Could not find subscription matching oID:{0} appKey:{1} apiUrl:{2}", objectIDStr, appKey, apiUrl);
                             return null;
                         default:
                             throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one subscription for {0} {1} {2}", objectIDStr, appKey, apiUrl));
                             return null;
                     }
                 }
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND SUBSCRIPTION in cache! oID:{0} appKey:{1} url:{2} sID:{3} oN:{4} oD:{5}", subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.SubscriptionID, subscription.ObjectName, subscription.Description);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND SUBSCRIPTION in cache! oID:{0} appKey:{1} url:{2} sID:{3} oN:{4} oD:{5}", subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.SubscriptionID, subscription.ObjectName, subscription.Description);
                 return subscription;
             }
             
@@ -845,7 +845,7 @@ namespace Gloebit.GloebitMoneyModule {
                 Subscription localSub = null;
                 
                 
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] Looking for prior subscription for {0} {1}", subscriptionIDStr, apiUrl);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for prior subscription for {0} {1}", subscriptionIDStr, apiUrl);
                 string[] keys = new string[] {"SubscriptionID", "GlbApiUrl"};
                 string[] values = new string[] {subscriptionIDStr, apiUrl};
                 Subscription[] subscriptions = GloebitSubscriptionData.Instance.Get(keys, values);
@@ -854,7 +854,7 @@ namespace Gloebit.GloebitMoneyModule {
                 switch(subscriptions.Length) {
                     case 1:
                         subscription = subscriptions[0];
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND SUBSCRIPTION in DB! oID:{0} appKey:{1} url:{2} sID:{3} oN:{4} oD:{5}", subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.SubscriptionID, subscription.ObjectName, subscription.Description);
+                        m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND SUBSCRIPTION in DB! oID:{0} appKey:{1} url:{2} sID:{3} oN:{4} oD:{5}", subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.SubscriptionID, subscription.ObjectName, subscription.Description);
                         lock(s_subscriptionMap) {
                             s_subscriptionMap.TryGetValue(subscription.ObjectID.ToString(), out localSub);
                             if (localSub == null) {
@@ -875,13 +875,13 @@ namespace Gloebit.GloebitMoneyModule {
                         }
                         return subscription;
                     case 0:
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] Could not find subscription matching sID:{0} apiUrl:{1}", subscriptionIDStr, apiUrl);
+                        m_log.DebugFormat("[GLOEBITMONEYMODULE] Could not find subscription matching sID:{0} apiUrl:{1}", subscriptionIDStr, apiUrl);
                         return null;
                     default:
                         throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one subscription for {0} {1}", subscriptionIDStr, apiUrl));
                         return null;
                 }
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] FOUND SUBSCRIPTION in cache! oID:{0} appKey:{1} url:{2} sID:{3} oN:{4} oD:{5}", subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.SubscriptionID, subscription.ObjectName, subscription.Description);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND SUBSCRIPTION in cache! oID:{0} appKey:{1} url:{2} sID:{3} oN:{4} oD:{5}", subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.SubscriptionID, subscription.ObjectName, subscription.Description);
                 return subscription;
             }
             
@@ -1009,7 +1009,7 @@ namespace Gloebit.GloebitMoneyModule {
 
             string query_string = BuildURLEncodedParamString(auth_params);
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize query_string: {0}", query_string);
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.Authorize query_string: {0}", query_string);
 
             //********** BUILD FULL AUTHORIZE REQUEST URI **************//
 
@@ -1117,7 +1117,7 @@ namespace Gloebit.GloebitMoneyModule {
                 string response_str = response_stream.ReadToEnd();
 
                 OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance responseData:{0}", responseData.ToString());
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance responseData:{0}", responseData.ToString());
 
                 if (responseData["success"]) {
                     double balance = responseData["balance"].AsReal();
@@ -1129,7 +1129,7 @@ namespace Gloebit.GloebitMoneyModule {
                         case "unknown token2":
                             // The token is invalid (probably the user revoked our app through the website)
                             // so force a reauthorization next time.
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.GetBalance failed - Invalidating Token");
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.GetBalance failed - Invalidating Token");
                             user.InvalidateToken();
                             invalidatedToken = true;
                             break;
@@ -1177,13 +1177,13 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO once we return, return error value
             }
                     
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact about to BeginGetResponse");
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact about to BeginGetResponse");
             // **** Asynchronously make web request **** //
             IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
 			                                          new GloebitRequestState(request, 
 			                        delegate(OSDMap responseDataMap) {
                                         
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", responseDataMap);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact response: {0}", responseDataMap);
 
                 //************ PARSE AND HANDLE TRANSACT-U2U RESPONSE *********//
 
@@ -1261,13 +1261,13 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO once we return, return error value
             }
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U about to BeginGetResponse");
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U about to BeginGetResponse");
             // **** Asynchronously make web request **** //
             IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
 			                                          new GloebitRequestState(request, 
 			                        delegate(OSDMap responseDataMap) {
                                         
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U response: {0}", responseDataMap);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U response: {0}", responseDataMap);
 
                 //************ PARSE AND HANDLE TRANSACT-U2U RESPONSE *********//
 
@@ -1352,11 +1352,11 @@ namespace Gloebit.GloebitMoneyModule {
                 return false;
             }
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync about to GetResponse");
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync about to GetResponse");
             // **** Synchronously make web request **** //
             HttpWebResponse response = (HttpWebResponse) request.GetResponse();
             string status = response.StatusDescription;
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync status:{0}", status);
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync status:{0}", status);
             // TODO: think we should set submitted here to status
             if (response.StatusCode == HttpStatusCode.OK) {
                 // Successfully submitted transaction request to Gloebit
@@ -1377,7 +1377,7 @@ namespace Gloebit.GloebitMoneyModule {
                 string response_str = response_stream.ReadToEnd();
                 
                 OSDMap responseDataMap = (OSDMap)OSDParser.DeserializeJson(response_str);
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync responseData:{0}", responseDataMap.ToString());
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync responseData:{0}", responseDataMap.ToString());
                 
                 // read response and store in txn
                 PopulateTransactResponse(txn, responseDataMap);
@@ -1692,13 +1692,13 @@ namespace Gloebit.GloebitMoneyModule {
                 return false;
             }
             
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscription about to BeginGetResponse");
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscription about to BeginGetResponse");
             // **** Asynchronously make web request **** //
             IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
 			                                          new GloebitRequestState(request, 
 			                        delegate(OSDMap responseDataMap) {
                                         
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscription response: {0}", responseDataMap);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscription response: {0}", responseDataMap);
 
                 //************ PARSE AND HANDLE CREATE SUBSCRIPTION RESPONSE *********//
 
@@ -1715,7 +1715,7 @@ namespace Gloebit.GloebitMoneyModule {
                     subscription.Enabled = enabled;
                     GloebitSubscriptionData.Instance.UpdateFromGloebit(subscription);
                     if (status == "duplicate") {
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscription duplicate request to create subscription");
+                        m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscription duplicate request to create subscription");
                     }
                 } else {
                     switch(reason) {
@@ -1792,13 +1792,13 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO once we return, return error value
             }
 
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization about to BeginGetResponse");
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization about to BeginGetResponse");
             // **** Asynchronously make web request **** //
             IAsyncResult r = request.BeginGetResponse(GloebitWebResponseCallback,
 			                                          new GloebitRequestState(request, 
 			                        delegate(OSDMap responseDataMap) {
                                         
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization response: {0}", responseDataMap);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization response: {0}", responseDataMap);
 
                 //************ PARSE AND HANDLE CREATE SUBSCRIPTION AUTHORIZATION RESPONSE *********//
 
@@ -1812,9 +1812,9 @@ namespace Gloebit.GloebitMoneyModule {
                     string subscriptionAuthIDStr = responseDataMap["id"];
                     // TODO: if we decide to store auths, this would be a place to do so.
                     if (status == "duplicate") {
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization duplicate request to create subscription");
+                        m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization duplicate request to create subscription");
                     } else if (status == "duplicate-and-already-approved-by-user") {
-                        m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization duplicate request to create subscription - subscription has already been approved by user.");
+                        m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization duplicate request to create subscription - subscription has already been approved by user.");
                     } else if (status == "duplicate-and-previously-declined-by-user") {
                         m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization SUCCESS & FAILURE - user previously declined authorization -- consider if app should re-request or if that is harrassing user or has Gloebit API reset this automatcially?. status:{0} reason:{1}", status, reason);
                     }
@@ -1913,7 +1913,7 @@ namespace Gloebit.GloebitMoneyModule {
             request.Method = method;
             switch (method) {
                 case "GET":
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest GET relativeURL:{0}", relativeURL);
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest GET relativeURL:{0}", relativeURL);
                     break;
                 case "POST":
                 case "PUT":
@@ -1958,7 +1958,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// </summary>
         /// <param name="ParamMap">Parameters to be encoded.</param>
         private string BuildURLEncodedParamString(OSDMap paramMap) {
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildURLEncodedParamString building from paramMap:{0}:", paramMap);
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildURLEncodedParamString building from paramMap:{0}:", paramMap);
             StringBuilder paramBuilder = new StringBuilder();
             foreach (KeyValuePair<string, OSD> p in (OSDMap)paramMap) {
                 if(paramBuilder.Length != 0) {
