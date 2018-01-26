@@ -501,7 +501,6 @@ namespace Gloebit.GloebitMoneyModule
 
                 // Register for events for user management
                 scene.EventManager.OnNewClient += OnNewClient;                              // Registers client events
-                scene.EventManager.OnClientClosed += ClientClosed;                          // Only used for debug log; maybe should clean up things
                 scene.EventManager.OnAvatarEnteringNewParcel += AvatarEnteringParcel;       // Only used for debug log
                 scene.EventManager.OnClientLogin += OnClientLogin;                          // Handles a login issue
 
@@ -2827,6 +2826,8 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="client">The client logging out</param>
         private void ClientLoggedOut(IClientAPI client)
         {
+            // TODO: Is cleanup ok in here, or should it be triggered in the ClientClosed event?
+
             // Deregister OnChatFromClient if we have one.
             Dialog.DeregisterAgent(client);
 
@@ -2837,27 +2838,6 @@ namespace Gloebit.GloebitMoneyModule
             GloebitAPI.User.Cleanup(client.AgentId);
 
             m_log.DebugFormat("[GLOEBITMONEYMODULE] ClientLoggedOut {0}", client.AgentId);
-        }
-
-        /// <summary>
-        /// Scene.EventManager.OnClientClosed event handler
-        /// </summary>
-        /// <param name="AgentID">UUID of agent</param>
-        /// <param name="scene">Scene the agent was connected to.</param>
-        /// <see cref="OpenSim.Region.Framework.Scenes.EventManager.ClientClosed"/>
-        private void ClientClosed(UUID AgentID, Scene scene)
-        {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] ClientClosed {0}", AgentID);
-            // TODO: Is cleanup ok in logout event, or should it be triggered here?
-        }
-
-        /// <summary>
-        /// Call this when the client disconnects.
-        /// </summary>
-        /// <param name="client"></param>
-        private void ClientClosed(IClientAPI client)
-        {
-            ClientClosed(client.AgentId, null);
         }
 
         #endregion // User Management Event Handlers
