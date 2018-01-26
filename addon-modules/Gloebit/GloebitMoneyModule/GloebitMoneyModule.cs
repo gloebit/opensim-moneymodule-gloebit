@@ -2869,13 +2869,13 @@ namespace Gloebit.GloebitMoneyModule
         /// Legacy event which is still triggered when a new client connects and is expected
         /// to deliver some economy information about the grid
         /// </summary>
-        /// <param name="user"></param>
-        private void EconomyDataRequestHandler(IClientAPI user)
+        /// <param name="client"></param>
+        private void EconomyDataRequestHandler(IClientAPI client)
         {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] EconomyDataRequestHandler {0}", user.AgentId);
-            Scene s = (Scene)user.Scene;
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] EconomyDataRequestHandler {0}", client.AgentId);
+            Scene s = (Scene)client.Scene;
 
-            user.SendEconomyData(EnergyEfficiency, s.RegionInfo.ObjectCapacity, ObjectCount, PriceEnergyUnit, PriceGroupCreate,
+            client.SendEconomyData(EnergyEfficiency, s.RegionInfo.ObjectCapacity, ObjectCount, PriceEnergyUnit, PriceGroupCreate,
                 PriceObjectClaim, PriceObjectRent, PriceObjectScaleFactor, PriceParcelClaim, PriceParcelClaimFactor,
                 PriceParcelRent, PricePublicObjectDecay, PricePublicObjectDelete, PriceRentLight, PriceUpload,
                 TeleportMinPrice, TeleportPriceExponent);
