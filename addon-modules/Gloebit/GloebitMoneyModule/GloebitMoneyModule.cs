@@ -501,7 +501,6 @@ namespace Gloebit.GloebitMoneyModule
 
                 // Register for events for user management
                 scene.EventManager.OnNewClient += OnNewClient;                              // Registers client events
-                scene.EventManager.OnAvatarEnteringNewParcel += AvatarEnteringParcel;       // Only used for debug log
                 scene.EventManager.OnClientLogin += OnClientLogin;                          // Handles a login issue
 
                 // Register for commerce events that come through scene
@@ -2803,19 +2802,6 @@ namespace Gloebit.GloebitMoneyModule
                 // Send welcome messaging and buy gloebits messaging or auth messaging
                 SendNewSessionMessaging(client, user);
             }
-        }
-
-        /// <summary>
-        /// Scene.EventManger.AvatarEnteringNewParcel event handler
-        /// triggered when an Avatar enters one of the parcels in the simulator.
-        /// Just logs debug info.
-        /// </summary>
-        /// <param name="avatar"></param>
-        /// <param name="localLandID"></param>
-        /// <param name="regionID"></param>
-        private void AvatarEnteringParcel(ScenePresence avatar, int localLandID, UUID regionID)
-        {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] AvatarEnteringParcel {0}", avatar.Name);
         }
 
         /// <summary>
