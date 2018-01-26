@@ -536,12 +536,6 @@ namespace Gloebit.GloebitMoneyModule
             if (enabled && featuresModule != null) {
                 featuresModule.OnSimulatorFeaturesRequest += (UUID x, ref OSDMap y) => OnSimulatorFeaturesRequest(x, ref y, scene);
             }
-            
-            if (enabled) {
-                // TODO: do we want to keep this?  Only using for logging debug info now.
-                // TODO: Why is this here instead of in AddRegion with the rest of the scene events?
-                scene.EventManager.OnNewPresence += OnNewPresence;
-            }
         }
         
         private void OnSimulatorFeaturesRequest(UUID agentID, ref OSDMap features, Scene scene)
@@ -2744,15 +2738,6 @@ namespace Gloebit.GloebitMoneyModule
             // We set a timestamp in case any viewers have removed this request, so that this ignore flag expires within a few seconds.
             LoginBalanceRequest lbr = LoginBalanceRequest.Get(client.AgentId);
             lbr.IgnoreNextBalanceRequest = true;
-        }
-
-        /// <summary>
-        /// Scene.EventManager.OnNewPresence event handler
-        /// Only prints debug info
-        /// </summary>
-        /// <param name="presence">Presence.</param>
-        private void OnNewPresence(ScenePresence presence) {
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnNewPresence viewer:{0}", presence.Viewer);
         }
 
         /// <summary>
