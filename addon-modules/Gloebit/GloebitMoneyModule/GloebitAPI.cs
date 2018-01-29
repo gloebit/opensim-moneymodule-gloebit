@@ -57,7 +57,7 @@ namespace Gloebit.GloebitMoneyModule {
             // TODO: may change this to transactCompleted and add a bool for u2u
             void transactU2UCompleted(OSDMap responseDataMap, User payerUser, User payeeUser, Transaction transaction, TransactionStage stage, TransactionFailure failure);
             void createSubscriptionCompleted(OSDMap responseDataMap, Subscription subscription);
-            void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, Subscription subscription, User sender, IClientAPI client);
+            void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, Subscription subscription, User sender);
         }
         
         public static IAsyncEndpointCallback m_asyncEndpointCallbacks;
@@ -1758,13 +1758,12 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="sender"> GloebitAPI.User of the user for whom we're creating a pending subscription authorization request.</param>
         /// <param name="senderName"> String of the user name on the app.  This is supplied to display back to the user which app account they are authorizing.</param>
         /// <param name="baseURI">Callback URI -- not currently used.  Included in case we add callback ability.</param>
-        /// <param name="client"> IClientAPI for this user.  provided to pass through to CreateSubscriptionAuthorizationCompleted.</param>
         /// <returns>
         /// True if the request was successfully submitted to Gloebit;
         /// False if submission fails.
         /// See CreateSubscriptionAuthorizationCompleted for async callback with relevant results of this api call.
         /// </returns>
-        public bool CreateSubscriptionAuthorization(Subscription sub, User sender, string senderName, Uri baseURI, IClientAPI client) {
+        public bool CreateSubscriptionAuthorization(Subscription sub, User sender, string senderName, Uri baseURI) {
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization subscriptionID:{0} senderID:{1} senderName:{2} baseURI:{3}", sub.SubscriptionID, sender.PrincipalID, senderName, baseURI);
             
@@ -1855,7 +1854,7 @@ namespace Gloebit.GloebitMoneyModule {
                 }
 
                 // TODO - decide if we really want to issue this callback even if the token was invalid
-                m_asyncEndpointCallbacks.createSubscriptionAuthorizationCompleted(responseDataMap, sub, sender, client);
+                m_asyncEndpointCallbacks.createSubscriptionAuthorizationCompleted(responseDataMap, sub, sender);
             }));
             
             return true;
@@ -2082,7 +2081,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// Request a subscriptin authorization from a user.
         /// This specifically sends a message with a clickable URL to the client.
         /// </summary>
-        /// <param name="client">IClientAPI of client we are sending the URL to</param>
+        /// <param name="user">User we are sending the URL to</param>
         /// <param name="subAuthID">ID of the authorization request the user will be asked to approve - provided by Gloebit.</param>
         /// <param name="sub">Subscription which containes necessary details for message to user.</param>
         /// <param name="isDeclined">Bool is true if this sub auth has already been declined by the user which should present different messaging.</param>

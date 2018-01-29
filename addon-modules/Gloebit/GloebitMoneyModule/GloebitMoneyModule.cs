@@ -1146,7 +1146,7 @@ namespace Gloebit.GloebitMoneyModule
             // Get User for agent
             GloebitAPI.User user = GloebitAPI.User.Get(m_api, agentID);
             if(!user.IsAuthed()) {
-                // If no auth token on file, request authorization.
+                // If no auth token on file, re quest authorization.
                 needsAuth = true;
             } else {
                 returnfunds = m_api.GetBalance(user, out needsAuth);
@@ -2077,7 +2077,7 @@ namespace Gloebit.GloebitMoneyModule
                 if (foundClient) {
                     GloebitAPI.User user = GloebitAPI.User.Get(m_api, client.AgentId);
                     string agentName = resolveAgentName(client.AgentId);
-                    m_api.CreateSubscriptionAuthorization(subscription, user, agentName, BaseURI, client);
+                    m_api.CreateSubscriptionAuthorization(subscription, user, agentName, BaseURI);
                 }
                 return;
                 
@@ -2101,7 +2101,7 @@ namespace Gloebit.GloebitMoneyModule
             return;
         }
         
-        public void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitAPI.Subscription sub, GloebitAPI.User user, IClientAPI client) {
+        public void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitAPI.Subscription sub, GloebitAPI.User user) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionAuthorizationCompleted");
             
             bool success = (bool)responseDataMap["success"];
@@ -3545,7 +3545,7 @@ namespace Gloebit.GloebitMoneyModule
             // We have a Subscription.  Call create on an auth.
             GloebitAPI.User user = GloebitAPI.User.Get(m_api, client.AgentId);
             string agentName = resolveAgentName(client.AgentId);
-            m_api.CreateSubscriptionAuthorization(sub, user, agentName, BaseURI, client);
+            m_api.CreateSubscriptionAuthorization(sub, user, agentName, BaseURI);
             return;     // Async creating auth.  When returns, will send link to user.
         }
 

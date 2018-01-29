@@ -532,7 +532,7 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO: Shouldn't get here unless we have a token, but should we check again?
 
                 // TODO: need to include transactionID, payeeID, payeeName and amount somehow
-                api.CreateSubscriptionAuthorization(sub, user, AgentName, callbackBaseURI, client);
+                api.CreateSubscriptionAuthorization(sub, user, AgentName, callbackBaseURI);
 
                 break;
             case "Report Fraud":
