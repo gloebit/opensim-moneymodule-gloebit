@@ -803,7 +803,7 @@ namespace Gloebit.GloebitMoneyModule
             
             // Check subscription table.  If not exists, send create call to Gloebit
             m_log.DebugFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - looking for local subscription");
-            GloebitAPI.Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
+            GloebitSubscription sub = GloebitSubscription.Get(objectID, m_key, m_apiUrl);
             if (sub == null) {
                 // Don't create unless the object has a name and description
                 // Make sure Name and Description are not null to avoid pgsql issue with storing null values
@@ -818,10 +818,10 @@ namespace Gloebit.GloebitMoneyModule
                 }
                 m_log.DebugFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - creating local subscription for {0}", part.Name);
                 // Create local sub
-                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
+                sub = GloebitSubscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
             }
             if (sub.SubscriptionID == UUID.Zero) {
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - SID is ZERO -- calling GloebitAPI Create Subscription");
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] ObjectGiveMoney - SID is ZERO -- calling GloebitAPI.CreateSubscription");
                 
                 // Message to user that we are creating the subscription.
                 alertUsersSubscriptionTransactionFailedForSubscriptionCreation(fromID, toID, amount, sub);
@@ -1816,7 +1816,7 @@ namespace Gloebit.GloebitMoneyModule
             SendUrlToClient(client, title, body, authorizeUri);
         }
         
-        public void LoadSubscriptionAuthorizationUrlForUser(GloebitAPI.User user, Uri subAuthUri, GloebitAPI.Subscription sub, bool isDeclined)
+        public void LoadSubscriptionAuthorizationUrlForUser(GloebitAPI.User user, Uri subAuthUri, GloebitSubscription sub, bool isDeclined)
         {
             // Since we can't launch a website in OpenSim, we have to send the URL via an IM
             IClientAPI client = LocateClientObject(UUID.Parse(user.PrincipalID));
@@ -2006,7 +2006,7 @@ namespace Gloebit.GloebitMoneyModule
                             // TODO: We should really send another dialog here like the PendingDialog instead of just a url here.
                             // Send dialog asking user to auth or report --- needs different message.
                             m_log.Info("[GLOEBITMONEYMODULE] TransactU2UCompleted - SUBSCRIPTION_AUTH_DECLINED - requesting SubAuth approval");
-                            GloebitAPI.Subscription sub = GloebitAPI.Subscription.GetBySubscriptionID(subscriptionIDStr, m_api.m_url.ToString());
+                            GloebitSubscription sub = GloebitSubscription.GetBySubscriptionID(subscriptionIDStr, m_api.m_url.ToString());
                             m_api.SendSubscriptionAuthorizationToUser(payerUser, subscriptionAuthIDStr, sub, true);
                             
                             break;
@@ -2052,7 +2052,7 @@ namespace Gloebit.GloebitMoneyModule
             return;
         }
         
-        public void createSubscriptionCompleted(OSDMap responseDataMap, GloebitAPI.Subscription subscription) {
+        public void createSubscriptionCompleted(OSDMap responseDataMap, GloebitSubscription subscription) {
             
             bool success = (bool)responseDataMap["success"];
             string reason = responseDataMap["reason"];
@@ -2101,7 +2101,7 @@ namespace Gloebit.GloebitMoneyModule
             return;
         }
         
-        public void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitAPI.Subscription sub, GloebitAPI.User user) {
+        public void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitSubscription sub, GloebitAPI.User user) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE].createSubscriptionAuthorizationCompleted");
             
             bool success = (bool)responseDataMap["success"];
@@ -3511,7 +3511,7 @@ namespace Gloebit.GloebitMoneyModule
 
             // Check subscription table.  If not exists, send create call to Gloebit.
             m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - looking for local subscription");
-            GloebitAPI.Subscription sub = GloebitAPI.Subscription.Get(objectID, m_key, m_apiUrl);
+            GloebitSubscription sub = GloebitSubscription.Get(objectID, m_key, m_apiUrl);
             if (sub == null) {
                 // Don't create unless the object has a name and description
                 // Make sure Name and Description are not null to avoid pgsql issue with storing null values
@@ -3529,10 +3529,10 @@ namespace Gloebit.GloebitMoneyModule
                 }
                 m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - creating local subscription for {0}", part.Name);
                 // Create local sub
-                sub = GloebitAPI.Subscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
+                sub = GloebitSubscription.Init(objectID, m_key, m_apiUrl, part.Name, part.Description);
             }
             if (sub.SubscriptionID == UUID.Zero) {
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - SID is ZERO -- calling GloebitAPI Create Subscription");
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] handleScriptAnswer - SID is ZERO -- calling GloebitAPI.CreateSubscription");
 
                 // Add this user to map of waiting for sub to creat auth.
                 lock(m_authWaitingForSubMap) {
@@ -3894,8 +3894,8 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="payerID">UUID of payer from transaction that triggered this alert.</param>
         /// <param name="payeeID">UUID of payee from transaction that triggered this alert.</param>
         /// <param name="amount">Int amount of gloebits from transaction that triggered this alert.</param>
-        /// <param name="sub">GloebitAPI.Subscription being sent to Gloebit for creation.</param>
-        private void alertUsersSubscriptionTransactionFailedForSubscriptionCreation(UUID payerID, UUID payeeID, int amount, GloebitAPI.Subscription sub)
+        /// <param name="sub">GloebitSubscription being sent to Gloebit for creation.</param>
+        private void alertUsersSubscriptionTransactionFailedForSubscriptionCreation(UUID payerID, UUID payeeID, int amount, GloebitSubscription sub)
         {
             IClientAPI payerClient = LocateClientObject(payerID);
             IClientAPI payeeClient = LocateClientObject(payeeID);
@@ -3916,8 +3916,8 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="payerID">UUID of payer from transaction that triggered this alert.</param>
         /// <param name="payeeID">UUID of payee from transaction that triggered this alert.</param>
         /// <param name="amount">Int amount of gloebits from transaction that triggered this alert.</param>
-        /// <param name="sub">GloebitAPI.Subscription that triggered this alert.</param>
-        private void alertUsersSubscriptionTransactionFailedForGloebitAuthorization(UUID payerID, UUID payeeID, int amount, GloebitAPI.Subscription sub)
+        /// <param name="sub">GloebitSubscription that triggered this alert.</param>
+        private void alertUsersSubscriptionTransactionFailedForGloebitAuthorization(UUID payerID, UUID payeeID, int amount, GloebitSubscription sub)
         {
             IClientAPI payerClient = LocateClientObject(payerID);
             IClientAPI payeeClient = LocateClientObject(payeeID);

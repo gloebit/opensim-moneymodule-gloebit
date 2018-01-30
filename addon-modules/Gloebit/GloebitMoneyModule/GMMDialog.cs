@@ -518,7 +518,7 @@ namespace Gloebit.GloebitMoneyModule {
                 string subscriptionIDStr = SubscriptionID.ToString();
                 string apiUrl = api.m_url.ToString();
 
-                GloebitAPI.Subscription sub = GloebitAPI.Subscription.GetBySubscriptionID(subscriptionIDStr, apiUrl);
+                GloebitSubscription sub = GloebitSubscription.GetBySubscriptionID(subscriptionIDStr, apiUrl);
                 // IF null, there was a db error on storing this -- test store functions for db impl
                 if (sub == null) {
                     string msg = String.Format("[GLOEBITMONEYMODULE] CreateSubscriptionAuthorizationDialog.ProcessResponse Could not retrieve subscription.  Likely DB error when storing subID:{0}", subscriptionIDStr);
@@ -675,7 +675,7 @@ namespace Gloebit.GloebitMoneyModule {
 
                 string subscriptionIDStr = SubscriptionID.ToString();
                 string apiUrl = api.m_url.ToString();
-                GloebitAPI.Subscription sub = GloebitAPI.Subscription.GetBySubscriptionID(subscriptionIDStr, apiUrl);
+                GloebitSubscription sub = GloebitSubscription.GetBySubscriptionID(subscriptionIDStr, apiUrl);
                 // TODO: Do we need to check if this is null?  Shouldn't happen.
 
                 // Send Authorize URL
@@ -692,7 +692,5 @@ namespace Gloebit.GloebitMoneyModule {
                 break;
             }
         }
-                
     };
-
 }
