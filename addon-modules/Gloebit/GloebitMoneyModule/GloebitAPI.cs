@@ -51,13 +51,13 @@ namespace Gloebit.GloebitMoneyModule {
         
         public interface IAsyncEndpointCallback {
             // Load funcs below are used in flows where we need to send the user to the Gloebit Website.
-            void LoadAuthorizeUrlForUser(User user, Uri authorizeUri);
-            void LoadSubscriptionAuthorizationUrlForUser(User user, Uri subAuthUri, GloebitSubscription sub, bool isDeclined);
-            void exchangeAccessTokenCompleted(bool success, User user, OSDMap responseDataMap);
+            void LoadAuthorizeUrlForUser(GloebitUser user, Uri authorizeUri);
+            void LoadSubscriptionAuthorizationUrlForUser(GloebitUser user, Uri subAuthUri, GloebitSubscription sub, bool isDeclined);
+            void exchangeAccessTokenCompleted(bool success, GloebitUser user, OSDMap responseDataMap);
             // TODO: may change this to transactCompleted and add a bool for u2u
-            void transactU2UCompleted(OSDMap responseDataMap, User payerUser, User payeeUser, Transaction transaction, TransactionStage stage, TransactionFailure failure);
+            void transactU2UCompleted(OSDMap responseDataMap, GloebitUser payerUser, GloebitUser payeeUser, Transaction transaction, TransactionStage stage, TransactionFailure failure);
             void createSubscriptionCompleted(OSDMap responseDataMap, GloebitSubscription subscription);
-            void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitSubscription subscription, User sender);
+            void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitSubscription subscription, GloebitUser sender);
         }
         
         public static IAsyncEndpointCallback m_asyncEndpointCallbacks;
@@ -70,227 +70,7 @@ namespace Gloebit.GloebitMoneyModule {
         
         public static IAssetCallback m_assetCallbacks;
 
-        public class User {
-            public string AppKey;
-            public string PrincipalID;
-            public string GloebitID;
-            public string GloebitToken;
-            public string LastSessionID;
-            
-            // TODO: remove once we move necessary funcs into GloebitAPI class
-            private GloebitAPI m_controllingAPI;
 
-
-            // TODO - update userMap to be a proper LRU Cache
-            private static Dictionary<string, User> s_userMap = new Dictionary<string, User>();
-            
-            private object userLock = new object();
-
-            public User() {
-            }
-
-            private User(GloebitAPI api, string principalID, string gloebitID, string token, string sessionID) {
-                this.m_controllingAPI = api;
-                this.AppKey = api.m_key;
-                this.PrincipalID = principalID;
-                this.GloebitID = gloebitID;
-                this.GloebitToken = token;
-                this.LastSessionID = sessionID;
-            }
-            
-            private User(User copyFrom) {
-                this.m_controllingAPI = copyFrom.GetControllingAPI();
-                this.AppKey = copyFrom.AppKey;
-                this.PrincipalID = copyFrom.PrincipalID;
-                this.GloebitID = copyFrom.GloebitID;
-                this.GloebitToken = copyFrom.GloebitToken;
-                this.LastSessionID = copyFrom.LastSessionID;
-            }
-            
-            private void UpdateFrom(User updateFrom) {
-                this.GloebitID = updateFrom.GloebitID;
-                this.GloebitToken = updateFrom.GloebitToken;
-                this.LastSessionID = updateFrom.LastSessionID;
-            }
-            
-            public GloebitAPI GetControllingAPI() {
-                return this.m_controllingAPI;
-            }
-            
-            public void SetControllingAPI(GloebitAPI api) {
-                this.m_controllingAPI = api;
-            }
-
-            // TODO: Move into GloebitAPI class
-            public static User Get(GloebitAPI api, UUID agentID) {
-                m_log.Info("[GLOEBITMONEYMODULE] in User.Get");
-                string agentIdStr = agentID.ToString();
-                
-                User u;
-                lock(s_userMap) {
-                    s_userMap.TryGetValue(agentIdStr, out u);
-                }
-                
-                if (u == null) {
-                    string appKeyStr = api.m_key;
-                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for prior user for {0}", agentIdStr);
-                    string[] keys = new string[2]{"AppKey", "PrincipalID"};
-                    string[] values = new string[2]{appKeyStr, agentIdStr};
-                    User[] users = GloebitUserData.Instance.Get(keys, values);
-
-                    switch(users.Length) {
-                        case 1:
-                            u = users[0];
-                            u.SetControllingAPI(api);
-                            m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1} --- SesionID{2}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken), u.LastSessionID);
-                            break;
-                        case 0:
-                            m_log.DebugFormat("[GLOEBITMONEYMODULE] CREATING NEW USER {0}", agentIdStr);
-                            u = new User(api, agentIdStr, String.Empty, String.Empty, String.Empty);
-                            break;
-                        default:
-                           throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one prior token for {0}", agentIdStr));
-                    }
-                    
-                    // Store in map and return User
-                    lock(s_userMap) {
-                        // Make sure no one else has already loaded this user
-                        User alreadyLoadedUser;
-                        s_userMap.TryGetValue(agentIdStr, out alreadyLoadedUser);
-                        if (alreadyLoadedUser == null) {
-                            s_userMap[agentIdStr] = u;
-                        } else {
-                            u = alreadyLoadedUser;
-                        }
-                    }
-                }
-
-                // Create a thread local copy of the user to return.
-                User localUser;
-                lock (u.userLock) {
-                    localUser = new User(u);
-                }
-                
-                return localUser;
-            }
-            
-            public static void InvalidateCache(UUID agentID) {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] in User.InvalidateCache");
-                string agentIdStr = agentID.ToString();
-                lock(s_userMap) {
-                    s_userMap.Remove(agentIdStr);
-                }
-            }
-            
-            public bool IsNewSession(UUID newSessionID) {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] in IsNewSession for last:{0} current:{1}", this.LastSessionID, newSessionID.ToString());
-                string newSessionIDStr = newSessionID.ToString();
-                if (this.LastSessionID == newSessionIDStr) {
-                    m_log.DebugFormat("[GLOEBITMONEYMODULE] User is not new session");
-                    return false;
-                }
-                // Before we return true, Ensure our cache is up to date
-                User.InvalidateCache(UUID.Parse(this.PrincipalID));
-                User u_from_db = User.Get(this.m_controllingAPI, UUID.Parse(this.PrincipalID));
-                if (u_from_db.LastSessionID == newSessionIDStr) {
-                    m_log.DebugFormat("[GLOEBITMONEYMODULE] User Cache was out of date.  Updated cache.  User is not new session");
-                    // cache was out of date.  update local user copy form db
-                    this.UpdateFrom(u_from_db);
-                    return false;
-                } else {
-                    m_log.DebugFormat("[GLOEBITMONEYMODULE] User is New Session");
-                    // we have a new session.  Store it and return true.
-                    
-                    // Code to ensure we update user in cache
-                    User u;
-                    lock (s_userMap) {
-                        s_userMap.TryGetValue(this.PrincipalID, out u);
-                    }
-                    if (u == null) {
-                        m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.IsNewSession() Did not find User in s_userMap to update.  User logged out.");
-                        u = u_from_db;  // User logged out.  Still want to store token.  Don't want to add back to map.
-                    }
-                    lock (u.userLock) {
-                        u.LastSessionID = newSessionIDStr;
-                        bool stored = GloebitUserData.Instance.Store(u);
-                        if (!stored) {
-                            throw new Exception(String.Format("[GLOEBITMONEYMODULE] User.IsNewSession Failed to store user {0}", this.PrincipalID));
-                        }
-                        this.UpdateFrom(u);
-                    }
-                    
-                    return true;
-                }
-            }
-            
-            public bool IsAuthed() {
-                return !String.IsNullOrEmpty(this.GloebitToken);
-            }
-
-            // TODO: Why is this static?
-            public static User Authorize(GloebitAPI api, UUID agentId, string token, string gloebitID) {
-                string agentIdStr = agentId.ToString();
-                
-                // TODO: I think there has to be a better way to do this, but I'm not finding it right now.
-                // By calling Get, we make sure that the user is in the map and has any additional data users store.
-                User localUser = User.Get(api, agentId);
-                User u;
-                lock (s_userMap) {
-                    s_userMap.TryGetValue(agentIdStr, out u);
-                }
-                if (u == null) {
-                    m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.Authorize() Did not find User in s_userMap.  User logged out.");
-                    u = localUser;  // User logged out.  Still want to store token.  Don't want to add back to map.
-                }
-                lock (u.userLock) {
-                    u.GloebitToken = token;
-                    u.GloebitID = gloebitID;
-                    bool stored = GloebitUserData.Instance.Store(u);
-                    if (!stored) {
-                        throw new Exception(String.Format("[GLOEBITMONEYMODULE] User.Authorize Failed to store user {0}", agentIdStr));
-                    }
-                    localUser = new User(u);
-                }
-                
-                return localUser;
-            }
-
-            public void InvalidateToken() {
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.User.InvalidateToken() {0}, valid token? {1}", PrincipalID, !String.IsNullOrEmpty(GloebitToken));
-                
-                if(!String.IsNullOrEmpty(GloebitToken)) {
-                    User u;
-                    lock (s_userMap) {
-                        s_userMap.TryGetValue(PrincipalID, out u);
-                    }
-                    if (u == null) {
-                        u = this;   // User logged out.  Still want to invalidate token.  Don't want to add back to map.
-                    }
-                    lock (u.userLock) {
-                        if (GloebitToken != u.GloebitToken) {
-                            // Someone else invalidated it already or authorized it.
-                            // Don't overwrite
-                            // TODO: should we set this equal to a copy of u before we return?
-                            return;
-                        } else {
-                            u.GloebitToken = String.Empty;
-                            bool stored = GloebitUserData.Instance.Store(u);
-                            if (!stored) {
-                                throw new Exception(String.Format("[GLOEBITMONEYMODULE] User.InvalidateToken Failed to store user {0}", PrincipalID));
-                            }
-                            // TODO: should we set this equal to a copy of u before we return?
-                        }
-                    }
-                }
-            }
-            
-            // TODO: do we need an Update function to update the local user from the one in the map?
-            // Ideally, users are thrown away after use, but we should review.
-            
-            public static void Cleanup(UUID agentId) {
-                InvalidateCache(agentId);
-            }
-        }
         
         public class Transaction {
             
@@ -729,10 +509,10 @@ namespace Gloebit.GloebitMoneyModule {
         /// Sends Authorize URL to user which will launch a Gloebit authorize dialog.  If the user launches the URL and approves authorization from a Gloebit account, an authorization code will be returned to the redirect_uri.
         /// This is how a user links a Gloebit account to this OpenSim account.
         /// </summary>
-        /// <param name="user">GloebitAPI.User for which this app is asking for permission to enact Gloebit functionality.</param>
+        /// <param name="user">GloebitUser for which this app is asking for permission to enact Gloebit functionality.</param>
         /// <param name="userName">string name of user on this app.</param>
         /// <param name="baseURI">URL where Gloebit can send the auth response back to this app.</param>
-        public void Authorize(User user, string userName, Uri baseURI) {
+        public void Authorize(GloebitUser user, string userName, Uri baseURI) {
 
             //********* BUILD AUTHORIZE QUERY ARG STRING ***************//
             ////Dictionary<string, string> auth_params = new Dictionary<string, string>();
@@ -772,9 +552,9 @@ namespace Gloebit.GloebitMoneyModule {
         /// This occurs completely behind the scenes for security purposes.
         /// </summary>
         /// <returns>The authenticated User object containing the access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.</returns>
-        /// <param name="user">OpenSim User for which this region/grid is asking for permission to enact Gloebit functionality.</param>
+        /// <param name="user">GloebitUser for which this region/grid is asking for permission to enact Gloebit functionality.</param>
         /// <param name="auth_code">Authorization Code returned to the redirect_uri from the Gloebit Authorize endpoint.</param>
-        public void ExchangeAccessToken(User user, string auth_code, Uri baseURI) {
+        public void ExchangeAccessToken(GloebitUser user, string auth_code, Uri baseURI) {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken AgentID:{0}", user.PrincipalID);
             
@@ -810,7 +590,7 @@ namespace Gloebit.GloebitMoneyModule {
                         // TODO - do something to handle the "refresh_token" field properly
                         if(!String.IsNullOrEmpty(token)) {
                             success = true;
-                            user = User.Authorize(user.GetControllingAPI(), agentID, token, app_user_id);
+                            user = GloebitUser.Authorize(user.GetControllingAPI(), agentID, token, app_user_id);
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", user);
                         } else {
                             success = false;
@@ -836,10 +616,10 @@ namespace Gloebit.GloebitMoneyModule {
         /// Requires "balance" in scope of authorization token.
         /// </summary>
         /// <returns>The Gloebit balance for the Gloebit accunt the user has linked to this OpenSim agentID on this grid/region.  Returns zero if a link between this OpenSim user and a Gloebit account has not been created and the user has not granted authorization to this grid/region.</returns>
-        /// <param name="user">User object for the OpenSim user for whom the balance request is being made. <see cref="GloebitAPI.User.Get(UUID)"/></param>
+        /// <param name="user">GloebitUser object for the OpenSim user for whom the balance request is being made. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="invalidatedToken">Bool set to true if request fails due to a bad token which we have invalidated.  Eventually, this should be a more general error interface</param>
         /// <returns>Double balance of user or 0.0 if fails for any reason</returns>
-        public double GetBalance(User user, out bool invalidatedToken) {
+        public double GetBalance(GloebitUser user, out bool invalidatedToken) {
             
             invalidatedToken = false;
             
@@ -901,10 +681,10 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="txn">Transaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer id and name.  <see cref="GloebitAPI.Transaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
-        /// <param name="payerUser">User object for the user sending the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
+        /// <param name="payerUser">GloebitUser object for the user sending the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <returns>true if async transact web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactCompleted should eventually be called with additional details on state of request.</returns>
-        public bool Transact(Transaction txn, string description, OSDMap descMap, User payerUser, Uri baseURI) {
+        public bool Transact(Transaction txn, string description, OSDMap descMap, GloebitUser payerUser, Uri baseURI) {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.transact senderID:{0} senderName:{1} amount:{2} description:{3}", payerUser.PrincipalID, txn.PayerName, txn.Amount, description);
             
@@ -974,12 +754,12 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="txn">Transaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer/payee id and name.  <see cref="GloebitAPI.Transaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
-        /// <param name="sender">User object for the user sending the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
-        /// <param name="recipient">User object for the user receiving the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
+        /// <param name="sender">GloebitUser object for the user sending the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
+        /// <param name="recipient">GloebitUser object for the user receiving the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
-        public bool TransactU2U(Transaction txn, string description, OSDMap descMap, User sender, User recipient, string recipientEmail, Uri baseURI) {
+        public bool TransactU2U(Transaction txn, string description, OSDMap descMap, GloebitUser sender, GloebitUser recipient, string recipientEmail, Uri baseURI) {
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURI:{7}", sender.PrincipalID, txn.PayerName, recipient.PrincipalID, txn.PayeeName, recipientEmail, txn.Amount, description, baseURI);
             
@@ -1052,8 +832,8 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="txn">Transaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer/payee id and name.  <see cref="GloebitAPI.Transaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
-        /// <param name="sender">User object for the user sending the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
-        /// <param name="recipient">User object for the user receiving the gloebits. <see cref="GloebitAPI.User.Get(UUID)"/></param>
+        /// <param name="sender">GloebitUser object for the user sending the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
+        /// <param name="recipient">GloebitUser object for the user receiving the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <param name="stage">TransactionStage handed back to caller representing stage of transaction that failed or completed.</param>
@@ -1066,7 +846,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// --- See out parameters stage and failure for details on failure.
         /// If true, or if false in any stage after SUBMIT, IAsyncEndpointCallback transactU2UCompleted will be called with additional details on state of request prior to this function returning.
         /// </returns>
-        public bool TransactU2USync(Transaction txn, string description, OSDMap descMap, User sender, User recipient, string recipientEmail, Uri baseURI, out TransactionStage stage, out TransactionFailure failure)
+        public bool TransactU2USync(Transaction txn, string description, OSDMap descMap, GloebitUser sender, GloebitUser recipient, string recipientEmail, Uri baseURI, out TransactionStage stage, out TransactionFailure failure)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.Transact-U2U-Sync senderID:{0} senderName:{1} recipientID:{2} recipientName:{3} recipientEmail:{4} amount:{5} description:{6} baseURI:{7}", sender.PrincipalID, txn.PayerName, recipient.PrincipalID, txn.PayeeName, recipientEmail, txn.Amount, description, baseURI);
             
@@ -1367,8 +1147,8 @@ namespace Gloebit.GloebitMoneyModule {
         /// </summary>
         /// <param name="txn">Transaction that failed.</param>
         /// <param name="failure">TransactionFailure detailing specific failure or NONE.</param>
-        /// <param name="sender">User object for payer containing necessary details and OAuth2 token.</param>
-        private void ProcessTransactFailure(Transaction txn, TransactionFailure failure, User sender)
+        /// <param name="sender">GloebitUser object for payer containing necessary details and OAuth2 token.</param>
+        private void ProcessTransactFailure(Transaction txn, TransactionFailure failure, GloebitUser sender)
         {
             switch (failure) {
                 case TransactionFailure.NONE:
@@ -1499,7 +1279,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// information provided to the transaction completed async callback function.
         /// </summary>
         /// <param name="sub">Local GloebitSubscription with the details for this subscription.</param>
-        /// <param name="sender"> GloebitAPI.User of the user for whom we're creating a pending subscription authorization request.</param>
+        /// <param name="sender"> GloebitUser of the user for whom we're creating a pending subscription authorization request.</param>
         /// <param name="senderName"> String of the user name on the app.  This is supplied to display back to the user which app account they are authorizing.</param>
         /// <param name="baseURI">Callback URI -- not currently used.  Included in case we add callback ability.</param>
         /// <returns>
@@ -1507,7 +1287,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// False if submission fails.
         /// See CreateSubscriptionAuthorizationCompleted for async callback with relevant results of this api call.
         /// </returns>
-        public bool CreateSubscriptionAuthorization(GloebitSubscription sub, User sender, string senderName, Uri baseURI) {
+        public bool CreateSubscriptionAuthorization(GloebitSubscription sub, GloebitUser sender, string senderName, Uri baseURI) {
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization subscriptionID:{0} senderID:{1} senderName:{2} baseURI:{3}", sub.SubscriptionID, sender.PrincipalID, senderName, baseURI);
             
@@ -1609,7 +1389,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// Builds a URI for a user to purchase gloebits
         /// </summary>
         /// <returns>The fully constructed url with arguments for receiving a callback when the purchase is complete.</returns>
-        public Uri BuildPurchaseURI(Uri callbackBaseURL, User u) {
+        public Uri BuildPurchaseURI(Uri callbackBaseURL, GloebitUser u) {
             UriBuilder purchaseUri = new UriBuilder(m_url);
             purchaseUri.Path = "/purchase";
             if (callbackBaseURL != null) {
@@ -1636,10 +1416,10 @@ namespace Gloebit.GloebitMoneyModule {
         /// </summary>
         /// <param name="relative_url">endpoint & query args.</param>
         /// <param name="method">HTTP method for request -- eg: "GET", "POST".</param>
-        /// <param name="user">User object for this authenticated user if one exists.</param>
+        /// <param name="user">GloebitUser object for this authenticated user if one exists.</param>
         /// <param name="content_type">content type of post/put request  -- eg: "application/json", "application/x-www-form-urlencoded".</param>
         /// <param name="paramMap">parameter map for body of request.</param>
-        private HttpWebRequest BuildGloebitRequest(string relativeURL, string method, User user, string contentType = "", OSDMap paramMap = null) {
+        private HttpWebRequest BuildGloebitRequest(string relativeURL, string method, GloebitUser user, string contentType = "", OSDMap paramMap = null) {
             
             // combine Gloebit base url with endpoint and query args in relative url.
             Uri requestURI = new Uri(m_url, relativeURL);
@@ -1825,11 +1605,11 @@ namespace Gloebit.GloebitMoneyModule {
         /// Request a subscriptin authorization from a user.
         /// This specifically sends a message with a clickable URL to the client.
         /// </summary>
-        /// <param name="user">User we are sending the URL to</param>
+        /// <param name="user">GloebitUser we are sending the URL to</param>
         /// <param name="subAuthID">ID of the authorization request the user will be asked to approve - provided by Gloebit.</param>
         /// <param name="sub">GloebitSubscription which containes necessary details for message to user.</param>
         /// <param name="isDeclined">Bool is true if this sub auth has already been declined by the user which should present different messaging.</param>
-        public void SendSubscriptionAuthorizationToUser(User user, string subAuthID, GloebitSubscription sub, bool isDeclined)
+        public void SendSubscriptionAuthorizationToUser(GloebitUser user, string subAuthID, GloebitSubscription sub, bool isDeclined)
         {
             // Build the URL -- consider making a helper to be done in the API once we move this to the GMM
             Uri request_uri = new Uri(m_url, String.Format("authorize-subscription/{0}/", subAuthID));

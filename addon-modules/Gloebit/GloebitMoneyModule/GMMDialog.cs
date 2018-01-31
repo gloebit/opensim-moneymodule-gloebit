@@ -526,8 +526,8 @@ namespace Gloebit.GloebitMoneyModule {
                     throw new Exception(msg);
                 }
 
-                // Get GloebitAPI.User for this agent
-                GloebitAPI.User user = GloebitAPI.User.Get(this.api, AgentID);
+                // Get GloebitUser for this agent
+                GloebitUser user = GloebitUser.Get(this.api, AgentID);
 
                 // TODO: Shouldn't get here unless we have a token, but should we check again?
 
@@ -679,7 +679,7 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO: Do we need to check if this is null?  Shouldn't happen.
 
                 // Send Authorize URL
-                GloebitAPI.User user = GloebitAPI.User.Get(api, client.AgentId);
+                GloebitUser user = GloebitUser.Get(api, client.AgentId);
                 api.SendSubscriptionAuthorizationToUser(user, SubscriptionAuthorizationID.ToString(), sub, false);
 
                 break;
