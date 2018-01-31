@@ -75,7 +75,7 @@ namespace Gloebit.GloebitMoneyModule
     /// </summary>
 
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "GloebitMoneyModule")]
-    public class GloebitMoneyModule : IMoneyModule, ISharedRegionModule, GloebitAPI.IAsyncEndpointCallback, GloebitAPI.IAssetCallback
+    public class GloebitMoneyModule : IMoneyModule, ISharedRegionModule, GloebitAPI.IAsyncEndpointCallback, GloebitTransaction.IAssetCallback
     {
         
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
@@ -730,7 +730,7 @@ namespace Gloebit.GloebitMoneyModule
             }
             
             // Submit transaction and return result
-            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: txnType,
+            GloebitTransaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: txnType,
                                                           payerID: fromUser, payeeID: toUser, amount: amount, subscriptionID: UUID.Zero,
                                                           partID: partID, partName: partName, partDescription: partDescription,
                                                           categoryID: categoryID, localID: localID, saleType: 0);
@@ -856,7 +856,7 @@ namespace Gloebit.GloebitMoneyModule
             
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID, "ObjectGiveMoney", part);
             
-            GloebitAPI.Transaction txn = buildTransaction(transactionID: txnID, transactionType: TransactionType.OBJECT_PAYS_USER,
+            GloebitTransaction txn = buildTransaction(transactionID: txnID, transactionType: TransactionType.OBJECT_PAYS_USER,
                                                           payerID: fromID, payeeID: toID, amount: amount, subscriptionID: sub.SubscriptionID,
                                                           partID: objectID, partName: part.Name, partDescription: part.Description,
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
@@ -998,7 +998,7 @@ namespace Gloebit.GloebitMoneyModule
             
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), txnTypeString);
             
-            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: txnType,
+            GloebitTransaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: txnType,
                                                           payerID: agentID, payeeID: UUID.Zero, amount: amount, subscriptionID: UUID.Zero,
                                                           partID: UUID.Zero, partName: String.Empty, partDescription: String.Empty,
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
@@ -1044,7 +1044,7 @@ namespace Gloebit.GloebitMoneyModule
             
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), txnTypeString);
             
-            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: txnType,
+            GloebitTransaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: txnType,
                                                           payerID: agentID, payeeID: UUID.Zero, amount: amount, subscriptionID: UUID.Zero,
                                                           partID: UUID.Zero, partName: String.Empty, partDescription: String.Empty,
                                                           categoryID: UUID.Zero, localID: 0, saleType: 0);
@@ -1108,7 +1108,7 @@ namespace Gloebit.GloebitMoneyModule
         private void InitGloebitAPI()
         {
             //string key = (m_keyAlias != null && m_keyAlias != "") ? m_keyAlias : m_key;
-            m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this, this);
+            m_api = new GloebitAPI(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), this);
             GloebitUserData.Initialise(m_dbProvider, m_dbConnectionString);
             GloebitTransactionData.Initialise(m_dbProvider, m_dbConnectionString);
             GloebitSubscriptionData.Initialise(m_dbProvider, m_dbConnectionString);
@@ -1301,7 +1301,7 @@ namespace Gloebit.GloebitMoneyModule
         #endregion // GMM Transaction enums
         
         /// <summary>
-        /// Build a GloebitAPI.Transaction for a specific TransactionType.  This Transaction will be:
+        /// Build a GloebitTransaction for a specific TransactionType.  This Transaction will be:
         /// --- persistently stored
         /// --- used for submitting to Gloebit via the TransactU2U endpoint via <see cref="SubmitTransaction"/> and <see cref="SubmitSyncTransaction"/> functions,
         /// --- used for processing transact enact/consume/cancel callbacks to handle any other OpenSim components of the transaction(such as object delivery),
@@ -1319,8 +1319,8 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="categoryID">UUID of folder in object used when transactionType is ObjectBuy and saleType is copy.  UUID.Zero otherwise.  Required by IBuySellModule.</param>
         /// <param name="localID">uint region specific id of object used when transactionType is ObjectBuy.  0 otherwise.  Required by IBuySellModule.</param>
         /// <param name="saleType">int differentiating between orginal, copy or contents for ObjectBuy.  Required by IBuySellModule to process delivery.</param>
-        /// <returns>GloebitAPI.Transaction created. if successful.</returns>
-        private GloebitAPI.Transaction buildTransaction(UUID transactionID, TransactionType transactionType, UUID payerID, UUID payeeID, int amount, UUID subscriptionID, UUID partID, string partName, string partDescription, UUID categoryID, uint localID, int saleType)
+        /// <returns>GloebitTransaction created. if successful.</returns>
+        private GloebitTransaction buildTransaction(UUID transactionID, TransactionType transactionType, UUID payerID, UUID payeeID, int amount, UUID subscriptionID, UUID partID, string partName, string partDescription, UUID categoryID, uint localID, int saleType)
         {
             // TODO: we should store "transaction description" with the Transaction?
             
@@ -1412,23 +1412,23 @@ namespace Gloebit.GloebitMoneyModule
                 partDescription = String.Empty;
             }
             
-            GloebitAPI.Transaction txn = GloebitAPI.Transaction.Create(transactionID, payerID, payerName, payeeID, payeeName, amount, (int)transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
+            GloebitTransaction txn = GloebitTransaction.Create(transactionID, payerID, payerName, payeeID, payeeName, amount, (int)transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
             
             if (txn == null && isRandomID) {
                 // Try one more time in case the incredibly unlikely event of a UUID.Random overlap has occurred.
                 transactionID = UUID.Random();
-                txn = GloebitAPI.Transaction.Create(transactionID, payerID, payerName, payeeID, payeeName, amount, (int)transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
+                txn = GloebitTransaction.Create(transactionID, payerID, payerName, payeeID, payeeName, amount, (int)transactionType, transactionTypeString, isSubscriptionDebit, subscriptionID, partID, partName, partDescription, categoryID, localID, saleType);
             }
             
             return txn;
         }
         
         /// <summary>
-        /// Submits a GloebitAPI.Transaction to gloebit for processing and provides any necessary feedback to user/platform.
+        /// Submits a GloebitTransaction to gloebit for processing and provides any necessary feedback to user/platform.
         /// --- Must call buildTransaction() to create argument 1.
         /// --- Must call buildBaseTransactionDescMap() to create argument 3.
         /// </summary>
-        /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
+        /// <param name="txn">GloebitTransaction created from buildTransaction().  Contains vital transaction details.</param>
         /// <param name="description">Description of transaction for transaction history reporting.</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
         /// <param name="u2u">boolean declaring whether this is a user-to-app (false) or user-to-user (true) transaction.</param>
@@ -1438,7 +1438,7 @@ namespace Gloebit.GloebitMoneyModule
         /// --- IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.
         /// --- IAssetCallback processAsset[Enact|Consume|Cancel]Hold may eventually be called dependent upon processing.
         /// </returns>
-        private bool SubmitTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap, bool u2u)
+        private bool SubmitTransaction(GloebitTransaction txn, string description, OSDMap descMap, bool u2u)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] SubmitTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
             alertUsersTransactionBegun(txn, description);
@@ -1464,13 +1464,13 @@ namespace Gloebit.GloebitMoneyModule
         }
         
         /// <summary>
-        /// Submits a GloebitAPI.Transaction usings synchronous web requests to gloebit for processing and provides any necessary feedback to user/platform.
+        /// Submits a GloebitTransaction usings synchronous web requests to gloebit for processing and provides any necessary feedback to user/platform.
         /// Rather than solely receiving a "submission" response, TransactU2UCallback happens during request, and receives transaction success/failure response.
         /// --- Must call buildTransaction() to create argument 1.
         /// --- Must call buildBaseTransactionDescMap() to create argument 3.
         /// *** NOTE *** Only use this function if you need a synchronous transaction success response.  Use SubmitTransaction Otherwise.
         /// </summary>
-        /// <param name="txn">GloebitAPI.Transaction created from buildTransaction().  Contains vital transaction details.</param>
+        /// <param name="txn">GloebitTransaction created from buildTransaction().  Contains vital transaction details.</param>
         /// <param name="description">Description of transaction for transaction history reporting.</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
         /// <returns>
@@ -1483,7 +1483,7 @@ namespace Gloebit.GloebitMoneyModule
         /// --- If stage is any stage after SUBMIT, errors are handled by TransactU2UCompleted callback which was already called.
         /// --- If stage is SUBMIT, errors must be handled by this function
         /// </returns>
-        private bool SubmitSyncTransaction(GloebitAPI.Transaction txn, string description, OSDMap descMap)
+        private bool SubmitSyncTransaction(GloebitTransaction txn, string description, OSDMap descMap)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] SubmitSyncTransaction Txn: {0}, from {1} to {2}, for amount {3}, transactionType: {4}, description: {5}", txn.TransactionID, txn.PayerID, txn.PayeeID, txn.Amount, txn.TransactionType, description);
             alertUsersTransactionBegun(txn, description);
@@ -1723,7 +1723,7 @@ namespace Gloebit.GloebitMoneyModule
         }
         
         /// <summary>
-        /// Registered to the enactHoldURI, consumeHoldURI and cancelHoldURI from GloebitAPI.Transaction.
+        /// Registered to the enactHoldURI, consumeHoldURI and cancelHoldURI from GloebitTransaction.
         /// Called by the Gloebit transaction processor.
         /// Enacts, cancels, or consumes the GloebitAPI.Asset.
         /// Response of true certifies that the Asset transaction part has been processed as requested.
@@ -1741,7 +1741,7 @@ namespace Gloebit.GloebitMoneyModule
             string stateRequested = requestData["state"] as string;
             string returnMsg = "";
             
-            bool success = GloebitAPI.Transaction.ProcessStateRequest(transactionIDstr, stateRequested, out returnMsg);
+            bool success = GloebitTransaction.ProcessStateRequest(transactionIDstr, stateRequested, this, out returnMsg);
             
             //JsonValue[] result;
             //JsonValue[0] = JsonValue.CreateBooleanValue(success);
@@ -1850,7 +1850,7 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
         
-        public void transactU2UCompleted(OSDMap responseDataMap, GloebitUser payerUser, GloebitUser payeeUser, GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure)
+        public void transactU2UCompleted(OSDMap responseDataMap, GloebitUser payerUser, GloebitUser payeeUser, GloebitTransaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure)
         {
             // TODO: should pass success, reason and status through as arguments.  Should probably check tID in GAPI instead of here.
             bool success = (bool)responseDataMap["success"];
@@ -2175,7 +2175,7 @@ namespace Gloebit.GloebitMoneyModule
          * CANCEL -> Transaction has been canceled.  Undo anything necessary
          */
         
-        public bool processAssetEnactHold(GloebitAPI.Transaction txn, out string returnMsg) {
+        public bool processAssetEnactHold(GloebitTransaction txn, out string returnMsg) {
             
             // If we've gotten this call, then the Gloebit components have enacted successfully
             // all funds have been transferred.
@@ -2270,7 +2270,7 @@ namespace Gloebit.GloebitMoneyModule
         }
 
 
-        public bool processAssetConsumeHold(GloebitAPI.Transaction txn, out string returnMsg) {
+        public bool processAssetConsumeHold(GloebitTransaction txn, out string returnMsg) {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetConsumeHold SUCCESS - transaction complete");
             
@@ -2340,7 +2340,7 @@ namespace Gloebit.GloebitMoneyModule
         // This is only called if the the local asset had previously been successfully enacted before the transaction failed.
         // This really shouldn't happen since the local asset is the final transaction coponent and the transaction
         // should not be able to fail once it enacts successfully.
-        public bool processAssetCancelHold(GloebitAPI.Transaction txn, out string returnMsg) {
+        public bool processAssetCancelHold(GloebitTransaction txn, out string returnMsg) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetCancelHold SUCCESS - transaction rolled back");
             
             // TODO: should probably move this out of here to GAPI to be reported when cancel is received regardless
@@ -2406,7 +2406,7 @@ namespace Gloebit.GloebitMoneyModule
          * IE: Deliver the object; Transfer the land.
          */
         
-        private bool deliverObject(GloebitAPI.Transaction txn, IClientAPI buyerClient, out string returnMsg) {
+        private bool deliverObject(GloebitTransaction txn, IClientAPI buyerClient, out string returnMsg) {
             // TODO: this could fail if user logs off right after submission.  Is this what we want?
             // TODO: This basically always fails when you crash opensim and recover during a transaction.  Is this what we want?
             if (buyerClient == null) {
@@ -2448,7 +2448,7 @@ namespace Gloebit.GloebitMoneyModule
             return success;
         }
         
-        private bool transferLand(GloebitAPI.Transaction txn, out string returnMsg) {
+        private bool transferLand(GloebitTransaction txn, out string returnMsg) {
             //// retrieve LandBuyArgs from assetMap
             bool foundArgs = m_landAssetMap.ContainsKey(txn.TransactionID);
             if (!foundArgs) {
@@ -2966,7 +2966,7 @@ namespace Gloebit.GloebitMoneyModule
 
             /******** Set up necessary parts for gloebit transact-u2u **********/
 
-            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: (TransactionType)e.transactiontype,
+            GloebitTransaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: (TransactionType)e.transactiontype,
                 payerID: fromID, payeeID: toID, amount: e.amount, subscriptionID: UUID.Zero,
                 partID: partID, partName: partName, partDescription: partDescription,
                 categoryID: UUID.Zero, localID: 0, saleType: 0);
@@ -3070,7 +3070,7 @@ namespace Gloebit.GloebitMoneyModule
 
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "ObjectBuy", part);
 
-            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_OBJECT,
+            GloebitTransaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_OBJECT,
                 payerID: agentID, payeeID: part.OwnerID, amount: salePrice, subscriptionID: UUID.Zero,
                 partID: part.UUID, partName: part.Name, partDescription: part.Description,
                 categoryID: categoryID, localID: localID, saleType: saleType);
@@ -3166,7 +3166,7 @@ namespace Gloebit.GloebitMoneyModule
 
             OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "LandPassBuy", parcel.LandData);
 
-            GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_LANDPASS,
+            GloebitTransaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_LANDPASS,
                 payerID: agentID, payeeID: parcel.LandData.OwnerID, amount: price, subscriptionID: UUID.Zero,
                 partID: parcel.LandData.GlobalID, partName: parcel.LandData.Name, partDescription: parcel.LandData.Description,
                 categoryID: regionID, localID: (uint)parcel.LandData.LocalID, saleType: 0);
@@ -3186,7 +3186,7 @@ namespace Gloebit.GloebitMoneyModule
 
         // Called for flow pre-0.9.1 where we deliver asset.  0.9.1 and after, flow does delivery, so this is not called
         // NOTE: have not moved to asset enact region of file because it is not used in current versions.
-        private bool deliverLandPass(GloebitAPI.Transaction txn, out string returnMsg) {
+        private bool deliverLandPass(GloebitTransaction txn, out string returnMsg) {
             m_log.DebugFormat("[GLOEBITMONEYMODULE] deliverLandPass to:{0}", txn.PayerID);
             // Get Parcel back
             uint localID;
@@ -3438,7 +3438,7 @@ namespace Gloebit.GloebitMoneyModule
                     
                     OSDMap descMap = buildBaseTransactionDescMap(regionname, regionID.ToString(), "LandBuy");
                     
-                    GloebitAPI.Transaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_LAND,
+                    GloebitTransaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: TransactionType.USER_BUYS_LAND,
                                                                   payerID: e.agentId, payeeID: e.parcelOwnerID, amount: e.parcelPrice, subscriptionID: UUID.Zero,
                                                                   partID: UUID.Zero, partName: String.Empty, partDescription: String.Empty,
                                                                   categoryID: UUID.Zero, localID: 0, saleType: 0);
@@ -3831,7 +3831,7 @@ namespace Gloebit.GloebitMoneyModule
         /// the payer is offline, can grab the agentID we need.  This version removes the need to supply that argument every time.
         /// In the case we are notifying the payee or someone else, the correct agentID can be supplied directly.
         /// </summary>
-        private void sendTxnStatusToClient(GloebitAPI.Transaction txn, IClientAPI client, string baseStatus, bool showTxnDetails, bool showTxnID)
+        private void sendTxnStatusToClient(GloebitTransaction txn, IClientAPI client, string baseStatus, bool showTxnDetails, bool showTxnID)
         {
             sendTxnStatusToClient(txn, client, baseStatus, showTxnDetails, showTxnID, txn.PayerID);
         }
@@ -3841,13 +3841,13 @@ namespace Gloebit.GloebitMoneyModule
         /// Always includes an intro with shortened txn id and a base message.
         /// May include addtional transaction details and txn id based upon bool arguments and bool overrides.
         /// </summary>
-        /// <param name="txn">GloebitAPI.Transaction this status is in regards to.</param>
+        /// <param name="txn">GloebitTransaction this status is in regards to.</param>
         /// <param name="client">Client we are messaging.  If null, our sendMessage func will handle properly.</param>
         /// <param name="baseStatus">String Status message to deliver.</param>
         /// <param name="showTxnDetails">If true, include txn details in status (can be overriden by global overrides).</param>
         /// <param name="showTxnID">If true, include full transaction id in status (can be overriden by global overrides).</param>
         /// <param name="agentID">UUID of user we are messaging.  Only used if user is offline and client is null.</param>
-        private void sendTxnStatusToClient(GloebitAPI.Transaction txn, IClientAPI client, string baseStatus, bool showTxnDetails, bool showTxnID, UUID agentID)
+        private void sendTxnStatusToClient(GloebitTransaction txn, IClientAPI client, string baseStatus, bool showTxnDetails, bool showTxnID, UUID agentID)
         {
             // Determine if we're including Details and ID based on args and overrides
             bool alwaysShowTxnDetailsOverride = false;
@@ -4068,7 +4068,7 @@ namespace Gloebit.GloebitMoneyModule
 
         }
         
-        /**** Functions to handle messaging transaction status to users (after GloebitAPI.Transaction has been built) ****/
+        /**** Functions to handle messaging transaction status to users (after GloebitTransaction has been built) ****/
         
         /// <summary>
         /// Called just prior to the application submitting a transaction to Gloebit.
@@ -4080,7 +4080,7 @@ namespace Gloebit.GloebitMoneyModule
         /// </summary>
         /// <param name="txn">Transaction that failed.</param>
         /// <param name="description">String containing txn description since this is not in the Transaction class yet.</param>
-        private void alertUsersTransactionBegun(GloebitAPI.Transaction txn, string description)
+        private void alertUsersTransactionBegun(GloebitTransaction txn, string description)
         {
             // TODO: make user configurable
             bool showDetailsWithTxnBegun = true;
@@ -4191,7 +4191,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="txn">Transaction that failed.</param>
         /// <param name="stage">TransactionStage which the transaction successfully completed to drive this alert.</param>
         /// <param name="additionalDetails">String containing additional details to be appended to the alert message.</param>
-        private void alertUsersTransactionStageCompleted(GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, string additionalDetails)
+        private void alertUsersTransactionStageCompleted(GloebitTransaction txn, GloebitAPI.TransactionStage stage, string additionalDetails)
         {
             // TODO: make user configurable
             bool reportAllTxnStagesOverride = false;
@@ -4338,7 +4338,7 @@ namespace Gloebit.GloebitMoneyModule
         /// <param name="stage">TransactionStage in which the transaction failed to drive this alert.</param>
         /// <param name="failure">TransactionFailure code providing necessary differentiation on specific failure within a stage.</param>
         /// <param name="additionalFailureDetails">String containing additional details to be appended to the alert message.</param>
-        private void alertUsersTransactionFailed(GloebitAPI.Transaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure, string additionalFailureDetails)
+        private void alertUsersTransactionFailed(GloebitTransaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure, string additionalFailureDetails)
         {
             // TODO: make user configurable
             bool showDetailsWithTxnFailed = false;
@@ -4570,7 +4570,7 @@ namespace Gloebit.GloebitMoneyModule
         /// At a minimum, this should notify the user who triggered the transaction.
         /// </summary>
         /// <param name="txn">Transaction that succeeded.</param>
-        private void alertUsersTransactionSucceeded(GloebitAPI.Transaction txn)
+        private void alertUsersTransactionSucceeded(GloebitTransaction txn)
         {
             // TODO: make user configurable
             bool showDetailsWithTxnSucceeded = false;

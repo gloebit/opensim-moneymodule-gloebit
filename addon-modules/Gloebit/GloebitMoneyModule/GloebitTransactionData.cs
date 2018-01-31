@@ -65,20 +65,20 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         public interface IGloebitTransactionData {
-            GloebitAPI.Transaction[] Get(string field, string key);
+            GloebitTransaction[] Get(string field, string key);
 
-            GloebitAPI.Transaction[] Get(string[] fields, string[] keys);
+            GloebitTransaction[] Get(string[] fields, string[] keys);
 
-            bool Store(GloebitAPI.Transaction txn);
+            bool Store(GloebitTransaction txn);
         }
 
-        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
+        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitTransaction>, IGloebitTransactionData {
             public SQLiteImpl(string connectionString)
                 : base(connectionString, "GloebitTransactions", "GloebitTransactionsSQLite")
             {
             }
             
-            public override bool Store(GloebitAPI.Transaction txn)
+            public override bool Store(GloebitTransaction txn)
             {
                 // remove null datetimes as pgsql throws exceptions on null fields
                 if (txn.enactedTime == null) {
@@ -92,13 +92,13 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
 
-        private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
+        private class MySQLImpl : MySQLGenericTableHandler<GloebitTransaction>, IGloebitTransactionData {
             public MySQLImpl(string connectionString)
                 : base(connectionString, "GloebitTransactions", "GloebitTransactionsMySQL")
             {
             }
             
-            public override bool Store(GloebitAPI.Transaction txn)
+            public override bool Store(GloebitTransaction txn)
             {
                 //            m_log.DebugFormat("[MYSQL GENERIC TABLE HANDLER]: Store(T row) invoked");
                 
@@ -150,7 +150,7 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
 
-        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.Transaction>, IGloebitTransactionData {
+        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitTransaction>, IGloebitTransactionData {
             private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
             public PGSQLImpl(string connectionString)
@@ -158,7 +158,7 @@ namespace Gloebit.GloebitMoneyModule
             {
             }
             
-            public override bool Store(GloebitAPI.Transaction txn)
+            public override bool Store(GloebitTransaction txn)
             {
 		try {
                     // remove null datetimes as pgsql throws exceptions on null fields
