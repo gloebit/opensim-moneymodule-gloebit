@@ -3556,22 +3556,22 @@ namespace Gloebit.GloebitMoneyModule
         #region XML RPC Handlers
 
         /*****************************************************************************************************
-         * On a standalone grid (single sim server.  not robust)
-         * - These functions can handle the the calls to the currency helper-uri if it is configured to point
-         *   at the sim.
+         * Buy-land, buy-currency and insufficient-funds flow handlers
+         * - These functions can handle the calls to the currency helper-uri if it is configured to point
+         *   at the sim.  The GMM provides this helper-uri and the currency symbol via the OpenSim Extras.
+         *   Some viewers (Firestorm & Alchemy at time of writing) consume these so this requires no
+         *   configuration to work for a user on a Gloebit enabled region.  For users with other or older viewers,
+         *   the helper-uri will have to be conifgured properly, and if not pointed at a Gloebit enabled sim,
+         *   the grid will have to handle these calls, which it has traditionally done with an XMLRPC server and
+         *   currency.php and landtool.php helper scripts.  That is rather complex, so we recommend that all 
+         *   viewers adopt this patch and that grids request that their users update to a viewer with this patch.
+         *   --- Patch Info: http://dev.gloebit.com/blog/Upgrade-Viewer/
+         *   --- Patch Info: https://medium.com/@colosi/multi-currency-support-coming-to-opensim-viewers-cd20e75f7990
+         *   --- Patch Download: http://dev.gloebit.com/opensim/downloads/ColosiOpenSimMultiCurrencySupport.patch
+         *   --- Firestorm Jira: https://jira.phoenixviewer.com/browse/FIRE-21587
          * - These functions handle some pre-flight checks which enable a land sales and provide some useful
          *   messaging for the buy-currency and insufficient-funds flows.  Unfortunately, we can not handle
          *   purchasing of currency directly through this flow.
-         * - On a robust grid, these calls are not captured by these XmlRpc handlers.  The grid requires
-         *   landtool.php and currency.php helper scripts in the directory pointed at by the currency
-         *   helper-uri.  The landtool.php can provide the same functionality, but the currency.php file
-         *   doesn't have access to the region of the transaction and therefor doesn't know what money
-         *   module is enabled on a grid with multiple or in the case of a Gloebit region, if the user
-         *   is authorized, so the flow here can not reach parity with the module handling these calls
-         *   directly.  We are hoping to work with the core team to improve this interface eventually.
-         * - We do provide a currency helper uri and currency symbol in the OpenSim Extras for viewers
-         *   which would like to attempt to direct the land and currency calls at the region, but we don't
-         *   know if any have implemented this or tested it yet.
          *****************************************************************************************************/
 
         private XmlRpcResponse quote_func(XmlRpcRequest request, IPEndPoint remoteClient)
@@ -3619,8 +3619,7 @@ namespace Gloebit.GloebitMoneyModule
             string secureSessionId = requestData["secureSessionId"] as string;
 
             // currencyBuy:viewerMinorVersion:secureSessionId:viewerBuildVersion:estimatedCost:confirm:agentId:viewerPatchVersion:viewerMajorVersion:viewerChannel:language
-
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
+            // m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
             m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
                 agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
 

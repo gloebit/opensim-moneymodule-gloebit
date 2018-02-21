@@ -34,10 +34,14 @@ using System.Reflection;
 using System.Text;
 using System.Web;
 using log4net;
+
+// TODO: convert OSDMaps to Dictionaries and UUIDs to GUIDs and remove requirement for OpenMetaverse libraries to make this more generic.
 using OpenMetaverse;
 using OpenMetaverse.StructuredData;
 
-using OpenSim.Framework;
+// TODO: consider making this a strict REST API using dictionary forms rather than objects and moving the object implementation
+//       to an API wrapper which uses this API.  The separation might make both easier to maintain as this is ported to
+//       new platforms.
 
 namespace Gloebit.GloebitMoneyModule {
 
