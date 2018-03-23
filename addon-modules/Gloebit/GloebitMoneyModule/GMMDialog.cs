@@ -423,7 +423,7 @@ namespace Gloebit.GloebitMoneyModule {
         public readonly UUID SubscriptionID; // The subscription id return by GloebitAPI.CreateSubscription
 
         // TODO: can these be static, or should we be passing in the m_api instead?
-        public readonly GloebitAPI api;         // The GloebitAPI environment that is currently active
+        public readonly GloebitAPIWrapper apiW;         // The GloebitAPIWrapper environment that is currently active
         public readonly Uri callbackBaseURI;    // The economyURL for the sim - used if we decide to create callbacks.
 
 
@@ -470,9 +470,9 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="payeeName">String name of the OpenSim user who is being paid by the object/script/subscription</param>
         /// <param name="amount">int amount of the failed transaction which triggered this authorization request</param>
         /// <param name="subscriptionID">UUID of subscription created/returnd by Gloebit and for which authorization is being requested</param>
-        /// <param name="activeApi">GloebitAPI active for this GMM</param>
+        /// <param name="activeApiW">GloebitAPIWrapper active for this GMM</param>
         /// <param name="appCallbackBaseURI">Base URI for any callbacks this request makes back into the app</param>
-        public CreateSubscriptionAuthorizationDialog(IClientAPI client, UUID agentID, string agentName, UUID objectID, string objectName, string objectDescription, UUID transactionID, UUID payeeID, string payeeName, int amount, UUID subscriptionID, GloebitAPI activeApi, Uri appCallbackBaseURI) : base(client, agentID)
+        public CreateSubscriptionAuthorizationDialog(IClientAPI client, UUID agentID, string agentName, UUID objectID, string objectName, string objectDescription, UUID transactionID, UUID payeeID, string payeeName, int amount, UUID subscriptionID, GloebitAPIWrapper activeApiW, Uri appCallbackBaseURI) : base(client, agentID)
         {
             this.AgentName = agentName;
 
@@ -486,7 +486,7 @@ namespace Gloebit.GloebitMoneyModule {
             this.Amount = amount;
             this.SubscriptionID = subscriptionID;
 
-            this.api = activeApi;
+            this.apiW = activeApiW;
             this.callbackBaseURI = appCallbackBaseURI;
 
             this.m_body = String.Format("\nA payment was attempted by a scripted object you own.  To allow payments triggered by this object, you must authorize it from the Gloebit Website.\n\nObject:\n   {0}\n   {1}\nTo:\n   {2}\n   {3}\nAmount:\n   {4} Gloebits", ObjectName, ObjectID, PayeeName, PayeeID, Amount);
@@ -516,7 +516,7 @@ namespace Gloebit.GloebitMoneyModule {
                 // Create authorization
 
                 string subscriptionIDStr = SubscriptionID.ToString();
-                string apiUrl = api.m_url.ToString();
+                string apiUrl = apiW.m_url.ToString();
 
                 GloebitSubscription sub = GloebitSubscription.GetBySubscriptionID(subscriptionIDStr, apiUrl);
                 // IF null, there was a db error on storing this -- test store functions for db impl
@@ -525,15 +525,7 @@ namespace Gloebit.GloebitMoneyModule {
                     m_log.Error(msg);
                     throw new Exception(msg);
                 }
-
-                // Get GloebitUser for this agent
-                GloebitUser user = GloebitUser.Get(this.api, AgentID);
-
-                // TODO: Shouldn't get here unless we have a token, but should we check again?
-
-                // TODO: need to include transactionID, payeeID, payeeName and amount somehow
-                api.CreateSubscriptionAuthorization(sub, user, AgentName, callbackBaseURI);
-
+                apiW.AuthorizeSubscription(AgentID, String.Empty, sub, false);
                 break;
             case "Report Fraud":
                 // Report to Gloebit
@@ -575,7 +567,7 @@ namespace Gloebit.GloebitMoneyModule {
         public readonly UUID SubscriptionID; // The subscription id return by GloebitAPI.CreateSubscription
 
         // TODO: can these be static, or should we be passing in the m_api instead?
-        public readonly GloebitAPI api;      // The GloebitAPI environment that is currently active
+        public readonly GloebitAPIWrapper apiW;      // The GloebitAPIWrapper environment that is currently active
         public readonly Uri callbackBaseURI;      // The economyURL for the sim - used if we decide to create callbacks.
 
         // Name of the agent to whom this dialog is being delivered
@@ -629,9 +621,9 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="amount">int amount of the failed transaction which triggered this authorization request</param>
         /// <param name="subscriptionID">UUID of subscription created/returnd by Gloebit and for which authorization is being requested</param>
         /// <param name="subscriptionAuthorizationID">UUID of the pending subscription authorization returned by Gloebit with the failed transaction</param>
-        /// <param name="activeApi">GloebitAPI active for this GMM</param>
+        /// <param name="activeApiW">GloebitAPIWrapper active for this GMM</param>
         /// <param name="appCallbackBaseURI">Base URI for any callbacks this request makes back into the app</param>
-        public PendingSubscriptionAuthorizationDialog(IClientAPI client, UUID agentID, string agentName, UUID objectID, string objectName, string objectDescription, UUID transactionID, UUID payeeID, string payeeName, int amount, UUID subscriptionID, UUID subscriptionAuthorizationID, GloebitAPI activeApi, Uri appCallbackBaseURI) : base(client, agentID)
+        public PendingSubscriptionAuthorizationDialog(IClientAPI client, UUID agentID, string agentName, UUID objectID, string objectName, string objectDescription, UUID transactionID, UUID payeeID, string payeeName, int amount, UUID subscriptionID, UUID subscriptionAuthorizationID, GloebitAPIWrapper activeApiW, Uri appCallbackBaseURI) : base(client, agentID)
         {
             this.AgentName = agentName;
 
@@ -646,7 +638,7 @@ namespace Gloebit.GloebitMoneyModule {
             this.SubscriptionID = subscriptionID;
             this.SubscriptionAuthorizationID = subscriptionAuthorizationID;
 
-            this.api = activeApi;
+            this.apiW = activeApiW;
             this.callbackBaseURI = appCallbackBaseURI;
 
             this.m_body = String.Format("\nA payment was attempted by a scripted object you own.  To allow payments triggered by this object, you must authorize it from the Gloebit Website.  A pending authorization request for this object exists to which you have not yet responded.\n\nObject:\n   {0}\n   {1}\nTo:\n   {2}\n   {3}\nAmount:\n   {4} Gloebits", ObjectName, ObjectID, PayeeName, PayeeID, Amount);
@@ -674,13 +666,12 @@ namespace Gloebit.GloebitMoneyModule {
                 // Resend authorization link
 
                 string subscriptionIDStr = SubscriptionID.ToString();
-                string apiUrl = api.m_url.ToString();
+                string apiUrl = apiW.m_url.ToString();
                 GloebitSubscription sub = GloebitSubscription.GetBySubscriptionID(subscriptionIDStr, apiUrl);
                 // TODO: Do we need to check if this is null?  Shouldn't happen.
 
                 // Send Authorize URL
-                GloebitUser user = GloebitUser.Get(api, client.AgentId);
-                api.SendSubscriptionAuthorizationToUser(user, SubscriptionAuthorizationID.ToString(), sub, false);
+                apiW.AuthorizeSubscription(client.AgentId, SubscriptionAuthorizationID.ToString(), sub, false);
 
                 break;
             case "Report Fraud":

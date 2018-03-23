@@ -52,11 +52,10 @@ namespace Gloebit.GloebitMoneyModule {
         private string m_keyAlias;
         private string m_secret;
         public readonly Uri m_url;
+
+
         
         public interface IAsyncEndpointCallback {
-            // Load funcs below are used in flows where we need to send the user to the Gloebit Website.
-            void LoadAuthorizeUrlForUser(GloebitUser user, Uri authorizeUri);
-            void LoadSubscriptionAuthorizationUrlForUser(GloebitUser user, Uri subAuthUri, GloebitSubscription sub, bool isDeclined);
             void exchangeAccessTokenCompleted(bool success, GloebitUser user, OSDMap responseDataMap);
             // TODO: may change this to transactCompleted and add a bool for u2u
             void transactU2UCompleted(OSDMap responseDataMap, GloebitUser payerUser, GloebitUser payeeUser, GloebitTransaction transaction, TransactionStage stage, TransactionFailure failure);
@@ -132,7 +131,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="user">GloebitUser for which this app is asking for permission to enact Gloebit functionality.</param>
         /// <param name="userName">string name of user on this app.</param>
         /// <param name="baseURI">URL where Gloebit can send the auth response back to this app.</param>
-        public void Authorize(GloebitUser user, string userName, Uri baseURI) {
+        public Uri BuildAuthorizationURI(GloebitUser user, string userName, Uri baseURI) {
 
             //********* BUILD AUTHORIZE QUERY ARG STRING ***************//
             ////Dictionary<string, string> auth_params = new Dictionary<string, string>();
@@ -162,17 +161,17 @@ namespace Gloebit.GloebitMoneyModule {
             
             //*********** SEND AUTHORIZE REQUEST URI TO USER ***********//
             
-            // currently can not launch browser directly for user, so ask OpenSim to Load the AuthorizeURL for the user
-            m_asyncEndpointCallbacks.LoadAuthorizeUrlForUser(user, request_uri);
+            // currently can not launch browser directly for user, so ask platform to Load the AuthorizeURL for the user
+            return(request_uri);
         }
         
         /// <summary>
-        /// Begins request to exchange an authorization code granted from the Authorize endpoint for an access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.
+        /// Begins request to exchange an authorization code granted from the Authorize endpoint for an access token necessary for enacting Gloebit functionality on behalf of this user.
         /// This begins the second phase of the OAuth2 process.  It is activated by the redirect_uri of the Authorize function.
         /// This occurs completely behind the scenes for security purposes.
         /// </summary>
-        /// <returns>The authenticated User object containing the access token necessary for enacting Gloebit functionality on behalf of this OpenSim user.</returns>
-        /// <param name="user">GloebitUser for which this region/grid is asking for permission to enact Gloebit functionality.</param>
+        /// <returns>The authenticated User object containing the access token necessary for enacting Gloebit functionality on behalf of this user.</returns>
+        /// <param name="user">GloebitUser for which this app is asking for permission to enact Gloebit functionality.</param>
         /// <param name="auth_code">Authorization Code returned to the redirect_uri from the Gloebit Authorize endpoint.</param>
         public void ExchangeAccessToken(GloebitUser user, string auth_code, Uri baseURI) {
             
@@ -210,7 +209,7 @@ namespace Gloebit.GloebitMoneyModule {
                         // TODO - do something to handle the "refresh_token" field properly
                         if(!String.IsNullOrEmpty(token)) {
                             success = true;
-                            user = GloebitUser.Authorize(user.GetControllingAPI(), agentID, token, app_user_id);
+                            user = GloebitUser.Authorize(m_key, agentID, token, app_user_id);
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken Success User:{0}", user);
                         } else {
                             success = false;
@@ -656,7 +655,7 @@ namespace Gloebit.GloebitMoneyModule {
             // Store response data in GloebitTransaction record
             txn.ResponseReceived = true;
             txn.ResponseSuccess = success;
-            txn.ResponseStatus = responseDataMap["status"];
+            txn.ResponseStatus = status;
             txn.ResponseReason = reason;
             if (success) {
                 txn.PayerEndingBalance = (int)balance;
@@ -1003,27 +1002,18 @@ namespace Gloebit.GloebitMoneyModule {
             
             return true;
         }
-        
 
         /// <summary>
-        /// Builds a URI for a user to purchase gloebits
+        /// Request a subscription authorization from a user.
+        /// This specifically sends a message with a clickable URL to the client.
         /// </summary>
-        /// <returns>The fully constructed url with arguments for receiving a callback when the purchase is complete.</returns>
-        public Uri BuildPurchaseURI(Uri callbackBaseURL, GloebitUser u) {
-            UriBuilder purchaseUri = new UriBuilder(m_url);
-            purchaseUri.Path = "/purchase";
-            if (callbackBaseURL != null) {
-                // TODO: this whole url should be built in GMM, not GAPI
-                // could do a try/catch here with the errors that UriBuilder can throw to also prevent crash from poorly formatted server uri.
-                UriBuilder callbackUrl = new UriBuilder(callbackBaseURL);
-                callbackUrl.Path = "/gloebit/buy_complete";
-                callbackUrl.Query = String.Format("agentId={0}", u.PrincipalID);
-                purchaseUri.Query = String.Format("reset&r={0}&inform={1}", m_keyAlias, callbackUrl.Uri);
-            } else {
-                purchaseUri.Query = String.Format("reset&r={0}", m_keyAlias);
-            }
-            return purchaseUri.Uri;
+        /// <param name="subAuthID">ID of the authorization request the user will be asked to approve - provided by Gloebit.</param>
+        public Uri BuildSubscriptionAuthorizationURI(string subAuthID)
+        {
+            // Build and return the URI
+            return(new Uri(m_url, String.Format("authorize-subscription/{0}/", subAuthID)));
         }
+        
  
         /***********************************************/
         /********* GLOEBIT API HELPER FUNCTIONS ********/
@@ -1101,6 +1091,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// </summary>
         /// <param name="ParamMap">Parameters to be encoded.</param>
         private string BuildURLEncodedParamString(OSDMap paramMap) {
+            // TODO: remove client_secret from this before logging
             m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildURLEncodedParamString building from paramMap:{0}:", paramMap);
             StringBuilder paramBuilder = new StringBuilder();
             foreach (KeyValuePair<string, OSD> p in (OSDMap)paramMap) {
@@ -1216,28 +1207,6 @@ namespace Gloebit.GloebitMoneyModule {
                     myRequestState.continuation(responseDataMap);
                 }
             }
-        }
-        
-        // TODO: These functions should probably be moved to the money module.
-        
-        // TODO: This should become an interface function and moved to the Money Module
-        /// <summary>
-        /// Request a subscriptin authorization from a user.
-        /// This specifically sends a message with a clickable URL to the client.
-        /// </summary>
-        /// <param name="user">GloebitUser we are sending the URL to</param>
-        /// <param name="subAuthID">ID of the authorization request the user will be asked to approve - provided by Gloebit.</param>
-        /// <param name="sub">GloebitSubscription which containes necessary details for message to user.</param>
-        /// <param name="isDeclined">Bool is true if this sub auth has already been declined by the user which should present different messaging.</param>
-        public void SendSubscriptionAuthorizationToUser(GloebitUser user, string subAuthID, GloebitSubscription sub, bool isDeclined)
-        {
-            // Build the URL -- consider making a helper to be done in the API once we move this to the GMM
-            Uri request_uri = new Uri(m_url, String.Format("authorize-subscription/{0}/", subAuthID));
-            
-            //*********** SEND SUBSCRIPTION AUTHORIZATION REQUEST URI TO USER ***********//
-                
-            // currently can not launch browser directly for user, so ask OpenSim to Load the SubAuthURL for the user
-            m_asyncEndpointCallbacks.LoadSubscriptionAuthorizationUrlForUser(user, request_uri, sub, isDeclined);
         }
         
         public enum TransactionStage : int

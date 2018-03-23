@@ -38,7 +38,6 @@ using System.Reflection;
 using log4net;
 using OpenMetaverse;
 
-// TODO: Figure out namespace to avoid GloebitAPI being namespace and class
 namespace Gloebit.GloebitMoneyModule {
 
     public class GloebitSubscription {
@@ -57,7 +56,7 @@ namespace Gloebit.GloebitMoneyModule {
         // TODO: a name or description change doesn't necessarily change the the UUID of the object --- how to deal with this?
         // TODO: name and description could be empty/blank --
         public string ObjectName;   // Name of object - treated as subscription_name by Gloebit
-        public string Description;  // subscription_description - (should include object descriptin, but may include additional details)
+        public string Description;  // subscription_description - (should include object description, but may include additional details)
         // TODO: additional details --- how to store --- do we need to store?
 
         private static Dictionary<string, GloebitSubscription> s_subscriptionMap = new Dictionary<string, GloebitSubscription>();

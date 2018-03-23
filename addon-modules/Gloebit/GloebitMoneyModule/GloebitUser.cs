@@ -62,10 +62,6 @@ namespace Gloebit.GloebitMoneyModule {
         public string GloebitToken;
         public string LastSessionID;
 
-        // TODO: remove once we move necessary funcs into GloebitAPI class
-        private GloebitAPI m_controllingAPI;
-
-
         // TODO - update userMap to be a proper LRU Cache
         private static Dictionary<string, GloebitUser> s_userMap = new Dictionary<string, GloebitUser>();
 
@@ -74,9 +70,8 @@ namespace Gloebit.GloebitMoneyModule {
         public GloebitUser() {
         }
 
-        private GloebitUser(GloebitAPI api, string principalID, string gloebitID, string token, string sessionID) {
-            this.m_controllingAPI = api;
-            this.AppKey = api.m_key;
+        private GloebitUser(string appKey, string principalID, string gloebitID, string token, string sessionID) {
+            this.AppKey = appKey;
             this.PrincipalID = principalID;
             this.GloebitID = gloebitID;
             this.GloebitToken = token;
@@ -84,7 +79,6 @@ namespace Gloebit.GloebitMoneyModule {
         }
 
         private GloebitUser(GloebitUser copyFrom) {
-            this.m_controllingAPI = copyFrom.GetControllingAPI();
             this.AppKey = copyFrom.AppKey;
             this.PrincipalID = copyFrom.PrincipalID;
             this.GloebitID = copyFrom.GloebitID;
@@ -98,18 +92,20 @@ namespace Gloebit.GloebitMoneyModule {
             this.LastSessionID = updateFrom.LastSessionID;
         }
 
-        public GloebitAPI GetControllingAPI() {
-            return this.m_controllingAPI;
+        public static GloebitUser Get(UUID appKey, UUID agentID) {
+            return(GloebitUser.Get(appKey.ToString(), agentID.ToString()));
         }
 
-        public void SetControllingAPI(GloebitAPI api) {
-            this.m_controllingAPI = api;
+        public static GloebitUser Get(UUID appKey, string agentIdStr) {
+            return(GloebitUser.Get(appKey.ToString(), agentIdStr));
         }
 
-        // TODO: Move into GloebitAPI class
-        public static GloebitUser Get(GloebitAPI api, UUID agentID) {
+        public static GloebitUser Get(string appKeyStr, UUID agentID) {
+            return(GloebitUser.Get(appKeyStr, agentID.ToString()));
+        }
+            
+        public static GloebitUser Get(string appKeyStr, string agentIdStr) {
             m_log.Info("[GLOEBITMONEYMODULE] in GloebitUser.Get");
-            string agentIdStr = agentID.ToString();
 
             GloebitUser u;
             lock(s_userMap) {
@@ -117,7 +113,6 @@ namespace Gloebit.GloebitMoneyModule {
             }
 
             if (u == null) {
-                string appKeyStr = api.m_key;
                 m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for prior user for {0}", agentIdStr);
                 string[] keys = new string[2]{"AppKey", "PrincipalID"};
                 string[] values = new string[2]{appKeyStr, agentIdStr};
@@ -126,12 +121,11 @@ namespace Gloebit.GloebitMoneyModule {
                 switch(users.Length) {
                 case 1:
                     u = users[0];
-                    u.SetControllingAPI(api);
                     m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1} --- SesionID{2}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken), u.LastSessionID);
                     break;
                 case 0:
                     m_log.DebugFormat("[GLOEBITMONEYMODULE] CREATING NEW USER {0}", agentIdStr);
-                    u = new GloebitUser(api, agentIdStr, String.Empty, String.Empty, String.Empty);
+                    u = new GloebitUser(appKeyStr, agentIdStr, String.Empty, String.Empty, String.Empty);
                     break;
                 default:
                     throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one prior token for {0}", agentIdStr));
@@ -176,7 +170,7 @@ namespace Gloebit.GloebitMoneyModule {
             }
             // Before we return true, Ensure our cache is up to date
             GloebitUser.InvalidateCache(UUID.Parse(this.PrincipalID));
-            GloebitUser u_from_db = GloebitUser.Get(this.m_controllingAPI, UUID.Parse(this.PrincipalID));
+            GloebitUser u_from_db = GloebitUser.Get(this.AppKey, UUID.Parse(this.PrincipalID));
             if (u_from_db.LastSessionID == newSessionIDStr) {
                 m_log.DebugFormat("[GLOEBITMONEYMODULE] User Cache was out of date.  Updated cache.  User is not new session");
                 // cache was out of date.  update local user copy form db
@@ -213,12 +207,12 @@ namespace Gloebit.GloebitMoneyModule {
         }
 
         // TODO: Why is this static?
-        public static GloebitUser Authorize(GloebitAPI api, UUID agentId, string token, string gloebitID) {
+        public static GloebitUser Authorize(string appKeyStr, UUID agentId, string token, string gloebitID) {
             string agentIdStr = agentId.ToString();
 
             // TODO: I think there has to be a better way to do this, but I'm not finding it right now.
             // By calling Get, we make sure that the user is in the map and has any additional data users store.
-            GloebitUser localUser = GloebitUser.Get(api, agentId);
+            GloebitUser localUser = GloebitUser.Get(appKeyStr, agentId);
             GloebitUser u;
             lock (s_userMap) {
                 s_userMap.TryGetValue(agentIdStr, out u);
