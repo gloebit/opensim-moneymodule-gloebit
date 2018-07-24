@@ -226,6 +226,10 @@ namespace Gloebit.GloebitMoneyModule {
             return returnfunds;
         }
 
+        // TODO: should this be moved to API and replaced with purchase func here which builds and calls send with URI?
+        //       GMM definitely needs to just build the URI, though it could call purchase when it needs it for a link and not send it
+        //       if it can supply extra info for how to handle the return.  This seems more complex than necessary right now, so we've
+        //       left it here.
         /// <summary>
         /// Builds a URI for a user to purchase gloebits
         /// </summary>
@@ -624,7 +628,7 @@ namespace Gloebit.GloebitMoneyModule {
             string stateRequested = requestData["state"] as string;
             string returnMsg = "";
 
-            bool success = GloebitTransaction.ProcessStateRequest(transactionIDstr, stateRequested, m_assetCallbacks, out returnMsg);
+            bool success = GloebitTransaction.ProcessStateRequest(transactionIDstr, stateRequested, m_assetCallbacks, m_transactionAlerts, out returnMsg);
 
             //JsonValue[] result;
             //JsonValue[0] = JsonValue.CreateBooleanValue(success);

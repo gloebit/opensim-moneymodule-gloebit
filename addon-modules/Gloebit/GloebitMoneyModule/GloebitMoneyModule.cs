@@ -1516,7 +1516,7 @@ namespace Gloebit.GloebitMoneyModule
 
             // If we've gotten this call, then the Gloebit components have enacted successfully
             // all funds have been transferred.
-            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.ENACT_GLOEBIT, String.Empty);
+            // ITransactionAlert.AlertTransactionStageCompleted for ENACT_GLOEBIT just fired
 
             switch ((TransactionType)txn.TransactionType) {
                 case TransactionType.USER_BUYS_OBJECT:
@@ -1524,9 +1524,8 @@ namespace Gloebit.GloebitMoneyModule
                     // Need to deliver the object/contents purchased.
                     bool delivered = deliverObject(txn, out returnMsg);
                     if (!delivered) {
+                        // Local Asset Enact failed - set returnMsg
                         returnMsg = String.Format("Asset enact failed: {0}", returnMsg);
-                        // Local Asset Enact failed - inform user
-                        alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.ENACT_ASSET, GloebitAPI.TransactionFailure.ENACTING_ASSET_FAILED, returnMsg);
                         return false;
                     }
                     break;
@@ -1540,9 +1539,12 @@ namespace Gloebit.GloebitMoneyModule
                     ObjectPaid handleObjectPaid = OnObjectPaid;
                     if(handleObjectPaid != null) {
                         handleObjectPaid(txn.PartID, txn.PayerID, txn.Amount);
+                        // This doesn't provide a return or ability to query state, so we assume success
                     } else {
                         // This really shouldn't happen, as it would mean that the OpenSim region is not properly set up
                         // However, we won't fail here as expectation is unclear
+                        // We have received this when a sim has another active money module which didn't respect the config and tried to enable on
+                        // this region as well and it received the objectPaid event registration instead of the GMM.
                         m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold - IMoneyModule OnObjectPaid event not properly subscribed.  Object payment may have failed.");
                     }
                     break;
@@ -1555,11 +1557,12 @@ namespace Gloebit.GloebitMoneyModule
                     // Need to transfer land
                     bool transferred = transferLand(txn, out returnMsg);
                     if (!transferred) {
+                        // Local Asset Enact failed - set returnMsg
                         returnMsg = String.Format("Asset enact failed: {0}", returnMsg);
-                        // Local Asset Enact failed - inform user
-                        alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.ENACT_ASSET, GloebitAPI.TransactionFailure.ENACTING_ASSET_FAILED, returnMsg);
                         // remove land asset from map since cancel will not get called
-                        // TODO: should we do this here, or adjust ProcessAssetCancelHold to always be called and check state to see if something needs to be undone?
+                        // TODO: should we do this here, or 
+                        //       - adjust ProcessAssetCancelHold to always be called and check state to see if something needs to be undone?
+                        //       - do this from AlertTransactionFailed()
                         lock(m_landAssetMap) {
                             m_landAssetMap.Remove(txn.TransactionID);
                         }
@@ -1572,9 +1575,8 @@ namespace Gloebit.GloebitMoneyModule
                     if (!m_newLandPassFlow) {
                         bool landPassDelivered = deliverLandPass(txn, out returnMsg);
                         if (!landPassDelivered) {
+                            // Local Asset Enact failed - set returnMsg
                             returnMsg = String.Format("Asset enact failed: {0}", returnMsg);
-                            // Local Asset Enact failed - inform user
-                            alertUsersTransactionFailed(txn, GloebitAPI.TransactionStage.ENACT_ASSET, GloebitAPI.TransactionFailure.ENACTING_ASSET_FAILED, returnMsg);
                             return false;
                         }
                     }
@@ -1599,8 +1601,7 @@ namespace Gloebit.GloebitMoneyModule
             }
 
             // Local Asset Enact completed
-            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.ENACT_ASSET, String.Empty);
-
+            // ITransactionAlert.AlertTransactionStageCompleted for ENACT_ASSET will be fired by calling function
             returnMsg = "Asset enact succeeded";
             return true;
         }
@@ -1611,7 +1612,7 @@ namespace Gloebit.GloebitMoneyModule
 
             // If we've gotten this call, then the Gloebit components have enacted successfully
             // all transferred funds have been commited.
-            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.CONSUME_GLOEBIT, String.Empty);
+            // ITransactionAlert.AlertTransactionStageCompleted for CONSUME_GLOEBIT just fired
 
             switch ((TransactionType)txn.TransactionType) {
                 case TransactionType.USER_BUYS_OBJECT:
@@ -1660,29 +1661,18 @@ namespace Gloebit.GloebitMoneyModule
                     break;
             }
 
-            // TODO: really need to think about who we're informing for OBJECT_PAYS_USER
-
             // Local Asset Consume completed
-            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.CONSUME_ASSET, String.Empty);
-
-            // TODO: consider moving this alert to be called from the GAPI after we mark this txn consumed.
-            alertUsersTransactionSucceeded(txn);
-
             returnMsg = "Asset consume succeeded";
             return true;
         }
 
-        // This is only called if the the local asset had previously been successfully enacted before the transaction failed.
-        // This really shouldn't happen since the local asset is the final transaction coponent and the transaction
-        // should not be able to fail once it enacts successfully.
-        public bool processAssetCancelHold(GloebitTransaction txn, out string returnMsg) {
+        // This is called even if the the local asset had not previously been successfully enacted so cleanup can occur.
+        // But txn.enacted should be checked before attempting to roll back anything done in enactHold
+        // It may not be possible for this to be called with txn.enacted=true since the local asset is the final transaction coponent
+        // and the transaction should not be able to fail once it enacts successfully.
+        public bool processAssetCancelHold(GloebitTransaction txn, out string returnMsg)
+        {
             m_log.InfoFormat("[GLOEBITMONEYMODULE].processAssetCancelHold SUCCESS - transaction rolled back");
-
-            // TODO: should probably move this out of here to GAPI to be reported when cancel is received regardless
-            // of whter enact has already occurred; or set this function up to be called always on first cancel,
-            // and check txn to see if undoing of enact is necessary.
-            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.CANCEL_GLOEBIT, String.Empty);
-
             // nothing to cancel - either enact of asset failed or was never called if we're here.
             switch ((TransactionType)txn.TransactionType) {
                 case TransactionType.USER_BUYS_OBJECT:
@@ -1728,7 +1718,7 @@ namespace Gloebit.GloebitMoneyModule
                     break;
             }
 
-            alertUsersTransactionStageCompleted(txn, GloebitAPI.TransactionStage.CANCEL_ASSET, String.Empty);
+            // Local Asset Cancel completed
             returnMsg = "Asset cancel succeeded";
             return true;
         }
@@ -3568,7 +3558,7 @@ namespace Gloebit.GloebitMoneyModule
                 case TransactionType.MOVE_MONEY_GENERAL:
                     // MoveMoney unimplemented transaction type.
                     // Alert payer only
-                    txnTypeFailure = "Unimplemented transaciton type.";
+                    txnTypeFailure = "Unimplemented transaction type.";
                     instruction = String.Format("Please contact {0}, tell them what you were doing that requires a payment, and ask them to implement this transaction type.", m_contactGloebit);
                     break;
                 case TransactionType.OBJECT_PAYS_USER:

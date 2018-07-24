@@ -259,7 +259,8 @@ namespace Gloebit.GloebitMoneyModule {
         /******* ASSET STATE MACHINE **********************/
         /**************************************************/
 
-        public static bool ProcessStateRequest(string transactionIDstr, string stateRequested, IAssetCallback assetCallbacks, out string returnMsg) {
+        public static bool ProcessStateRequest(string transactionIDstr, string stateRequested, IAssetCallback assetCallbacks, GloebitAPIWrapper.ITransactionAlert transactionAlerts, out string returnMsg)
+        {
             bool result = false;
 
             // Retrieve asset
@@ -289,10 +290,10 @@ namespace Gloebit.GloebitMoneyModule {
             // Call proper state processor
             switch (stateRequested) {
             case "enact":
-                result = myTxn.enactHold(assetCallbacks, out returnMsg);
+                result = myTxn.enactHold(assetCallbacks, transactionAlerts, out returnMsg);
                 break;
             case "consume":
-                result = myTxn.consumeHold(assetCallbacks, out returnMsg);
+                result = myTxn.consumeHold(assetCallbacks, transactionAlerts, out returnMsg);
                 if (result) {
                     lock(s_transactionMap) {
                         s_transactionMap.Remove(transactionIDstr);
@@ -300,7 +301,7 @@ namespace Gloebit.GloebitMoneyModule {
                 }
                 break;
             case "cancel":
-                result = myTxn.cancelHold(assetCallbacks, out returnMsg);
+                result = myTxn.cancelHold(assetCallbacks, transactionAlerts, out returnMsg);
                 if (result) {
                     lock(s_transactionMap) {
                         s_transactionMap.Remove(transactionIDstr);
@@ -321,7 +322,8 @@ namespace Gloebit.GloebitMoneyModule {
             return result;
         }
 
-        private bool enactHold(IAssetCallback assetCallbacks, out string returnMsg) {
+        private bool enactHold(IAssetCallback assetCallbacks, GloebitAPIWrapper.ITransactionAlert transactionAlerts, out string returnMsg)
+        {
             if (this.canceled) {
                 // getting a delayed enact sent before cancel.  return false.
                 returnMsg = "Enact: already canceled";
@@ -337,8 +339,11 @@ namespace Gloebit.GloebitMoneyModule {
                 returnMsg = "Enact: already enacted";
                 return true;
             }
-            // First reception of enact for asset.  Do specific enact functionality
-            this.enacted = assetCallbacks.processAssetEnactHold(this, out returnMsg); // Do I need to grab the money module for this?
+            // First reception of enact for asset.
+            // Send alert that ENACT_GLOEBIT has completed
+            transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.ENACT_GLOEBIT, String.Empty);
+            // Do specific enact functionality for the Asset / local transaction part
+            this.enacted = assetCallbacks.processAssetEnactHold(this, out returnMsg);
 
             // TODO: remove this after testing.
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitTransaction.enactHold: {0}", this.enacted);
@@ -362,11 +367,21 @@ namespace Gloebit.GloebitMoneyModule {
                 // TODO: Should we store and update the time even if it fails to track time enact attempted/failed?
                 this.enactedTime = DateTime.UtcNow;
                 GloebitTransactionData.Instance.Store(this);
+
+                // send alert that ENACT_ASSET has completed
+                // TODO: should we pass the returnMsg instead of String.Empty, or is this always empty on success? -- investigate
+                transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.ENACT_ASSET, String.Empty);
+            } else if (returnMsg != "pending") {
+                // If pending, this is not a permanent failure and enact will be retried
+                // not sure that platform should ever need to fail with pending, but being extra cautious
+                // Local Asset Enact failed - Fire alert
+                transactionAlerts.AlertTransactionFailed(this, GloebitAPI.TransactionStage.ENACT_ASSET, GloebitAPI.TransactionFailure.ENACTING_ASSET_FAILED, returnMsg, null);
             }
             return this.enacted;
         }
 
-        private bool consumeHold(IAssetCallback assetCallbacks, out string returnMsg) {
+        private bool consumeHold(IAssetCallback assetCallbacks, GloebitAPIWrapper.ITransactionAlert transactionAlerts, out string returnMsg)
+        {
             if (this.canceled) {
                 // Should never get a delayed consume after a cancel.  return false.
                 returnMsg = "Consume: already canceled";
@@ -382,16 +397,27 @@ namespace Gloebit.GloebitMoneyModule {
                 returnMsg = "Cosume: Already consumed";
                 return true;
             }
-            // First reception of consume for asset.  Do specific consume functionality
-            this.consumed = assetCallbacks.processAssetConsumeHold(this, out returnMsg); // Do I need to grab the money module for this?
+
+            // First reception of consume for asset.
+            // Send alert that CONSUME_GLOEBIT has completed
+            transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CONSUME_GLOEBIT, String.Empty);
+            // Do specific consume functionality for the Asset / local transaction part
+            this.consumed = assetCallbacks.processAssetConsumeHold(this, out returnMsg);
             if (this.consumed) {
                 this.finishedTime = DateTime.UtcNow;
                 GloebitTransactionData.Instance.Store(this);
+
+                // send alert that CONSUME_ASSET has completed
+                // TODO: should we pass the returnMsg instead of String.Empty, or is this always empty on success? -- investigate
+                transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CONSUME_ASSET, String.Empty);
+                // transaction officially complete at this point
+                transactionAlerts.AlertTransactionSucceeded(this);
             }
             return this.consumed;
         }
 
-        private bool cancelHold(IAssetCallback assetCallbacks, out string returnMsg) {
+        private bool cancelHold(IAssetCallback assetCallbacks, GloebitAPIWrapper.ITransactionAlert transactionAlerts, out string returnMsg)
+        {
             if (this.consumed) {
                 // Should never get a delayed cancel after a consume.  return false.
                 returnMsg = "Cancel: already consumed";
@@ -408,11 +434,18 @@ namespace Gloebit.GloebitMoneyModule {
                 returnMsg = "Cancel: already canceled";
                 return true;
             }
-            // First reception of cancel for asset.  Do specific cancel functionality
+            // First reception of cancel for asset.
+            // Send alert that CANCEL_GLOEBIT has completed
+            transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CANCEL_GLOEBIT, String.Empty);
+            // Do specific cancel functionality for the Asset / local transaction part
             this.canceled = assetCallbacks.processAssetCancelHold(this, out returnMsg); // Do I need to grab the money module for this?
             if (this.canceled) {
                 this.finishedTime = DateTime.UtcNow;
                 GloebitTransactionData.Instance.Store(this);
+
+                // send alert that CANCEL_ASSET has completed
+                // TODO: should we pass the returnMsg instead of String.Empty, or is this always empty on success? -- investigate
+                transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CANCEL_ASSET, String.Empty);
             }
             return this.canceled;
         }
