@@ -30,7 +30,7 @@
  * Wraps the simple GloebitAPI web calls in a more useful functional layer.
  * 
  * For porting to other systems or implementing new transaction types/flows,
- * this is the file that will likely need most of the modification.
+ * this is the file that will likely some modification.
  */
 
 using System;
@@ -122,6 +122,14 @@ namespace Gloebit.GloebitMoneyModule {
          * --- is simplest way to ensure user is authorized and ready to proceed with transactions.
          ***************/
 
+        /// <summary>
+        /// Ask this user on this app to link this agent to their Gloebit account and to authorize
+        /// the app to take actions on the agent's behalf which will access that Gloebit account.
+        /// Retrieves the GloebitUser for this agent, builds the authorization URL, and asks the 
+        /// platform to present that URL to the user via the IUriLoader interface.
+        /// </summary>
+        /// <param name="agentID">The local UUID of this agent on this app.</param>
+        /// <param name="agentName">The name of this agent on this app.</param>
         public void Authorize(UUID agentID, string agentName)
         {
             // Get User for agent
@@ -129,6 +137,14 @@ namespace Gloebit.GloebitMoneyModule {
             Authorize(user, agentName);
         }
 
+        /// <summary>
+        /// Ask this user on this app to link this agent to their Gloebit account and to authorize
+        /// the app to take actions on the agent's behalf which will access that Gloebit account
+        /// Builds the authorization URL for this agent, and asks the 
+        /// platform to present that URL to the user via the IUriLoader interface.
+        /// </summary>
+        /// <param name="user">GloebitUser representing this agent on this app.</param>
+        /// <param name="userName">The name of this agent on this app.</param>
         public void Authorize(GloebitUser user, string userName)
         {
             Uri authUri = m_api.BuildAuthorizationURI(user, userName, m_platformAccessors.GetBaseURI());
@@ -138,7 +154,7 @@ namespace Gloebit.GloebitMoneyModule {
         /*** GloebitAPI Required HTTP Callback Entrance Point - must be registered by GMM ***/
         /// <summary>
         /// Registered to the redirectURI from GloebitAPI.Authorize.  Called when a user approves authorization.
-        /// Enacts the GloebitAPI.AccessToken endpoint to exchange the auth_code for the token.
+        /// Enacts the GloebitAPI.ExchangeAccessToken endpoint to exchange the auth_code for the token.
         /// </summary>
         /// <param name="requestData">response data from GloebitAPI.Authorize</param>
         public Hashtable authComplete_func(Hashtable requestData) {
@@ -166,6 +182,14 @@ namespace Gloebit.GloebitMoneyModule {
         }
             
         /**** IAsyncEndpointCallback Interface ****/
+        /// <summary>
+        /// Called by the GloebitAPI after the async call to ExchangeAccessToken completes.
+        /// If this was successful, this agent is now authorized and linked to a Gloebit account, and
+        /// this retrieves the balance for that Gloebit account and triggers IUserAlert AlertUserAuthorized
+        /// </summary>
+        /// <param name="success">bool - if true, the exchange was successful and this user is authorized and linked to a Gloebit account</param>
+        /// <param name="user">GloebitUser representing the agent and app that the authorization was for</param>
+        /// <param name="responseDataMap">OSDMap of response data from GloebitAPI.ExchangeAccessToken</param>
         public void exchangeAccessTokenCompleted(bool success, GloebitUser user, OSDMap responseDataMap)
         {
             if (success) {
@@ -233,13 +257,17 @@ namespace Gloebit.GloebitMoneyModule {
         /// <summary>
         /// Builds a URI for a user to purchase gloebits
         /// </summary>
-        /// <returns>The fully constructed url with arguments for receiving a callback when the purchase is complete.</returns>
-        public Uri BuildPurchaseURI(Uri callbackBaseURL, GloebitUser u) {
+        /// <param name="callbackBaseUri">Base URI for where the /gloebit/buy_complete/ path was registered.  Supplied in the purchase uri
+        ///                               so we can let the platform know when a user has completed a purchase.  This alert is not
+        ///                               yet implemented on the Gloebit server.</param>
+        /// <param name ="u">GloebitUser representing the agent and app requesting to purchase gloebits</param>
+        /// <returns>URI for the platform to provide at which this user can purchase gloebits.</returns>
+        public Uri BuildPurchaseURI(Uri callbackBaseUri, GloebitUser u) {
             UriBuilder purchaseUri = new UriBuilder(m_url);
             purchaseUri.Path = "/purchase";
-            if (callbackBaseURL != null) {
+            if (callbackBaseUri != null) {
                 // could do a try/catch here with the errors that UriBuilder can throw to also prevent crash from poorly formatted server uri.
-                UriBuilder callbackUrl = new UriBuilder(callbackBaseURL);
+                UriBuilder callbackUrl = new UriBuilder(callbackBaseUri);
                 callbackUrl.Path = "/gloebit/buy_complete";
                 callbackUrl.Query = String.Format("agentId={0}", u.PrincipalID);
                 purchaseUri.Query = String.Format("reset&r={0}&inform={1}", m_keyAlias, callbackUrl.Uri);

@@ -1105,7 +1105,7 @@ namespace Gloebit.GloebitMoneyModule
         /// Configure the GloebitAPI details for connecting to the Gloebit service
         /// --- key & secret identifying the Gloebit app
         /// --- URL of environment to use -- TODO: make this simply an environment and set URL in GAPI
-        /// --- Callback interfaces for async operations and enacting of delivery of assets
+        /// Define Callback interfaces for async operations, enacting of delivery of assets, and various alerts
         /// Initialize DB connections
         /// </summary>
         private void InitGloebitAPI()
