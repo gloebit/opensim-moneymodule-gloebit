@@ -112,6 +112,12 @@ namespace Gloebit.GloebitMoneyModule {
 
         #region User Auth and Balance
 
+        /**************************************************************/
+        /**** LINKING agent on app to Gloebit account *****************/
+        /**** AUTHORIZING app from agent / Gloebit account ************/
+        /**** BALANCE retrieval for agent which verifies auth/link ****/
+        /**************************************************************/
+
         /***************
          * GloebitUser.Get() should be called to create or retrieve an AppUser
          * --- There is not one central GloebitAPIWrapper function for starting a new user session
@@ -250,6 +256,21 @@ namespace Gloebit.GloebitMoneyModule {
             return returnfunds;
         }
 
+        #endregion // User Auth and Balance
+
+        #region Purchasing gloebits
+        
+        /*****************************/
+        /**** PURCHASING gloebits ****/
+        /*****************************/
+                   
+        /******************
+         * Users can do this directly from their Gloebit account on the website, so these methods are not required.
+         * However, they are useful for providing gloebit purchase links to the user to take them directly to the purchase page.
+         * Eventually, these links will enable returning directly to a commerce flow or alerting the app that the user's balance
+         * has been updated.
+         ******************/
+
         // TODO: should this be moved to API and replaced with purchase func here which builds and calls send with URI?
         //       GMM definitely needs to just build the URI, though it could call purchase when it needs it for a link and not send it
         //       if it can supply extra info for how to handle the return.  This seems more complex than necessary right now, so we've
@@ -308,9 +329,13 @@ namespace Gloebit.GloebitMoneyModule {
             return response;
         }
 
-        #endregion // User Auth and Balance
+        #endregion // Purchasing gloebits
 
         #region Transaction
+
+        /*********************/
+        /**** TRANSACTION ****/
+        /*********************/
 
         /// <summary>
         /// Helper function to build the minimal transaction description sent to the Gloebit transactU2U endpoint.
@@ -477,6 +502,23 @@ namespace Gloebit.GloebitMoneyModule {
         }
 
         /**** IAsyncEndpointCallback Interface ****/
+        /// <summary>
+        /// Called by the GloebitAPI after the async call to Transact and TransactU2U complete.
+        /// Also called prior to completion of sync call to TransactU2USync.
+        /// If this was successful, then the transaction was submitted and queued and the monetary pieces
+        /// of the transaction were each enacted by the server.  The transaction processor will re-enact those
+        /// and call enact/cancel/consume on the local asset / transaction part.
+        /// This function parses the repsonse from Gloebit, logs useful information, and calls ITransactionAlert
+        /// interface functions with the data needed by the platform for any processing.
+        /// </summary>
+        /// <param name="success">bool - if true, the exchange was successful and this user is authorized and linked to a Gloebit account</param>
+        /// <param name="user">GloebitUser representing the agent and app that the authorization was for</param>
+        /// <param name="responseDataMap">OSDMap of response data from GloebitAPI.Transact TransactU2U or TransactU2USync</param>
+        /// <param name="payerUser">GloebitUser representing the agent and app that made the payment.</param>
+        /// <param name="payerUser">GloebitUser representing the agent and app that received the payment or null if callback from Transact.</param>
+        /// <param name="txn">GloebitTransaction detailing this transaction locally.</param>
+        /// <param name="stage">enum for the stage of the transaction that either completed successfully or failed.</param>
+        /// <param name="failure">enum which details the specific failure on the stage provided or null if the stage provided was successfully completed.</param>
         public void transactU2UCompleted(OSDMap responseDataMap, GloebitUser payerUser, GloebitUser payeeUser, GloebitTransaction txn, GloebitAPI.TransactionStage stage, GloebitAPI.TransactionFailure failure)
         {
             // TODO: should pass success, reason and status through as arguments.  Should probably check tID in GAPI instead of here.
@@ -644,9 +686,16 @@ namespace Gloebit.GloebitMoneyModule {
         /// Response of true certifies that the Asset transaction part has been processed as requested.
         /// Response of false alerts transaction processor that asset failed to process as requested.
         /// Additional data can be returned about failures, specifically whether or not to retry.
+        /// --- returnMsg of "pending" signifies that this should be retried as opposed to a permanent failure
+        /// --- and will requeue the transaction for processing
         /// </summary>
         /// <param name="requestData">GloebitAPI.Asset enactHoldURI, consumeHoldURI or cancelHoldURI query arguments tying this callback to a specific Asset.</param>
-        /// <returns>Web respsponse including JSON array of one or two elements.  First element is bool representing success state of call.  If first element is false, the second element is a string providing the reason for failure.  If the second element is "pending", then the transaction processor will retry.  All other reasons are considered permanent failure.</returns>
+        /// <returns>
+        /// Web respsponse including JSON array of one or two elements.  First element is bool representing success state of call.
+        /// --- If first element is false, the second element is a string providing the reason for failure.
+        /// --- If the second element is "pending", then the transaction processor will retry.
+        /// --- All other reasons are considered permanent failure.
+        /// </returns>
         public Hashtable transactionState_func(Hashtable requestData) {
             m_log.DebugFormat("[GLOEBITMONEYMODULE] transactionState_func **************** Got Callback");
             foreach(DictionaryEntry e in requestData) { m_log.DebugFormat("{0}: {1}", e.Key, e.Value); }
@@ -682,10 +731,28 @@ namespace Gloebit.GloebitMoneyModule {
             return response;
         }
 
-        #endregion // Transaciton
+        #endregion // Transaction
 
         #region Subscription
 
+        /**********************/
+        /**** SUBSCRIPTION ****/
+        /**********************/
+
+        /// <summary>
+        /// Creates a GloebitSubscription locally with the id (or random id if null), name and description provided and then calls the GloebitAPI.CreateSubscription method
+        /// to request that the Gloebit service create this subscription for this app on the Gloebit servers.
+        /// When a user is asked to authorize this subscription from the Gloebit website, they will see the ID name and description.
+        /// The method Verifies that a local subscription with this id doesn't already exist locally to avoid overwriting existing subscriptions.
+        /// See CreateSubscriptionCompleted for server response regarding creation of this subscription for the app within the Gloebit service.
+        /// </summary>
+        /// <param name="appSubID">UUID for the subscription to be created.  If UUID.Zero, ID is generated randomly within method.</param>
+        /// <param name="subName">Name for this subscription - This is required by the Gloebit service and can not be blank.</param>
+        /// <param name="subDescription">Description for this subscription - This is required by the Gloebit service and can not be blank.</param>
+        /// <returns>
+        /// On success, returns the ID provided, or the random local app Subscription ID generated
+        /// On failure, returns UUID.Zero
+        /// </returns>
         public UUID CreateSubscription(UUID appSubID, string subName, string subDesc)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPIWrapper.CreateSubscription for appSubID:{0}, subName:{1}, subDesc:{2}", appSubID, subName, subDesc);
@@ -733,7 +800,16 @@ namespace Gloebit.GloebitMoneyModule {
         }
 
         /**** IAsyncEndpointCallback Interface Function ****/
-        // Called by GloebitAPI upon completion of CreateSubscription
+        /// <summary>
+        /// Called by the GloebitAPI after the async call to CreateSubscription completes.
+        /// If this was successful, then the subscription was created on the server and the GloebitAPI
+        /// has recorded the id of the subscription on the server into the SubscriptionID field of the
+        /// local subscription and marked it enabled.
+        /// This function parses the repsonse from Gloebit, logs useful information, and calls ISubscriptionAlert
+        /// interface functions with the data needed by the platform for any processing.
+        /// </summary>
+        /// <param name="responseDataMap">OSDMap of response data from GloebitAPI.CreateSubscription</param>
+        /// <param name="subscription">local GloebitSubscription detailing this subscription.</param>
         public void createSubscriptionCompleted(OSDMap responseDataMap, GloebitSubscription subscription)
         {
             bool success = (bool)responseDataMap["success"];
@@ -759,7 +835,21 @@ namespace Gloebit.GloebitMoneyModule {
             return;
         }
 
-
+        /// <summary>
+        /// Ask user to authorize a subscription for an agent on an app linked to thier Gloebit account.
+        /// This builds the URI which must be loaded for the user to take action.
+        /// The subscription authorization must be created first if this has not already been done.
+        /// Once created, The user can also authorize or decline it on their own from the Subscriptions 
+        /// section of their Gloebit account.
+        /// </summary>
+        /// <param name="agentID">ID of the agent on this app being asked to authorize a subscription.</param>
+        /// <param name="subAuthID">
+        /// ID of the authorization request the user will be asked to approve.
+        /// --- This is provided by Gloebit in the response to CreateSubscriptionAuthorization.
+        /// --- value of String.Empty or null signifies that we must first call CreateSubscriptionAuthorization
+        ///     to ether create or retrieve this SubscriptionAuthorization.</param>
+        /// <param name="sub">GloebitSubscription which this authorization request is for.</param>
+        /// <param name="isDeclined">Bool is true if this sub auth has already been declined by the user, in which case different messaging may be necessary.</param>
         public void AuthorizeSubscription(UUID agentID, string subAuthID, GloebitSubscription sub, bool isDeclined)
         {
             GloebitUser user = GloebitUser.Get(m_key, agentID);
@@ -767,14 +857,20 @@ namespace Gloebit.GloebitMoneyModule {
         }
 
         /// <summary>
-        /// Ask user to authorize a subscription.
+        /// Ask user to authorize a subscription for an agent on an app linked to thier Gloebit account.
         /// This builds the URI which must be loaded for the user to take action.
-        /// The subscription authorization must be created first.  The user can also do this on their own from the Subscriptions section of their gloebit account.
+        /// The subscription authorization must be created first if this has not already been done.
+        /// Once created, The user can also authorize or decline it on their own from the Subscriptions 
+        /// section of their Gloebit account.
         /// </summary>
-        /// <param name="user">GloebitUser we are sending the URL to</param>
-        /// <param name="subAuthID">ID of the authorization request the user will be asked to approve - provided by Gloebit.</param>
-        /// <param name="sub">GloebitSubscription which containes necessary details for message to user.</param>
-        /// <param name="isDeclined">Bool is true if this sub auth has already been declined by the user which should present different messaging.</param>
+        /// <param name="user">GloebitUser representing the agent on an app being asked to authorize a subscription</param>
+        /// <param name="subAuthID">
+        /// ID of the authorization request the user will be asked to approve.
+        /// --- This is provided by Gloebit in the response to CreateSubscriptionAuthorization.
+        /// --- value of String.Empty or null signifies that we must first call CreateSubscriptionAuthorization
+        ///     to ether create or retrieve this SubscriptionAuthorization.</param>
+        /// <param name="sub">GloebitSubscription which this authorization request is for.</param>
+        /// <param name="isDeclined">Bool is true if this sub auth has already been declined by the user, in which case different messaging may be necessary.</param>
         public void AuthorizeSubscription(GloebitUser user, string subAuthID, GloebitSubscription sub, bool isDeclined)
         {
             // Call create if necessary
@@ -790,7 +886,17 @@ namespace Gloebit.GloebitMoneyModule {
         }
 
         /**** IAsyncEndpointCallback Interface Function ****/
-        // Called by GloebitAPI upon completion of CreateSubscriptionAuthorization
+        /// <summary>
+        /// Called by the GloebitAPI after the async call to CreateSubscriptionAuthorization completes.
+        /// If this was successful, then the subscription authorization was created or located on the Gloebit service
+        /// and the ID of the subscription authorization was returned in the response.
+        /// This function parses the repsonse from Gloebit, logs useful information, builds the 
+        /// URI where the user can authorize the subscription, and asks the platform to send that
+        /// URI to the user.
+        /// </summary>
+        /// <param name="responseDataMap">OSDMap of response data from GloebitAPI.CreateSubscriptionAuthorization</param>
+        /// <param name="sub">local GloebitSubscription detailing the subscription the authorization is for.</param>
+        /// <param name="user">GloebitUser representing the agent and app the subscription authorization is for.</param>
         public void createSubscriptionAuthorizationCompleted(OSDMap responseDataMap, GloebitSubscription sub, GloebitUser user) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPIWrapper.createSubscriptionAuthorizationCompleted");
 
@@ -846,7 +952,8 @@ namespace Gloebit.GloebitMoneyModule {
         /// <summary>
         /// Ask user to authorize a subscription.
         /// This builds the URI which must be loaded for the user to take action.
-        /// The subscription authorization must be created first.  The user can also do this on their own from the Subscriptions section of their gloebit account.
+        /// The subscription authorization must be created first.
+        /// See AuthorizeSubscription for the public method which calls this method.
         /// </summary>
         /// <param name="user">GloebitUser we are sending the URL to</param>
         /// <param name="subAuthID">ID of the authorization request the user will be asked to approve - provided by Gloebit.</param>
