@@ -3,9 +3,9 @@ This is a plugin (addon) to enable the Gloebit currency service on an OpenSim gr
 
 # How to use this with OpenSim
 1. Download or Build the DLL
-  * Download
+  * Download\
     If you don't want to build yourself, you can download the most recent release of the plugin [here](http://dev.gloebit.com/opensim/downloads/).  Download the DLL built for or as close to your version of OpenSim as possible.  If you run into any linking errors, then either the version of OpenSim or your build environment are incompatible with the prebuilt DLLs and you'll need to build it directly against your repository.
-  * or Build
+  * or Build\
     For the latest features and to ensure compatibility with your system, we recommend building the DLL yourself.
     1. Clone or Download this repository
     2. Copy the Gloebit directory into the addon-modules directory in your OpenSim repository
@@ -22,6 +22,7 @@ Starting with the foundation...
 
 ### The REST / Web API Layer
 * GloebitAPI.cs
+
 This layer provides a C# interface for connecting with Gloebit's web service apis through defined endpoints.
 
 This layer is platform agnostic and shouldn't need modification for porting to another C# platform.  However, it does use an older asyncronous C# pattern compatible with earlier versions of mono.  If another C# platform did not have those compatibility issues, an alternate version could be written to take advantage of the newer Async and Await calls, though it is unknown if there are any performance gains that would be worth this effort.  It also serves as example code for anyone who needs to build a web api for connecting to gloebit in a language other than C#.
@@ -36,6 +37,7 @@ Modifications to this layer should really be intended to be universal improvemen
 * GloebitUser.cs
 * GloebitTransaction.cs
 * GloebitSubscription.cs
+
 This layer provides C# classes for more easily managing the data passed to and from the Gloebit API and used throughout the module.
 
 This layer is platform agnostic and shouldn't need modification for porting to another C# platform.
@@ -55,6 +57,7 @@ Modifications to this layer would be necessary if there was additional data you 
 * Resources/GloebitUsers*.migrations
 * Resources/GloebitTransactions*.migrations
 * Resources/GloebitSubscriptions*.migrations
+
 This layer handles the storage and retrieval of objects to and from a database.
 
 This layer likely needs modification for porting to another platform.  The Data classes are built upon GenericTableHandlers provided by OpenSim and the migration format may be specific to OpenSim.  These classes should be modified to work with the database interface of the intended platform so that the storage and retrieval calls from the object classes work as expected.
@@ -63,12 +66,14 @@ Integrating a database other than MySql, PGSQL or SQLite would be done here by a
 
 ### The Functional Helper Layer
 * GloebitAPIWrapper.cs
+
 This layer wraps the API in a more useful functional layer, converts platform specific information into formats expected by the API and vice versa, handles callbacks from the api, http callbacks from the Gloebit service, and errors, and manages as much processing logic as should be generic to all platforms.  This layer should drastically simplify integration, and will likely need to evolve as new platforms integrate the plugin.  It defines some interfaces which the platform glue layer must implement.  Some of these may at some point be converted to events that can be registered for.
 
 This layer is where some editing will be necessary when porting to another platform.  The signatures of the http callbacks may be specific to the platform and therefor may need adjustment.  In simplifying the returns from the API layer, it is possible we've elimiated information a platform may need, in which case new interface functions may be necessary.  We recommend keeping the platform logic out of this layer in these cases and requesting that we adopt new interface functions or argument passing into the root plugin.
 
 ### The Platform Glue Layer
 * GloebitMoneyModule.cs
+
 This layer contains all the connections to the larger platform.  It reads configuration, creates the API, registers the http callbacks, defines the platform specific transactions, implements all interfaces necessary for the APIWrapper, and controls the full API flow.  This contains the platform specific logic.  Currently, this file is both the glue between OpenSim and Gloebit and also a lot of strictly OpenSim logic which could be elsewhere.  Ideally we'll better separate this eventually by splitting this class and file up.
 
 This layer is where most of the editing will be necessary when porting to another platform.  As much as possible, the GloebitAPIWrapper interface method signatures should be maintained, but the bodies will likely have to be modified.
