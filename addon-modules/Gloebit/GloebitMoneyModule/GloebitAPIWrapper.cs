@@ -343,7 +343,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// </summary>
         /// <param name="txnType">String describing the type of transaction.  eg. ObjectBuy, PayObject, PayUser, etc.</param>
         /// <returns>OSDMap to be sent with the transaction request parameters.  Map contains six dictionary entries, each including an OSDArray.</returns>
-        public OSDMap buildBaseTransactionDescMap(string txnType)
+        public OSDMap BuildBaseTransactionDescMap(string txnType)
         {
             // Create descMap
             OSDMap descMap = new OSDMap();
@@ -358,7 +358,7 @@ namespace Gloebit.GloebitMoneyModule {
 
             // Add base transaction details
             //// TODO: change arg to toke a TxnTypeID, add that here, and create func to get the string name from a txnTypeId
-            addDescMapEntry(descMap, "transaction", "transaction-type", txnType);
+            AddDescMapEntry(descMap, "transaction", "transaction-type", txnType);
 
             return descMap;
         }
@@ -373,7 +373,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="entryGroup">String group to which to add entryName/Value pair.  Must be one of {"platform", "location", "transactino"}.  Specifies group to which these details are most applicable.</param>
         /// <param name="entryName">String providing the name for entry to be added.  This is the name users will see in their transaction history for this entry.</param>
         /// <param name="entryValue">String providing the value for entry to be added.  This is the value users will see in their transaction history for this entry.</param>
-        public void addDescMapEntry(OSDMap descMap, string entryGroup, string entryName, string entryValue)
+        public void AddDescMapEntry(OSDMap descMap, string entryGroup, string entryName, string entryValue)
         {
 
             /****** ERROR CHECKING *******/

@@ -1203,9 +1203,9 @@ namespace Gloebit.GloebitMoneyModule
          *    Call alertUsersTransactionPreparationFailure() as necessary from the interface function handling processing.
          *    Edit alertUsersTransactionPrepartionFailure() as neccessary to provide specific messaging for this new TransactionType.
          * 3. Compile info to be supplied in user's transaction history on gloebit.com 
-         *    Call buildBaseTransactionDescMap
-         *    If more info is needed, either create a new override for buildBaseTransactionDescMap, or
-         *    call addDescMapEntry to add elements one at a time to the base map.
+         *    Call buildOpenSimTransactionDescMap
+         *    If more info is needed, either create a new override for buildOpenSimTransactionDescMap, or
+         *    call AddDescMapEntry to add elements one at a time to the base map.
          *    Create a description string to be displayed as the primary transaction description
          * 4. Build the Transaction
          *    Supply the proper information to buildTransaction().
@@ -1413,19 +1413,19 @@ namespace Gloebit.GloebitMoneyModule
         private OSDMap buildOpenSimTransactionDescMap(string regionname, string regionID, string txnType)
         {
             // Create descMap
-            OSDMap descMap = m_apiW.buildBaseTransactionDescMap(txnType);
+            OSDMap descMap = m_apiW.BuildBaseTransactionDescMap(txnType);
 
             // Add base platform details
-            m_apiW.addDescMapEntry(descMap, "platform", "platform", "OpenSim");
-            m_apiW.addDescMapEntry(descMap, "platform", "version", m_opensimVersion);
-            m_apiW.addDescMapEntry(descMap, "platform", "version-number", m_opensimVersionNumber);
+            m_apiW.AddDescMapEntry(descMap, "platform", "platform", "OpenSim");
+            m_apiW.AddDescMapEntry(descMap, "platform", "version", m_opensimVersion);
+            m_apiW.AddDescMapEntry(descMap, "platform", "version-number", m_opensimVersionNumber);
             // TODO: Should we add hosting-provider or more?
 
             // Add base location details
-            m_apiW.addDescMapEntry(descMap, "location", "grid-name", m_gridname);
-            m_apiW.addDescMapEntry(descMap, "location", "grid-nick", m_gridnick);
-            m_apiW.addDescMapEntry(descMap, "location", "region-name", regionname);
-            m_apiW.addDescMapEntry(descMap, "location", "region-id", regionID);
+            m_apiW.AddDescMapEntry(descMap, "location", "grid-name", m_gridname);
+            m_apiW.AddDescMapEntry(descMap, "location", "grid-nick", m_gridnick);
+            m_apiW.AddDescMapEntry(descMap, "location", "region-name", regionname);
+            m_apiW.AddDescMapEntry(descMap, "location", "region-id", regionID);
 
             return descMap;
         }
@@ -1448,13 +1448,13 @@ namespace Gloebit.GloebitMoneyModule
 
             // Add base descMap details for transaciton involving an object/part
             if (descMap != null && part != null) {
-                m_apiW.addDescMapEntry(descMap, "location", "object-group-position", part.GroupPosition.ToString());
-                m_apiW.addDescMapEntry(descMap, "location", "object-absolute-position", part.AbsolutePosition.ToString());
-                m_apiW.addDescMapEntry(descMap, "transaction", "object-name", part.Name);
-                m_apiW.addDescMapEntry(descMap, "transaction", "object-description", part.Description);
-                m_apiW.addDescMapEntry(descMap, "transaction", "object-id", part.UUID.ToString());
-                m_apiW.addDescMapEntry(descMap, "transaction", "creator-name", resolveAgentName(part.CreatorID));
-                m_apiW.addDescMapEntry(descMap, "transaction", "creator-id", part.CreatorID.ToString());
+                m_apiW.AddDescMapEntry(descMap, "location", "object-group-position", part.GroupPosition.ToString());
+                m_apiW.AddDescMapEntry(descMap, "location", "object-absolute-position", part.AbsolutePosition.ToString());
+                m_apiW.AddDescMapEntry(descMap, "transaction", "object-name", part.Name);
+                m_apiW.AddDescMapEntry(descMap, "transaction", "object-description", part.Description);
+                m_apiW.AddDescMapEntry(descMap, "transaction", "object-id", part.UUID.ToString());
+                m_apiW.AddDescMapEntry(descMap, "transaction", "creator-name", resolveAgentName(part.CreatorID));
+                m_apiW.AddDescMapEntry(descMap, "transaction", "creator-id", part.CreatorID.ToString());
             }
             return descMap;
         }
@@ -1477,20 +1477,20 @@ namespace Gloebit.GloebitMoneyModule
 
             // Add base descMap details for transaciton involving an object/part
             if (descMap != null && pld != null) {
-                m_apiW.addDescMapEntry(descMap, "location", "parcel-upper-corner-position", pld.AABBMax.ToString());
-                m_apiW.addDescMapEntry(descMap, "location", "parcel-lower-corner-position", pld.AABBMin.ToString());
-                m_apiW.addDescMapEntry(descMap, "location", "parcel-area", pld.Area.ToString());
-                m_apiW.addDescMapEntry(descMap, "transaction", "parcel-name", pld.Name);
-                m_apiW.addDescMapEntry(descMap, "transaction", "parcel-description", pld.Description);
-                m_apiW.addDescMapEntry(descMap, "transaction", "parcel-global-id", pld.GlobalID.ToString());
-                m_apiW.addDescMapEntry(descMap, "transaction", "parcel-local-id", pld.LocalID.ToString());
+                m_apiW.AddDescMapEntry(descMap, "location", "parcel-upper-corner-position", pld.AABBMax.ToString());
+                m_apiW.AddDescMapEntry(descMap, "location", "parcel-lower-corner-position", pld.AABBMin.ToString());
+                m_apiW.AddDescMapEntry(descMap, "location", "parcel-area", pld.Area.ToString());
+                m_apiW.AddDescMapEntry(descMap, "transaction", "parcel-name", pld.Name);
+                m_apiW.AddDescMapEntry(descMap, "transaction", "parcel-description", pld.Description);
+                m_apiW.AddDescMapEntry(descMap, "transaction", "parcel-global-id", pld.GlobalID.ToString());
+                m_apiW.AddDescMapEntry(descMap, "transaction", "parcel-local-id", pld.LocalID.ToString());
                 if (pld.IsGroupOwned) {
-                    m_apiW.addDescMapEntry(descMap, "transaction", "parcel-group-owner-id", pld.GroupID.ToString());
+                    m_apiW.AddDescMapEntry(descMap, "transaction", "parcel-group-owner-id", pld.GroupID.ToString());
                 } else {
-                    m_apiW.addDescMapEntry(descMap, "transaction", "parcel-owner-name", resolveAgentName(pld.OwnerID));
+                    m_apiW.AddDescMapEntry(descMap, "transaction", "parcel-owner-name", resolveAgentName(pld.OwnerID));
                 }
-                m_apiW.addDescMapEntry(descMap, "transaction", "parcel-owner-id", pld.OwnerID.ToString());
-                m_apiW.addDescMapEntry(descMap, "transaction", "pass-hours", pld.PassHours.ToString());
+                m_apiW.AddDescMapEntry(descMap, "transaction", "parcel-owner-id", pld.OwnerID.ToString());
+                m_apiW.AddDescMapEntry(descMap, "transaction", "pass-hours", pld.PassHours.ToString());
             }
             return descMap;
         }

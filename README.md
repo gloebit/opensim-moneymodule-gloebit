@@ -78,7 +78,100 @@ This layer contains all the connections to the larger platform.  It reads config
 
 This layer is where most of the editing will be necessary when porting to another platform.  As much as possible, the GloebitAPIWrapper interface method signatures should be maintained, but the bodies will likely have to be modified.
 
-## Adding transaction types ---- explain steps
+
+## Adding a new commerce flow in OpenSim
+
+1. Add a TransactionType enum.
+  * Define a new TransationType for the flow which should be supplied by triggering event.
+  * Add this TransactionType to the switch statement of a receiving event for processing this flow.
+2. Handle TransactionPrecheckFailures
+  * Define any newly necessary TransactionPrecheckFailure enums not already created.
+  * Call alertUsersTransactionPreparationFailure() as necessary from the interface function handling processing.
+  * Edit alertUsersTransactionPrepartionFailure() as neccessary to provide specific messaging for this new TransactionType.
+3. Compile info to be supplied in user's transaction history on gloebit.com 
+  * Call buildOpenSimTransactionDescMap
+    * If more info is needed, either create a new override for buildBaseTransactionDescMap, or call GloebitAPIWrapper.addDescMapEntry to add elements one at a time to the base map.
+  * Create a description string to be displayed as the primary transaction description
+4. Build the Transaction
+  * Supply the proper information to buildTransaction().
+  * If you will need additional information when processing this transaction which you can not store in the default transaction parameters, then you will need to create a new dictionary to map the transaction UUID to the asset information you'll require.
+  * If this is a subscription (auto-debit) transaction, you'll also need to create or retrieve the subscription authorization.
+5. Submit the Transaction to Gloebit
+  * Call GloebitAPIWrapper SubmitTransaction() or SubmitSyncTransaction() and supply the transaction, description and descMap for this transaction type.
+6. Implement delivery of asset related to payment (see region GMM IAssetCallback Interface)
+  * Add this TransactionType to processAssetEnactHold(), processAssetConsumeHold(), processAssetCancelHold() to handle the particulars of asset delivery for this TransactionType
+    * These will be triggered by Gloebit during processing of this transaction
+7. Implement any platform specific functional requirements of transacton process stages not handled in asset enact/consume/cancel via the GloebitAPIWrapper ITransactionAlert interface AlertTransaction functions
+8. Provide messaging to user throughout transaction (see region GMM User Messaging)
+  * Add this TransactionType to alertUsersTransactionBegun()
+  * As necessary, add this TransactionType to alertUsersTransactionStageCompleted(), alertUsersTransactionFailed() and alertUsersTransactionSucceeded() to supply transaction specific messaging.
 
 
-## Integrating ---- explain all interface functions which need to be implemented
+## Integrating into a new platform
+
+### Required Libraries
+* Until we convert the OSDMaps used throughout the API to Dictionaries, OpenMetaverse.StructuredData will be required.
+* The Database interface layer will need modification or various OpenSim data libraries will be required.
+
+### Configuration
+There must be a system for an application to declare the configuration for connecting to the Gloebit service.  At a bare minimum, the app needs to define the OAuth key and secret which will identify it to Gloebit and whatever database connection parameters are necessary for the platforms database interface layer.
+
+### Initialization
+* A GloebitAPIWrapper must be created.  This creates a GloebitAPI as well.
+  * If this has been modified to not initialize the db connections for GloebitUserData, GloebitTransactionData and GloebitSubscriptionData those must be initialized as well.
+* http (or ideally https) must be registered to a base URI with the following paths on that base URI launching the following functions.  These functions will need to be modified if your http handler signature is different.
+  * /gloebit/auth_complete -> m_apiW.authComplete_func
+  * /gloebit/transaction -> m_apiW.transactionState_func
+  * /gloebit/buy_complete -> m_apiW.buyComplete_func
+
+### Required Interface Implementation
+The following interfaces must be defined and passed to the constructor for the GloebitAPIWrapper
+
+* Interfaces which impact the Gloebit API
+  * GloebitAPIWrapper.IUriLoader Interface (note: this doesn't impact the API, but is vital to operation)
+  * GloebitAPIWrapper.IPlatformAccessor Interface
+  * GloebitTransaction.IAssetCallback Interface
+    * Interface for handling state progression of assets (any local app-specific part of a transaction).
+    * ENACT -> Funds have been transfered.  Process local asset (generally deliver a product).
+    * CONSUME -> Funds have been released to recipient.  Finalize anything necessary.
+    * CANCEL -> Transaction has been canceled.  Undo anything necessary.
+* Interfaces which don't impact the Gloebit API and could be turned into events in the future
+  * GloebitAPIWrapper.IUserAlert Interface
+  * GloebitAPIWrapper.ITransactionAlert Interface
+    * This is primarily present to enable the triggering of user messaging throughout a transaction as desired by the user or platform.
+  * GloebitAPIWrapper.ISubscriptionAlert Interface
+
+### Using the system
+
+* App
+  * Every thing in the API happens within an app.  We haven't yet created a GloebitApp class, but this is effectively the configuration passed to the GloebitAPIWrapper during initialization.
+* GloebitUser (aka AppUser)
+  * An AppUser is the representation of a single local account (often referred to as an agent) for a single App configuration.
+  * An AppUser must authorize the app from a Gloebit account.  This allows many of the GloebitAPI methods to be called by the app for this AppUser and it also allows the user to privately/confidentially link this AppUser to his/her Gloebit account.
+    * GloebitUser.Get() should be called to create or retrieve an AppUser
+      * There is not one central GloebitAPIWrapper function for starting a new user session but it may later be centralized.  See GMM.SendNewSessionMessaging() func for closest thing to a StartUserSession().
+      * GloebitUser.Cleanup() should be called to free up memory when a User is no longer active
+  * The platform must determine when to create and cleanup GloebitUsers and when to request authorization (eg. at signup, at first transaction)
+    * calling GetUserBalance() func with forceAuthoOnInvalidToken=true is simplest way to ensure user is authorized and ready to proceed with transactions.
+    * Authorize can also be called directly on a GloebitUser or an local agent ID if the GloebitUser hasn't been retrieved yet.
+    * The platform can determine how to present authorization to the user via the LoadAuthorizationUri interface function
+
+* GloebitTransaction
+  * A transaction requires an App and an authorized AppUser who is the payer in the transaction.
+  * A standard transaction should be triggered by the payer and the platform should do any necessary local validation (for instance, is there inventory left?  Is this actually for sale? Is this the correct price? etc) prior to generating a GloebitTransaction.
+  * If the platform has multiple commerce flows which require different actions during processing, then the platform should define a transaction type for each which is stored in the transaction and can be retrieved during processing.
+  * Some fields are available in a default GloebitTransaction for storing information necessary during processing, but if addtional information is necessary, the platform should create a local dictionary or db table for that information and store the key as one of the extra UUIDs in the GloebitTransacion (most likely the PartID.  Possible key could be the transactionID depending upon order of creation)
+  * Additional transaction information which should be stored in a user's transaction history but is not part of the default transaction should be compiled via the BuildBaseTransactionDescMap and AddDescMapEntry methods.
+    * As much information as possible should be provided about the platform (or app), the location, and the transaction itself.
+  * Call GloebitTransaction.Create() to generate a local GloebitTransaction
+  * Send the transaction to Gloebit for processing (along with a description and the transaction description map) via SubmitTransaction() or SubmitSyncTransaction()
+  * Implement delivery of assets (any local transaction part processing) via the IAssetCallback interface.
+  * Provide messaging to users and handle any other necessary platform functionality through the ITransactionAlert interface
+
+* GloebitSubscription
+  * Subscriptions are required when a transaction is not actively triggered by the payer at the time of the transaction request.
+  * The platform must register the subscription with Gloebit.
+  * The platform must ask the user to authorize that subscription.
+  * Any transaction related to that subscription must be marked as a subscription and provide the subscription and subscription authorization ids.
+  * Similar to an app authorization, a user can revoke a subscription authorization from the Gloebit website, so a platform integration must be prepared to handle transaction failures on a subscription where it believed it had an authorization.
+  
