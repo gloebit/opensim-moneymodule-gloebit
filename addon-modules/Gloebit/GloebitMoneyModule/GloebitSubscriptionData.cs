@@ -66,16 +66,16 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         public interface IGloebitSubscriptionData {
-            GloebitAPI.Subscription[] Get(string field, string key);
+            GloebitSubscription[] Get(string field, string key);
 
-            GloebitAPI.Subscription[] Get(string[] fields, string[] keys);
+            GloebitSubscription[] Get(string[] fields, string[] keys);
 
-            bool Store(GloebitAPI.Subscription subscription);
+            bool Store(GloebitSubscription subscription);
 
-            bool UpdateFromGloebit(GloebitAPI.Subscription subscription);
+            bool UpdateFromGloebit(GloebitSubscription subscription);
         }
 
-        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.Subscription>, IGloebitSubscriptionData {
+        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitSubscription>, IGloebitSubscriptionData {
             public SQLiteImpl(string connectionString)
                 : base(connectionString, "GloebitSubscriptions", "GloebitSubscriptionsSQLite")
             {
@@ -83,25 +83,25 @@ namespace Gloebit.GloebitMoneyModule
             /// TODO: Likely need to override Store() function to handle bools, DateTimes and nulls.
             /// Start with SQLiteGenericTableHandler impl and see MySql override below
 
-            public bool UpdateFromGloebit(GloebitAPI.Subscription subscription) {
+            public bool UpdateFromGloebit(GloebitSubscription subscription) {
                 // TODO: may need a similar treatment to PGSQL
                 return Store(subscription);
             }
             
         }
 
-        private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.Subscription>, IGloebitSubscriptionData {
+        private class MySQLImpl : MySQLGenericTableHandler<GloebitSubscription>, IGloebitSubscriptionData {
             public MySQLImpl(string connectionString)
                 : base(connectionString, "GloebitSubscriptions", "GloebitSubscriptionsMySQL")
             {
             }
 
-            public bool UpdateFromGloebit(GloebitAPI.Subscription subscription) {
+            public bool UpdateFromGloebit(GloebitSubscription subscription) {
                 // Works because MySql usese Replace Into
                 return Store(subscription);
             }
             
-            public override bool Store(GloebitAPI.Subscription subscription)
+            public override bool Store(GloebitSubscription subscription)
             {
                 //            m_log.DebugFormat("[MYSQL GENERIC TABLE HANDLER]: Store(T row) invoked");
                 
@@ -153,13 +153,13 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
 
-        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.Subscription>, IGloebitSubscriptionData {
+        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitSubscription>, IGloebitSubscriptionData {
             public PGSQLImpl(string connectionString)
                 : base(connectionString, "GloebitSubscriptions", "GloebitSubscriptionsPGSQL")
             {
             }
                 
-            public bool UpdateFromGloebit(GloebitAPI.Subscription subscription) {
+            public bool UpdateFromGloebit(GloebitSubscription subscription) {
                 // set Enabled=subscription.Enabled and SubscriptionID=subscription.SubscriptionID)
                 //// UPDATE GloebitSubscriptions
                 //// SET SubscriptionID=val, Enabled=val

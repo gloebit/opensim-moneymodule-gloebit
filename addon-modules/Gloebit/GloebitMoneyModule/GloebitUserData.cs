@@ -57,28 +57,28 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         public interface IGloebitUserData {
-            GloebitAPI.User[] Get(string field, string key);
+            GloebitUser[] Get(string field, string key);
 
-            GloebitAPI.User[] Get(string[] fields, string[] keys);
+            GloebitUser[] Get(string[] fields, string[] keys);
 
-            bool Store(GloebitAPI.User user);
+            bool Store(GloebitUser user);
         }
 
-        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitAPI.User>, IGloebitUserData {
+        private class SQLiteImpl : SQLiteGenericTableHandler<GloebitUser>, IGloebitUserData {
             public SQLiteImpl(string connectionString)
                 : base(connectionString, "GloebitUsers", "GloebitUsersSQLite")
             {
             }
         }
 
-        private class MySQLImpl : MySQLGenericTableHandler<GloebitAPI.User>, IGloebitUserData {
+        private class MySQLImpl : MySQLGenericTableHandler<GloebitUser>, IGloebitUserData {
             public MySQLImpl(string connectionString)
                 : base(connectionString, "GloebitUsers", "GloebitUsersMySQL")
             {
             }
         }
 
-        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitAPI.User>, IGloebitUserData {
+        private class PGSQLImpl : PGSQLGenericTableHandler<GloebitUser>, IGloebitUserData {
             public PGSQLImpl(string connectionString)
                 : base(connectionString, "GloebitUsers", "GloebitUsersPGSQL")
             {
