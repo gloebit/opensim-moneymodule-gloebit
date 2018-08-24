@@ -305,7 +305,7 @@ namespace Gloebit.GloebitMoneyModule
                 PriceObjectScaleFactor = config.GetFloat("PriceObjectScaleFactor", 10);
                 PriceParcelRent = config.GetInt("PriceParcelRent", 1);
                 PriceGroupCreate = config.GetInt("PriceGroupCreate", -1);
-                m_sellEnabled = config.GetBoolean("SellEnabled", false);
+                m_sellEnabled = config.GetBoolean("SellEnabled", true);
             }
             
             /********** [Gloebit] ************/
