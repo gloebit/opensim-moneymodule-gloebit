@@ -1,8 +1,23 @@
 /*
+ * GloebitMoneyModule.cs
  * Copyright (c) 2015 Gloebit LLC
  *
+ * Licensed under the EUPL version 1.2 
+ * or any later version approved by Gloebit via a public statement of acceptance
+ *
+ * This file was initially based off of OpenSim's SampleMoneyModule
+ * which effectively serves as a template for the interface to
+ * create an OpenSim money module plugin.
+ * To the extent that any of that original SampleMoneyModlue code 
+ * still exists, we wanted to explicitly retain the following 
+ * copyright, license and disclaimer which cover that code which can be found at
+ * https://github.com/opensim/opensim/blob/master/OpenSim/Region/OptionalModules/World/MoneyModule/SampleMoneyModule.cs
+ * 
+ * The following solely applies to any code from OpenSim's SampleMoneyModule from 2015.
+ * The rest of this file and this repository are licensed and copyrighted as stated above.
+ * -------------------------------------------------------------------------
  * Copyright (c) Contributors, http://opensimulator.org/
- * See opensim CONTRIBUTORS.TXT for a full list of copyright holders.
+ * See https://github.com/opensim/opensim/blob/master/CONTRIBUTORS.txt for a full list of copyright holders.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,6 +40,7 @@
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * -------------------------------------------------------------------------
  */
 
 using System;
@@ -2441,13 +2457,10 @@ namespace Gloebit.GloebitMoneyModule
 
             Scene s = LocateSceneClientIn(remoteClient.AgentId);
 
-            // Implmenting base sale data checking here so the default OpenSimulator implementation isn't useless 
-            // combined with other implementations.  We're actually validating that the client is sending the data
-            // that it should.   In theory, the client should already know what to send here because it'll see it when it
-            // gets the object data.   If the data sent by the client doesn't match the object, the viewer probably has an 
-            // old idea of what the object properties are.   Viewer developer Hazim informed us that the base module 
-            // didn't check the client sent data against the object do any.   Since the base modules are the 
-            // 'crowning glory' examples of good practice..
+            // The sale information in this event comes from the client, not the server, so we must validate that the
+            // data the client sent matches the server.  If not, the data could be out of sync since a recent change
+            // or it could be a malicious client, or something was corrupted.  The cause doesn't matter, but we should
+            // not proceed if the data doesn't match and we should alert the user.
 
             // Validate that the object exists in the scene the user is in
             SceneObjectPart part = s.GetSceneObjectPart(localID);
