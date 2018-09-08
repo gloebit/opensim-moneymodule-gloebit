@@ -1,9 +1,20 @@
 /*
- * GloebitMoneyModule.cs
- * Copyright (c) 2015 Gloebit LLC
+ * GloebitMoneyModule.cs is part of OpenSim-MoneyModule-Gloebit 
+ * Copyright (C) 2015 Gloebit LLC
  *
- * Licensed under the EUPL version 1.2 
- * or any later version approved by Gloebit via a public statement of acceptance
+ * OpenSim-MoneyModule-Gloebit is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * OpenSim-MoneyModule-Gloebit is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with OpenSim-MoneyModule-Gloebit.  If not, see <https://www.gnu.org/licenses/>.
+ *
  *
  * This file was initially based off of OpenSim's SampleMoneyModule
  * which effectively serves as a template for the interface to
@@ -41,6 +52,15 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * -------------------------------------------------------------------------
+ */
+
+/*
+ * GloebitMoneyModule.cs
+ *
+ * This file is the glue between the OpenSim platform and the Gloebit Money Module
+ *
+ * For porting to other systems or implementing new transaction types/flows,
+ * this file will likely require major modification or replacement.
  */
 
 using System;
