@@ -9,8 +9,10 @@ This is a plugin (addon) to enable the Gloebit currency service on an OpenSim gr
     For the latest features and to ensure compatibility with your system, we recommend building the DLL yourself.
     1. Clone or Download this repository
     2. Copy the Gloebit directory into the addon-modules directory in your OpenSim repository
-    3. Run the OpenSim runprebuild script eg:`. runprebuild.sh`
-    4. Build OpenSim eb:`xbuild`
+    3. Install mono and mono-devel version 5.12 or higher
+    4. Run the OpenSim runprebuild script eg:`. runprebuild.sh`
+    5. Build OpenSim eb:`msbuild` or `nant`
+    6. Check build result should not return error or excessive amounts of warnings(3-5 normally)
 2. Configure the plugin
   * Follow the instructions [here](http://dev.gloebit.com/opensim/configuration-instructions/).
 
