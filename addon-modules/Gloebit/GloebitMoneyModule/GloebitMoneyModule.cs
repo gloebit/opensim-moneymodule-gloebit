@@ -1241,9 +1241,21 @@ namespace Gloebit.GloebitMoneyModule
                 // Request balance from Gloebit.  Request Auth from Gloebit if necessary
                 realBal = m_apiW.GetUserBalance(agentID, true, client.Name);
             }
+            catch (WebException we)
+            {
+                string errorMessage = we.Message;
+                if (we.Status == WebExceptionStatus.ProtocolError)
+                {
+                    using (HttpWebResponse webResponse = (HttpWebResponse)we.Response)
+                        errorMessage = String.Format("[{0}] {1}",webResponse.StatusCode,webResponse.StatusDescription);
+                }
+                m_log.Error(errorMessage);
+                m_log.Error(we.ToString());
+                client.SendAlertMessage(we.Message + " ");
+            }
             catch (Exception e)
             {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] UpdateBalance Failure, Exception:{0}",e.Message);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] UpdateBalance Failure, Exception:{0} \n\nE:{1}", e.Message, e);
                 client.SendAlertMessage(e.Message + " ");
             }
 
@@ -2288,20 +2300,24 @@ namespace Gloebit.GloebitMoneyModule
         /// If this is a new session, if not authed, requests auth.  If authed, sends purchase url.
         /// </summary>
         private void OnCompleteMovementToRegion(IClientAPI client, bool blah) {
-            // TODO: may now be albe to remove client from these funcs (since we moved this out of OnNewClient, but this still might be simpler.
             m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion for {0} with bool {1}", client.AgentId, blah);
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion SessionId:{0} SecureSessionId:{1}", client.SessionId, client.SecureSessionId);
 
-            GloebitUser user = GloebitUser.Get(m_key, client.AgentId);
-            // If authed, update balance immediately
-            if (user.IsAuthed()) {
-                // Don't send Buy Gloebits messaging so that we don't spam
-                UpdateBalance(client.AgentId, client, 0);
-            }
-            if (user.IsNewSession(client.SessionId)) {
-                // Send welcome messaging and buy gloebits messaging or auth messaging
-                SendNewSessionMessaging(client, user);
-            }
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate 
+            {
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion AgentID:{0} SessionId:{1} SecureSessionId:{2}", client.AgentId, client.SessionId, client.SecureSessionId);
+
+                GloebitUser user = GloebitUser.Get(m_key, client.AgentId);
+                // If authed, update balance immediately
+                if (user.IsAuthed()) {
+                    // TODO: may now be able to remove client from UpdateBalance as we moved this call here and out of OnNewClient
+                    // Don't send Buy Gloebits messaging so that we don't spam --- last arg is 0
+                    UpdateBalance(client.AgentId, client, 0);
+                }
+                if (user.IsNewSession(client.SessionId)) {
+                    // Send welcome messaging
+                    SendNewSessionMessaging(client, user);
+                }
+            }, null);
         }
 
         /// <summary>
