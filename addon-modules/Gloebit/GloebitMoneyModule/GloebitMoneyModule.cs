@@ -2312,6 +2312,11 @@ namespace Gloebit.GloebitMoneyModule
                     // TODO: may now be able to remove client from UpdateBalance as we moved this call here and out of OnNewClient
                     // Don't send Buy Gloebits messaging so that we don't spam --- last arg is 0
                     UpdateBalance(client.AgentId, client, 0);
+                } else {
+                    //update viewer balance to zero in case user came from alt money module region and has old viewer
+                    //Note: New firestorm viewer will request update and will get double send here.
+                    int zeroBal = 0;
+                    client.SendMoneyBalance(UUID.Zero, true, new byte[0], zeroBal, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
                 }
                 if (user.IsNewSession(client.SessionId)) {
                     // Send welcome messaging
