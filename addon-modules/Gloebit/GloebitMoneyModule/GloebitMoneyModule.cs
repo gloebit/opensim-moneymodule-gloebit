@@ -147,6 +147,8 @@ namespace Gloebit.GloebitMoneyModule
         private static string m_contactGloebit = "Gloebit at OpenSimTransactionIssue@gloebit.com";
         private string m_contactOwner = "region or grid owner";
         private bool m_disablePerSimCurrencyExtras = false;
+        private bool m_showNewSessionPurchaseIM = false;
+        private bool m_showNewSessionAuthIM = true;
         
         // Populated from grid info
         private string m_gridnick = "unknown_grid";
@@ -414,6 +416,9 @@ namespace Gloebit.GloebitMoneyModule
                 }
                 // Should we disable adding info to OpenSimExtras map
                 m_disablePerSimCurrencyExtras = config.GetBoolean("DisablePerSimCurrencyExtras", false);
+                // Should we send new session IMs informing user how to auth or purchase gloebits
+                m_showNewSessionPurchaseIM = config.GetBoolean("GLBShowNewSessionPurchaseIM", false);
+                m_showNewSessionAuthIM = config.GetBoolean("GLBShowNewSessionAuthIM", true);
                 // Are we using custom db connection info
                 m_dbProvider = config.GetString("GLBSpecificStorageProvider");
                 m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
@@ -3440,14 +3445,15 @@ namespace Gloebit.GloebitMoneyModule
                 sendMessageToClient(client, msg, client.AgentId);
                 // If authed, delivery url where user can purchase gloebits
                 if (user.IsAuthed()) {
-                    //// No longer sending auth message at new session as some users felt it was spammy.
-                    //// Instead, we are letting users know that they can click on their balance at any time for this URL
-                    //// Once viewer patch is adopted so we can tie into insufficinet funds flow, we may also remove auth messaging.
-                    // Uri url = m_apiW.BuildPurchaseURI(BaseURI, user);
-                    // SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                    if (m_showNewSessionPurchaseIM) {
+                        Uri url = m_apiW.BuildPurchaseURI(BaseURI, user);
+                        SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                    }
                 } else {
-                    // If not Authed, request auth.
-                    m_apiW.Authorize(user, client.Name);
+                    if (m_showNewSessionAuthIM) {
+                        // If not Authed, request auth.
+                        m_apiW.Authorize(user, client.Name);
+                    }
                 }
             });
             welcomeMessageThread.Start();
