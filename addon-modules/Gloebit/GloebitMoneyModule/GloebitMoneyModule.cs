@@ -147,6 +147,8 @@ namespace Gloebit.GloebitMoneyModule
         private static string m_contactGloebit = "Gloebit at OpenSimTransactionIssue@gloebit.com";
         private string m_contactOwner = "region or grid owner";
         private bool m_disablePerSimCurrencyExtras = false;
+        private bool m_showNewSessionPurchaseIM = false;
+        private bool m_showNewSessionAuthIM = true;
         
         // Populated from grid info
         private string m_gridnick = "unknown_grid";
@@ -414,6 +416,9 @@ namespace Gloebit.GloebitMoneyModule
                 }
                 // Should we disable adding info to OpenSimExtras map
                 m_disablePerSimCurrencyExtras = config.GetBoolean("DisablePerSimCurrencyExtras", false);
+                // Should we send new session IMs informing user how to auth or purchase gloebits
+                m_showNewSessionPurchaseIM = config.GetBoolean("GLBShowNewSessionPurchaseIM", false);
+                m_showNewSessionAuthIM = config.GetBoolean("GLBShowNewSessionAuthIM", true);
                 // Are we using custom db connection info
                 m_dbProvider = config.GetString("GLBSpecificStorageProvider");
                 m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
@@ -1241,9 +1246,21 @@ namespace Gloebit.GloebitMoneyModule
                 // Request balance from Gloebit.  Request Auth from Gloebit if necessary
                 realBal = m_apiW.GetUserBalance(agentID, true, client.Name);
             }
+            catch (WebException we)
+            {
+                string errorMessage = we.Message;
+                if (we.Status == WebExceptionStatus.ProtocolError)
+                {
+                    using (HttpWebResponse webResponse = (HttpWebResponse)we.Response)
+                        errorMessage = String.Format("[{0}] {1}",webResponse.StatusCode,webResponse.StatusDescription);
+                }
+                m_log.Error(errorMessage);
+                m_log.Error(we.ToString());
+                client.SendAlertMessage(we.Message + " ");
+            }
             catch (Exception e)
             {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] UpdateBalance Failure, Exception:{0}",e.Message);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] UpdateBalance Failure, Exception:{0} \n\nE:{1}", e.Message, e);
                 client.SendAlertMessage(e.Message + " ");
             }
 
@@ -2288,20 +2305,29 @@ namespace Gloebit.GloebitMoneyModule
         /// If this is a new session, if not authed, requests auth.  If authed, sends purchase url.
         /// </summary>
         private void OnCompleteMovementToRegion(IClientAPI client, bool blah) {
-            // TODO: may now be albe to remove client from these funcs (since we moved this out of OnNewClient, but this still might be simpler.
             m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion for {0} with bool {1}", client.AgentId, blah);
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion SessionId:{0} SecureSessionId:{1}", client.SessionId, client.SecureSessionId);
 
-            GloebitUser user = GloebitUser.Get(m_key, client.AgentId);
-            // If authed, update balance immediately
-            if (user.IsAuthed()) {
-                // Don't send Buy Gloebits messaging so that we don't spam
-                UpdateBalance(client.AgentId, client, 0);
-            }
-            if (user.IsNewSession(client.SessionId)) {
-                // Send welcome messaging and buy gloebits messaging or auth messaging
-                SendNewSessionMessaging(client, user);
-            }
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate 
+            {
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion AgentID:{0} SessionId:{1} SecureSessionId:{2}", client.AgentId, client.SessionId, client.SecureSessionId);
+
+                GloebitUser user = GloebitUser.Get(m_key, client.AgentId);
+                // If authed, update balance immediately
+                if (user.IsAuthed()) {
+                    // TODO: may now be able to remove client from UpdateBalance as we moved this call here and out of OnNewClient
+                    // Don't send Buy Gloebits messaging so that we don't spam --- last arg is 0
+                    UpdateBalance(client.AgentId, client, 0);
+                } else {
+                    //update viewer balance to zero in case user came from alt money module region and has old viewer
+                    //Note: New firestorm viewer will request update and will get double send here.
+                    int zeroBal = 0;
+                    client.SendMoneyBalance(UUID.Zero, true, new byte[0], zeroBal, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                }
+                if (user.IsNewSession(client.SessionId)) {
+                    // Send welcome messaging
+                    SendNewSessionMessaging(client, user);
+                }
+            }, null);
         }
 
         /// <summary>
@@ -3419,14 +3445,15 @@ namespace Gloebit.GloebitMoneyModule
                 sendMessageToClient(client, msg, client.AgentId);
                 // If authed, delivery url where user can purchase gloebits
                 if (user.IsAuthed()) {
-                    //// No longer sending auth message at new session as some users felt it was spammy.
-                    //// Instead, we are letting users know that they can click on their balance at any time for this URL
-                    //// Once viewer patch is adopted so we can tie into insufficinet funds flow, we may also remove auth messaging.
-                    // Uri url = m_apiW.BuildPurchaseURI(BaseURI, user);
-                    // SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                    if (m_showNewSessionPurchaseIM) {
+                        Uri url = m_apiW.BuildPurchaseURI(BaseURI, user);
+                        SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                    }
                 } else {
-                    // If not Authed, request auth.
-                    m_apiW.Authorize(user, client.Name);
+                    if (m_showNewSessionAuthIM) {
+                        // If not Authed, request auth.
+                        m_apiW.Authorize(user, client.Name);
+                    }
                 }
             });
             welcomeMessageThread.Start();
