@@ -1,6 +1,9 @@
 # OpenSim Gloebit Money Module
 This is a plugin (addon) to enable the Gloebit currency service on an OpenSim grid.  It also serves as an example which can be referenced or ported to integrate the Gloebit service with other platforms.
 
+<kbd>![Gloebit Money Module for OpenSim](http://dev.gloebit.com/blog/images/OpenSim-Gloebit-Money-Module-Addon-Beta.png)</kbd>
+
+
 # How to use this with OpenSim
 1. Download or Build the DLL
   * Download\
@@ -19,6 +22,9 @@ This is a plugin (addon) to enable the Gloebit currency service on an OpenSim gr
 # Understanding, Contributing to, and Porting this Plugin
 
 ## Code Organization - The breakdown of the functional layers
+
+<kbd>![GMM Architecture Slide](http://dev.gloebit.com/images/GMM-Architecture.png)</kbd>
+<kbd>![GMM Architecture Files Slide](http://dev.gloebit.com/images/GMM-Architecture-Files.png)</kbd>
 
 Starting with the foundation...
 
