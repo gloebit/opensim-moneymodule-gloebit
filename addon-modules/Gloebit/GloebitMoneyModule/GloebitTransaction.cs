@@ -221,7 +221,6 @@ namespace Gloebit.GloebitMoneyModule {
                     return null;
                 default:
                     throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one transaction for {0}", transactionIDStr));
-                    return null;
                 }
             }
 

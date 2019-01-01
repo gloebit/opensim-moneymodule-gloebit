@@ -492,7 +492,7 @@ namespace Gloebit.GloebitMoneyModule
                         // TODO: do we want anything else from grid info?
                     }
                 } catch (Exception e) {
-                    m_log.ErrorFormat("[GloebitMoneyModule] Failed to retrieve Grid Info.");
+                    m_log.ErrorFormat("[GloebitMoneyModule] Failed to retrieve Grid Info. {0}", e);
                 }
             }
         }
@@ -720,7 +720,7 @@ namespace Gloebit.GloebitMoneyModule
             
             // Grab info all vars we'll def need
             TransactionType txnType = TransactionType.MOVE_MONEY_GENERAL;
-            string txnTypeString = "MoveMoneyGeneral";
+            string txnTypeString;
             //Scene s = LocateSceneClientIn(agentID);
             //string regionID = s.RegionInfo.RegionID.ToString();
             Scene s = null;
@@ -782,7 +782,7 @@ namespace Gloebit.GloebitMoneyModule
                     m_log.DebugFormat("[GLOEBITMONEYMODULE] found {0} matching parcels", found);
                     
                     // Create the descMap extra details using the parcel we've found if we've found exactly one match.
-                    int parcelLocalID = 0;
+                    //int parcelLocalID = 0;
                     if (found == 1) {
                         descMap = buildOpenSimTransactionDescMap(regionName, regionID.ToString(), "ParcelBuyPass", parcel.LandData);
                         partID = parcel.LandData.GlobalID;
@@ -2498,11 +2498,9 @@ namespace Gloebit.GloebitMoneyModule
                     description = e.description;
                     */
                 return;
-                break;
             default:
                 m_log.ErrorFormat("UNKNOWN Unimplemented transactiontype received in OnMoneyTransfer: {0}", e.transactiontype);
                 return;
-                break;
             }
 
             /******** Set up necessary parts for gloebit transact-u2u **********/
