@@ -164,7 +164,7 @@ namespace Gloebit.GloebitMoneyModule
                     // call parent
                     return base.Store(txn);
 		} catch(System.OverflowException e) {
-                    m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction type:{0}, SaleType:{1}, PayerEndingBalance:{2}, cTime:{3}, enactedTime:{4}, finishedTime:{5}", txn.TransactionType, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime);
+                    m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction type:{0}, SaleType:{1}, PayerEndingBalance:{2}, cTime:{3}, enactedTime:{4}, finishedTime:{5}, stacktrace:{6}", txn.TransactionType, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime, e);
 		    throw;
 		}
             }
