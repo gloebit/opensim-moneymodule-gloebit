@@ -985,7 +985,12 @@ namespace Gloebit.GloebitMoneyModule
         public bool UploadCovered(UUID agentID, int amount)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] UploadCovered for agent {0}, price {1}", agentID, amount);
-            
+
+            // price is 0.  just return true
+            if (amount <= 0) {
+                return true;
+            }
+
             IClientAPI client = LocateClientObject(agentID);
             double balance = 0.0;
             
@@ -1006,7 +1011,12 @@ namespace Gloebit.GloebitMoneyModule
         public bool AmountCovered(UUID agentID, int amount)
         {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] AmountCovered for agent {0}, price {1}", agentID, amount);
-            
+
+            // price is 0.  just return true
+            if (amount <= 0) {
+                return true;
+            }
+
             IClientAPI client = LocateClientObject(agentID);
             double balance = 0.0;
             
