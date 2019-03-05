@@ -654,7 +654,6 @@ namespace Gloebit.GloebitMoneyModule {
                             // nothing to tell user.  buyer doesn't need to know it was double submitted
                             m_log.ErrorFormat ("[GLOEBITMONEYMODULE].transactU2UCompleted race condition.  You double submitted transaction:{0}", tID);
                             return; /* don't report anything as the other flow this hit will handle reporting */
-                            break;
                         default:
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted unhandled queueing failure:{0}  transactionID:{1}", failure, tID);
                             additionalDetailStr = reason;
