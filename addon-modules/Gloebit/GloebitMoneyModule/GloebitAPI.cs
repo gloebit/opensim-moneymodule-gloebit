@@ -1044,7 +1044,7 @@ namespace Gloebit.GloebitMoneyModule {
             request.Method = method;
             switch (method) {
                 case "GET":
-                    m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest GET relativeURL:{0}", relativeURL);
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest GET baseURL:{0} relativeURL:{1}, fullURL:{2}", m_url, relativeURL, requestURI);
                     break;
                 case "POST":
                 case "PUT":
