@@ -32,7 +32,6 @@
   <Reference name="OpenSim.Region.Framework"/>
   <Reference name="OpenSim.Region.CoreModules"/>
   <Reference name="OpenSim.Region.OptionalModules"/>
-  <Reference name="OpenSim.Framework.Communications"/>
   <Reference name="OpenSim.Server.Base"/>
   <Reference name="OpenSim.Services.Interfaces"/>
   <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
