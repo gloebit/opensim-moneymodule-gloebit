@@ -173,7 +173,7 @@ namespace Gloebit.GloebitMoneyModule {
             Uri url = BuildPurchaseURI(m_platformAccessors.GetBaseURI(), u);
             Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
-            response["str_response_string"] = String.Format("<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window and return to OpenSim.<br /><br /><br />You'll now be able spend gloebits from your Gloebit account as the agent you authorized on this OpenSim Grid.<br /><br />If you need Gloebits, you can <a href=\"{0}\">purchase them here</a>.</body></html>", url);
+            response["str_response_string"] = String.Format("<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window and return to OpenSim.<br /><br /><br />You'll now be able spend Gloebits from your Gloebit account as the agent you authorized on this OpenSim Grid.<br /><br />If you need Gloebits, you can <a href=\"{0}\">purchase them here</a>.</body></html>", url);
             response["content_type"] = "text/html";
 
             return response;
@@ -321,7 +321,7 @@ namespace Gloebit.GloebitMoneyModule {
             return response;
         }
 
-        #endregion // Purchasing gloebits
+        #endregion // Purchasing Gloebits
 
         #region Transaction
 
@@ -411,7 +411,7 @@ namespace Gloebit.GloebitMoneyModule {
         }
 
         /// <summary>
-        /// Submits a GloebitTransaction to gloebit for processing and provides any necessary feedback to user/platform.
+        /// Submits a GloebitTransaction to Gloebit for processing and provides any necessary feedback to user/platform.
         /// --- Must call buildTransaction() to create argument 1.
         /// --- Must call buildBaseTransactionDescMap() to create argument 3.
         /// </summary>
@@ -451,7 +451,7 @@ namespace Gloebit.GloebitMoneyModule {
         }
 
         /// <summary>
-        /// Submits a GloebitTransaction using synchronous web requests to gloebit for processing and provides any necessary feedback to user/platform.
+        /// Submits a GloebitTransaction using synchronous web requests to Gloebit for processing and provides any necessary feedback to user/platform.
         /// Rather than solely receiving a "submission" response, TransactU2UCallback happens during request, and receives transaction success/failure response.
         /// --- Must call buildTransaction() to create argument 1.
         /// --- Must call buildBaseTransactionDescMap() to create argument 3.
@@ -628,13 +628,13 @@ namespace Gloebit.GloebitMoneyModule {
                             // Send dialog asking user to auth or report --- needs different message.
                             m_log.Info("[GLOEBITMONEYMODULE] TransactU2UCompleted - SUBSCRIPTION_AUTH_DECLINED - requesting SubAuth approval");
                             break;
-                        case GloebitAPI.TransactionFailure.PAYER_ACCOUNT_LOCKED:                  /* Buyer's Gloebit account is locked and not allowed to spend gloebits */
+                        case GloebitAPI.TransactionFailure.PAYER_ACCOUNT_LOCKED:                  /* Buyer's Gloebit account is locked and not allowed to spend Gloebits */
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- payer account locked.  id:{0}", tID);
                             break;
                         case GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED:            /* can not identify merchant from params supplied by app */
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE].transactU2UCompleted Gloebit could not identify payee from params.  transactionID:{0} payeeID:{1}", tID, payeeUser.PrincipalID);
                             break;
-                        case GloebitAPI.TransactionFailure.PAYEE_CANNOT_RECEIVE:                  /* Seller's Gloebit account can not receive gloebits */
+                        case GloebitAPI.TransactionFailure.PAYEE_CANNOT_RECEIVE:                  /* Seller's Gloebit account can not receive Gloebits */
                             // TODO: research if/when account is in this state.  Only by admin?  All accounts until merchants?
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- payee account locked - can't receive Gloebits.  id:{0}", tID);
                             break;
