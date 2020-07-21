@@ -33,6 +33,7 @@ using OpenSim.Data.SQLite;
 namespace Gloebit.GloebitMoneyModule
 {
     class GloebitTransactionData {
+		private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         private static IGloebitTransactionData m_impl;
 

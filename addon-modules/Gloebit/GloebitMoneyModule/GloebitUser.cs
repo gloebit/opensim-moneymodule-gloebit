@@ -149,9 +149,9 @@ namespace Gloebit.GloebitMoneyModule {
 			catch(Exception e)
 			{
 				m_log.DebugFormat("[GLOEBITMONEYMODULE] failed GloebitUser.Get because {0}", e);
-				return;
+				return null;
 			}
-			return;
+			return null;
         }
 
         public static void InvalidateCache(UUID agentID) {
