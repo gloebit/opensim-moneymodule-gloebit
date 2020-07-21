@@ -1035,7 +1035,7 @@ namespace Gloebit.GloebitMoneyModule
             double balance = 0.0;
             
             // force a balance update, then check against amount.
-            // Retrieve balance from Gloebit if authed.  Reqeust auth if not authed.  Send purchase url if authed but lacking funds to cover amount.
+            // Retrieve balance from Gloebit if authed.  Request auth if not authed.  Send purchase url if authed but lacking funds to cover amount.
             balance = UpdateBalance(agentID, client, amount);
             
             if (balance < amount) {
@@ -1562,7 +1562,7 @@ namespace Gloebit.GloebitMoneyModule
             // Build universal base OpenSim descMap
             OSDMap descMap = buildOpenSimTransactionDescMap(regionname, regionID, txnType);
 
-            // Add base descMap details for transaciton involving an object/part
+            // Add base descMap details for transaction involving an object/part
             if (descMap != null && part != null) {
                 m_apiW.AddDescMapEntry(descMap, "location", "object-group-position", part.GroupPosition.ToString());
                 m_apiW.AddDescMapEntry(descMap, "location", "object-absolute-position", part.AbsolutePosition.ToString());
@@ -1591,7 +1591,7 @@ namespace Gloebit.GloebitMoneyModule
             // Build universal base descMap
             OSDMap descMap = buildOpenSimTransactionDescMap(regionname, regionID, txnType);
 
-            // Add base descMap details for transaciton involving an object/part
+            // Add base descMap details for transaction involving an object/part
             if (descMap != null && pld != null) {
                 m_apiW.AddDescMapEntry(descMap, "location", "parcel-upper-corner-position", pld.AABBMax.ToString());
                 m_apiW.AddDescMapEntry(descMap, "location", "parcel-lower-corner-position", pld.AABBMin.ToString());
