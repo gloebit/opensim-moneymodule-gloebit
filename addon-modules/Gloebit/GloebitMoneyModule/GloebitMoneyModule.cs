@@ -429,7 +429,7 @@ namespace Gloebit.GloebitMoneyModule
                 }
                 // Should we disable adding info to OpenSimExtras map
                 m_disablePerSimCurrencyExtras = config.GetBoolean("DisablePerSimCurrencyExtras", false);
-                // Should we send new session IMs informing user how to auth or purchase gloebits
+                // Should we send new session IMs informing user how to auth or purchase Gloebits
                 m_showNewSessionPurchaseIM = config.GetBoolean("GLBShowNewSessionPurchaseIM", false);
                 m_showNewSessionAuthIM = config.GetBoolean("GLBShowNewSessionAuthIM", true);
                 // Are we using custom db connection info
@@ -576,7 +576,7 @@ namespace Gloebit.GloebitMoneyModule
 
                         // These functions can handle the calls to the economy helper-uri if it is configured to point at the sim.  
                         // They will enable land purchasing, buy-currency, and insufficient-funds flows.
-                        // *NOTE* gloebits can not currently be purchased from a viewer, but this allows Gloebit to control the
+                        // *NOTE* Gloebits can not currently be purchased from a viewer, but this allows Gloebit to control the
                         // messaging in this flow and send users to the Gloebit website for purchasing.
                         httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
                         httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
@@ -2531,7 +2531,7 @@ namespace Gloebit.GloebitMoneyModule
                 return;
             }
 
-            /******** Set up necessary parts for gloebit transact-u2u **********/
+            /******** Set up necessary parts for Gloebit transact-u2u **********/
 
             GloebitTransaction txn = buildTransaction(transactionID: UUID.Zero, transactionType: (TransactionType)e.transactiontype,
                 payerID: fromID, payeeID: toID, amount: e.amount, subscriptionID: UUID.Zero,
@@ -3448,14 +3448,14 @@ namespace Gloebit.GloebitMoneyModule
             if (m_environment == GLBEnv.Sandbox) {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Sandbox Mode for testing.  All payments and transactions are fake.  Try it out.", client.Name);
             } else if (m_environment == GLBEnv.Production) {
-                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module.  You can transact with gloebits.", client.Name);
+                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module.  You can transact with Gloebits.", client.Name);
             } else {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in a Custom Devloper Mode.", client.Name);
             }
             // Add instructions for clicking balance to see auth or purchase url
             // TODO: Should this be a separate message?
             if (user.IsAuthed()) {
-                msg = String.Format("{0}\nClick on your balance in the top right to purchase more gloebits.", msg);
+                msg = String.Format("{0}\nClick on your balance in the top right to purchase more Gloebits.", msg);
             } else {
                 msg = String.Format("{0}\nClick on your balance in the top right to link this avatar on this app to your Gloebit account.", msg);
 
@@ -3469,7 +3469,7 @@ namespace Gloebit.GloebitMoneyModule
                 Thread.Sleep(delay * 1000);  // Delay milliseconds
                 // Deliver welcome message
                 sendMessageToClient(client, msg, client.AgentId);
-                // If authed, delivery url where user can purchase gloebits
+                // If authed, delivery url where user can purchase Gloebits
                 if (user.IsAuthed()) {
                     if (m_showNewSessionPurchaseIM) {
                         Uri url = m_apiW.BuildPurchaseURI(BaseURI, user);
@@ -3526,7 +3526,7 @@ namespace Gloebit.GloebitMoneyModule
                 // build txn details string
                 string paymentFrom = String.Format("Payment from: {0}", txn.PayerName);
                 string paymentTo = String.Format("Payment to: {0}", txn.PayeeName);
-                string amountStr = String.Format("Amount: {0:n0} gloebits", txn.Amount);
+                string amountStr = String.Format("Amount: {0:n0} Gloebits", txn.Amount);
                 // TODO: add description back in once txn includes it.
                 // string descStr = String.Format("Description: {0}", description);
                 string txnDetails = String.Format("Details:\n   {0}\n   {1}\n   {2}", paymentFrom, paymentTo, amountStr/*, descStr*/);
@@ -3878,7 +3878,7 @@ namespace Gloebit.GloebitMoneyModule
                     status = "Successfully submitted to Gloebit service.";
                     break;
                 case GloebitAPI.TransactionStage.QUEUE:
-                    // a) queued and gloebits transferred.
+                    // a) queued and Gloebits transferred.
                     // b) resubmitted
                     // c) queued, but early enact failure
                     status = "Successfully received by Gloebit and queued for processing.";
