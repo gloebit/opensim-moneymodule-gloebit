@@ -1941,6 +1941,10 @@ namespace Gloebit.GloebitMoneyModule
             IClientAPI client = LocateClientObject(UUID.Parse(user.PrincipalID));
             string title = "AUTHORIZE GLOEBIT";
             string body = "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:";
+			
+			// Some find these popups annoying especially if they don't want to use Gloebit on their region so we just don't send them popups
+			// Gloebit is still enabled and users who already authed themselves can use it, but it won't nag anyone to register
+			// A forever dismiss until the balance is clicked again would work better, but is a lot harder to implement
 			if (sendpopups)
 				SendUrlToClient(client, title, body, authorizeUri);
         }
