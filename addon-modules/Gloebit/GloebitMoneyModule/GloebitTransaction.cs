@@ -53,7 +53,7 @@ namespace Gloebit.GloebitMoneyModule {
         public bool IsSubscriptionDebit;
         public UUID SubscriptionID;
 
-        // Object info required when enacting/consume/canceling, delivering, and handling subscriptions
+        // Object info required when enacting/consume/cancelling, delivering, and handling subscriptions
         public UUID PartID;         // UUID of object
         public string PartName;     // object name
         public string PartDescription;
@@ -126,7 +126,7 @@ namespace Gloebit.GloebitMoneyModule {
             this.PayerEndingBalance = -1;
 
 
-            // Object info required when enacting/consume/canceling, delivering, and handling subscriptions
+            // Object info required when enacting/consume/cancelling, delivering, and handling subscriptions
             this.PartID = partID;
             this.PartName = partName;
             this.PartDescription = partDescription;
@@ -146,10 +146,10 @@ namespace Gloebit.GloebitMoneyModule {
             this.enactedTime = null; // set to null instead of DateTime.MinValue to avoid crash on reading 0 timestamp
             this.finishedTime = null; // set to null instead of DateTime.MinValue to avoid crash on reading 0 timestamp
             // TODO: We have made these nullable and initialize to null.  We could alternatively choose a time that is not zero
-            // and avoid any potential conficts from allowing null.
+            // and avoid any potential conflicts from allowing null.
             // On MySql, I had to set the columns to allow NULL, otherwise, inserting null defaulted to the current local time.
             // On PGSql, I set the columns to allow NULL, but haven't tested.
-            // On SQLite, I don't think that you can set them to allow NULL explicitely, and haven't checked defaults.
+            // On SQLite, I don't think that you can set them to allow NULL explicitly, and haven't checked defaults.
         }
 
         // Creates a new transaction
@@ -301,7 +301,7 @@ namespace Gloebit.GloebitMoneyModule {
                 break;
             default:
                 // no recognized state request
-                returnMsg = "Unrecognized state request";
+                returnMsg = "Unrecognised state request";
                 result = false;
                 break;
             }
@@ -317,7 +317,7 @@ namespace Gloebit.GloebitMoneyModule {
         {
             if (this.canceled) {
                 // getting a delayed enact sent before cancel.  return false.
-                returnMsg = "Enact: already canceled";
+                returnMsg = "Enact: already cancelled";
                 return false;
             }
             if (this.consumed) {
@@ -350,7 +350,7 @@ namespace Gloebit.GloebitMoneyModule {
                 m_log.DebugFormat("PayerEndingBalance: {0}", this.PayerEndingBalance);
                 m_log.DebugFormat("enacted: {0}", this.enacted);
                 m_log.DebugFormat("consumed: {0}", this.consumed);
-                m_log.DebugFormat("canceled: {0}", this.canceled);
+                m_log.DebugFormat("cancelled: {0}", this.canceled);
                 m_log.DebugFormat("cTime: {0}", this.cTime);
                 m_log.DebugFormat("enactedTime: {0}", this.enactedTime);
                 m_log.DebugFormat("finishedTime: {0}", this.finishedTime);
@@ -375,7 +375,7 @@ namespace Gloebit.GloebitMoneyModule {
         {
             if (this.canceled) {
                 // Should never get a delayed consume after a cancel.  return false.
-                returnMsg = "Consume: already canceled";
+                returnMsg = "Consume: already cancelled";
                 return false;
             }
             if (!this.enacted) {
@@ -385,7 +385,7 @@ namespace Gloebit.GloebitMoneyModule {
             }
             if (this.consumed) {
                 // already consumed. return true.
-                returnMsg = "Cosume: Already consumed";
+                returnMsg = "Consume: Already consumed";
                 return true;
             }
 
@@ -421,8 +421,8 @@ namespace Gloebit.GloebitMoneyModule {
                 //return true;
             }
             if (this.canceled) {
-                // already canceled. return true.
-                returnMsg = "Cancel: already canceled";
+                // already cancelled. return true.
+                returnMsg = "Cancel: already cancelled";
                 return true;
             }
             // First reception of cancel for asset.

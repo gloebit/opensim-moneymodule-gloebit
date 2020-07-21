@@ -27,7 +27,7 @@
  * --- account.
  * Do not confuse this with representing a single local user, though this is
  * --- generally the case.  There can be multiple records for a sinlge local
- * --- account if this product has connected via multple Gloebit Apps, such as
+ * --- account if this product has connected via multiple Gloebit Apps, such as
  * --- to our Sandbox environment and to our Production environment.
  * This stores a record per user per Gloebit App (per OAuth Key).
  * --- The primary function here is to handle storage and retrieval of the

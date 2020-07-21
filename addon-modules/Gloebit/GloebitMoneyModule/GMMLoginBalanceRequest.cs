@@ -40,7 +40,7 @@ namespace Gloebit.GloebitMoneyModule {
     /// <summary>
     /// Class which is a hack to deal with the fact that a balance request is made
     /// twice when a user logs into a GMM enabled region (once for connect to region and once by viewer after login).
-    /// This causes the balance to be reqeusted twice, and if not authed, the user to be asked to auth twice.
+    /// This causes the balance to be requested twice, and if not authed, the user to be asked to auth twice.
     /// This class is designed solely for preventing the second request in that single case.
     /// </summary>
     public class LoginBalanceRequest

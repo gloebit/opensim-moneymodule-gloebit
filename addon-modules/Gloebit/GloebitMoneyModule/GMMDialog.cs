@@ -128,7 +128,7 @@ namespace Gloebit.GloebitMoneyModule {
                     myChannel = c_MaxChannel;
                 }
             } while (local_lc != Interlocked.CompareExchange(ref s_lastChannel, myChannel, local_lc));
-            // while ensures that one and only one thread finieshes and modifies s_lastChannel
+            // while ensures that one and only one thread finishes and modifies s_lastChannel
             // If s_lastChannel has changed since local_lc was set, this fails and the loop runs again.
             // If multiple threads are executing at the same time, at least one will always succeed.
 
@@ -188,7 +188,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// --- If not, consider purging old Dialogs.
         /// --- If it is on a channel for a Dialog for this user, validate that it's not an imposter.
         /// --- Call ProcessResponse on derived Dialog class
-        /// Callback registerd in Dialog.Open()
+        /// Callback registered in Dialog.Open()
         /// EVENT:
         ///     ChatFromClientEvent is triggered via ChatModule (or
         ///     substitutes thereof) when a chat message
@@ -405,7 +405,7 @@ namespace Gloebit.GloebitMoneyModule {
         public readonly string ObjectDescription;
 
         // Details of attempted, failed transaction resulting in this create subscription authorization dialog
-        public readonly UUID TransactionID;  // id of the auto debit transaciton which failed due to lack of authorization
+        public readonly UUID TransactionID;  // id of the auto debit transaction which failed due to lack of authorization
         public readonly UUID PayeeID;        // ID of the agent receiving the proceeds
         public readonly string PayeeName;    // name of the agent receiving the proceeds
         public readonly int Amount;          // The amount of the auto-debit transaction
@@ -458,7 +458,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="payeeID">UUID of the OpenSim user who is being paid by the object/script/subscription</param>
         /// <param name="payeeName">String name of the OpenSim user who is being paid by the object/script/subscription</param>
         /// <param name="amount">int amount of the failed transaction which triggered this authorization request</param>
-        /// <param name="subscriptionID">UUID of subscription created/returnd by Gloebit and for which authorization is being requested</param>
+        /// <param name="subscriptionID">UUID of subscription created/returned by Gloebit and for which authorization is being requested</param>
         /// <param name="activeApiW">GloebitAPIWrapper active for this GMM</param>
         /// <param name="appCallbackBaseURI">Base URI for any callbacks this request makes back into the app</param>
         public CreateSubscriptionAuthorizationDialog(IClientAPI client, UUID agentID, string agentName, UUID objectID, string objectName, string objectDescription, UUID transactionID, UUID payeeID, string payeeName, int amount, UUID subscriptionID, GloebitAPIWrapper activeApiW, Uri appCallbackBaseURI) : base(client, agentID)
@@ -549,7 +549,7 @@ namespace Gloebit.GloebitMoneyModule {
         public readonly string ObjectDescription;
 
         // Details of attempted, failed transaction resulting in this create subscription authorization dialog
-        public readonly UUID TransactionID;  // id of the auto debit transaciton which failed due to lack of authorization
+        public readonly UUID TransactionID;  // id of the auto debit transaction which failed due to lack of authorization
         public readonly UUID PayeeID;        // ID of the agent receiving the proceeds
         public readonly string PayeeName;    // name of the agent receiving the proceeds
         public readonly int Amount;          // The amount of the auto-debit transaction
@@ -608,7 +608,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="payeeID">UUID of the OpenSim user who is being paid by the object/script/subscription</param>
         /// <param name="payeeName">String name of the OpenSim user who is being paid by the object/script/subscription</param>
         /// <param name="amount">int amount of the failed transaction which triggered this authorization request</param>
-        /// <param name="subscriptionID">UUID of subscription created/returnd by Gloebit and for which authorization is being requested</param>
+        /// <param name="subscriptionID">UUID of subscription created/returned by Gloebit and for which authorization is being requested</param>
         /// <param name="subscriptionAuthorizationID">UUID of the pending subscription authorization returned by Gloebit with the failed transaction</param>
         /// <param name="activeApiW">GloebitAPIWrapper active for this GMM</param>
         /// <param name="appCallbackBaseURI">Base URI for any callbacks this request makes back into the app</param>
