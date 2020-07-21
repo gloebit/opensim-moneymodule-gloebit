@@ -134,6 +134,8 @@ namespace Gloebit.GloebitMoneyModule
         private bool m_enabled = true;
         // Set to false if anything is misconfigured
         private bool m_configured = true;
+		// Configure true if not present
+		private bool sendpopups = true;
         
         // Populated from Gloebit.ini
         private UUID[] m_enabledRegions = null;         // Regions on sim to individually enable GMM.
@@ -391,7 +393,7 @@ namespace Gloebit.GloebitMoneyModule
 				m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Enabled flag set to {0}.", enabled);
 				
 				// Should we send popups to users or not, some find them annoying especially if they are not using the system
-				bool sendpopups = config.GetBoolean("SendPopups", true);
+				sendpopups = config.GetBoolean("SendPopups", true);
 				
 				if (sendpopups == false)
 				{
@@ -399,7 +401,6 @@ namespace Gloebit.GloebitMoneyModule
 				} else {
 					m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will inform users about Gloebit!");
 				}
-				
 				
                 m_enabled = m_enabled && enabled;
                 if (!m_enabled) {
