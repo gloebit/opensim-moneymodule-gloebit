@@ -387,7 +387,20 @@ namespace Gloebit.GloebitMoneyModule
                 /*** Get GloebitMoneyModule configuration details ***/
                 // Is Gloebit disabled, enabled across the entire sim process, or on certain regions?
                 bool enabled = config.GetBoolean("Enabled", false);
-                m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Enabled flag set to {0}.", enabled);
+				
+				m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Enabled flag set to {0}.", enabled);
+				
+				// Should we send popups to users or not, some find them annoying especially if they are not using the system
+				bool sendpopups = config.GetBoolean("SendPopups", true);
+				
+				if (sendpopups == false)
+				{
+					m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will not send popups to users!");
+				} else {
+					m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will inform users about Gloebit!");
+				}
+				
+				
                 m_enabled = m_enabled && enabled;
                 if (!m_enabled) {
                     m_log.Info("[GLOEBITMONEYMODULE] Not enabled globally for sim. (to enable set \"Enabled = true\" in [Gloebit] and \"economymodule = Gloebit\" in [Economy])");
@@ -1928,7 +1941,8 @@ namespace Gloebit.GloebitMoneyModule
             IClientAPI client = LocateClientObject(UUID.Parse(user.PrincipalID));
             string title = "AUTHORIZE GLOEBIT";
             string body = "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:";
-            SendUrlToClient(client, title, body, authorizeUri);
+			if (sendpopups)
+				SendUrlToClient(client, title, body, authorizeUri);
         }
 
         /// <summary>
