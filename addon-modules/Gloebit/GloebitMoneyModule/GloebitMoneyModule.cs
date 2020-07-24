@@ -3468,8 +3468,9 @@ namespace Gloebit.GloebitMoneyModule
             }
             Thread welcomeMessageThread = new Thread(delegate() {
                 Thread.Sleep(delay * 1000);  // Delay milliseconds
-                // Deliver welcome message
-                sendMessageToClient(client, msg, client.AgentId);
+                // Deliver welcome message if we have popups enabled
+				if (sendpopups)
+					sendMessageToClient(client, msg, client.AgentId);
                 // If authed, delivery url where user can purchase Gloebits
                 if (user.IsAuthed()) {
                     if (m_showNewSessionPurchaseIM) {
