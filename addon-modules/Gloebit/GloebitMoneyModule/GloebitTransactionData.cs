@@ -146,10 +146,9 @@ namespace Gloebit.GloebitMoneyModule
 				}
 				catch(Exception e)
 				{
-					m_log.DebugFormat("[MYSQL GENERIC TABLE HANDLER]: Failed to store data");
+					m_log.DebugFormat("[MYSQL GENERIC TABLE HANDLER]: Failed to store data: {0}", e);
 					return false;
 				}
-				return false;
             }
         }
 
