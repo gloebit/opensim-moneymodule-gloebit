@@ -176,7 +176,6 @@ namespace Gloebit.GloebitMoneyModule
         private int TeleportMinPrice = 0;
         private float TeleportPriceExponent = 0f;
 
-
         /*** GMM RUNTIME API AND DATA ***/
         // One API per sim to handle web calls to and from the Gloebit service
         private GloebitAPIWrapper m_apiW;
@@ -199,7 +198,8 @@ namespace Gloebit.GloebitMoneyModule
         private string m_opensimVersionNumber = String.Empty;
         private bool m_newLandPassFlow = false;
 
-
+        private Dictionary<string, XmlRpcMethod> m_rpcHandlers;
+        
         #region IRegionModuleBase Interface
 
         /**********************
@@ -565,10 +565,16 @@ namespace Gloebit.GloebitMoneyModule
                         // They will enable land purchasing, buy-currency, and insufficient-funds flows.
                         // *NOTE* gloebits can not currently be purchased from a viewer, but this allows Gloebit to control the
                         // messaging in this flow and send users to the Gloebit website for purchasing.
-                        httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
-                        httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
-                        httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
-                        httpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func);
+                        
+
+                         m_rpcHandlers = new Dictionary<string, XmlRpcMethod>();
+                         m_rpcHandlers.Add("getCurrencyQuote", quote_func);
+                         m_rpcHandlers.Add("buyCurrency", buy_func);
+                         m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func);
+                         m_rpcHandlers.Add("buyLandPrep", landBuy_func);
+                         // add php
+                         MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
+                         MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
 
                         /********** Register endpoints the Gloebit Service will call back into **********/
                         RegisterGloebitWebhooks(httpServer);
@@ -597,9 +603,15 @@ namespace Gloebit.GloebitMoneyModule
                 if(m_enabledRegions != null) {
                     m_log.InfoFormat("[GLOEBITMONEYMODULE] SKIPPING region add {0} is not in enabled region list", scene.RegionInfo.RegionID.ToString());
                 }
+
             }
         }
-
+ 
+        public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+         {
+             MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+        }
+        
         public void RemoveRegion(Scene scene)
         {
             lock (m_scenel)
