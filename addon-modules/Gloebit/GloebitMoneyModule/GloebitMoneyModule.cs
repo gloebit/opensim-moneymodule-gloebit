@@ -694,7 +694,7 @@ namespace Gloebit.GloebitMoneyModule
 			int vn1 = 0;
 			int vn2 = 0;
 			int vn3 = 0;
-			int vn4 = 0;
+			int vn4 = -9999;
             m_opensimVersion = OpenSim.VersionInfo.Version;
             m_opensimVersionNumber = OpenSim.VersionInfo.VersionNumber;
             char[] delimiterChars = { '.' };
@@ -706,6 +706,10 @@ namespace Gloebit.GloebitMoneyModule
 			} catch {
 				m_log.DebugFormat("[GLOEBITMONEYMODULE] Unable to parse version information, Gloebit cannot handle unofficial versions");
 			}
+			try {
+					vn4 = int.Parse(numbers[3]);
+				}
+			catch {}
 			
             if ((vn1 > 0) || (vn2 > 9) || (vn2 == 9 && vn3 > 0)) {
                 // 0.9.1 and beyond are the new land pass flow.
@@ -715,10 +719,6 @@ namespace Gloebit.GloebitMoneyModule
             } else if (vn1 == 0 && vn2 == 9 && vn3 == 0) {
                 // 0.9.0-release pulled in 0.9.1 changes and is new flow, but rest of 0.9.0 is not.
                 // assume dev on 0.9.0.1, 0.9.0.2 will be new flow
-				try {
-					vn4 = int.Parse(numbers[3]);
-				}
-				catch {}
                 if (vn4 > 0) {
                     // 0.9.0.1, 0.9.0.2, etc.
                     m_newLandPassFlow = true;
@@ -739,7 +739,7 @@ namespace Gloebit.GloebitMoneyModule
 			// Test for version 0.9.2.0 which contains changes to httpserver and thus needs different workflows also
 			// This is a really bad way to check which method to use as these changes are not directly related to version numbers
 			// Rather these changes also concern libomv and should be tested for by directly testing available methods of httpserver
-			if ((vn2 > 9) &% (vn3 > 1))
+			if (((vn2 == 9 && vn3 == 2) || (vn2 > 9 && vn3 > 2)) && vn4 != -9999)
 			{
 				m_newHTTPFlow = true;
 			}
