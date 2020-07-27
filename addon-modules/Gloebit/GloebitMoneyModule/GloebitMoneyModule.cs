@@ -195,11 +195,15 @@ namespace Gloebit.GloebitMoneyModule
         
         // Store link to client we can't yet create auth for because there is no sub on file.  Handle in return from sub creation.
         private Dictionary<UUID, IClientAPI> m_authWaitingForSubMap = new Dictionary<UUID, IClientAPI>();
+		
+		// New dictionary to hold newer http handlers
+		private Dictionary<string, XmlRpcMethod> m_xmlrpcHandlers;
         
         // Some internal storage to only retrieve info once
         private string m_opensimVersion = String.Empty;
         private string m_opensimVersionNumber = String.Empty;
         private bool m_newLandPassFlow = false;
+		private bool m_newHTTPFlow = false;
 
 
         #region IRegionModuleBase Interface
@@ -579,12 +583,25 @@ namespace Gloebit.GloebitMoneyModule
                         // They will enable land purchasing, buy-currency, and insufficient-funds flows.
                         // *NOTE* Gloebits can not currently be purchased from a viewer, but this allows Gloebit to control the
                         // messaging in this flow and send users to the Gloebit website for purchasing.
-                        httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
-                        httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
-                        httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
-                        httpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func);
 
-                        /********** Register endpoints the Gloebit Service will call back into **********/
+						// Post version 0.9.2.0 the httpserver changed requiring different approach to the preflights
+						if (m_newHTTPFlow == false)
+						{
+							httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
+							httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
+							httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
+							httpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func);
+						} else {
+							m_xmlrpcHandlers = new Dictionary<string, XmlRpcMethod>();
+							m_xmlrpcHandlers.Add("getCurrencyQuote", quote_func);
+							m_xmlrpcHandlers.Add("buyCurrency", buy_func);
+							m_xmlrpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func);
+							m_xmlrpcHandlers.Add("buyLandPrep", landBuy_func);
+							MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
+							MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
+						}
+						
+						/********** Register endpoints the Gloebit Service will call back into **********/
                         RegisterGloebitWebhooks(httpServer);
                     }
 
@@ -613,6 +630,11 @@ namespace Gloebit.GloebitMoneyModule
                 }
             }
         }
+		
+		public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+		{
+			MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_xmlrpcHandlers);
+		}
 
         public void RemoveRegion(Scene scene)
         {
@@ -665,16 +687,26 @@ namespace Gloebit.GloebitMoneyModule
         #endregion // IRegionModuleBase Interface
         
         #region ISharedRegionModule Interface
-
+		
+		// TODO: Find a better method to do version testing, do not rely on version number, it can be edited easily and does not reflect code
         public void PostInitialise()
         {
+			int vn1 = 0;
+			int vn2 = 0;
+			int vn3 = 0;
+			int vn4 = 0;
             m_opensimVersion = OpenSim.VersionInfo.Version;
             m_opensimVersionNumber = OpenSim.VersionInfo.VersionNumber;
             char[] delimiterChars = { '.' };
             string[] numbers = m_opensimVersionNumber.Split(delimiterChars, System.StringSplitOptions.RemoveEmptyEntries);
-            int vn1 = int.Parse(numbers[0]);
-            int vn2 = int.Parse(numbers[1]);
-            int vn3 = int.Parse(numbers[2]);
+			try {
+				vn1 = int.Parse(numbers[0]);
+				vn2 = int.Parse(numbers[1]);
+				vn3 = int.Parse(numbers[2]);
+			} catch {
+				m_log.DebugFormat("[GLOEBITMONEYMODULE] Unable to parse version information, Gloebit cannot handle unofficial versions");
+			}
+			
             if ((vn1 > 0) || (vn2 > 9) || (vn2 == 9 && vn3 > 0)) {
                 // 0.9.1 and beyond are the new land pass flow.
                 // Note, there are some early versions of 0.9.1 before any release candidate which do not have the new
@@ -683,7 +715,10 @@ namespace Gloebit.GloebitMoneyModule
             } else if (vn1 == 0 && vn2 == 9 && vn3 == 0) {
                 // 0.9.0-release pulled in 0.9.1 changes and is new flow, but rest of 0.9.0 is not.
                 // assume dev on 0.9.0.1, 0.9.0.2 will be new flow
-                int vn4 = int.Parse(numbers[3]);
+				try {
+					vn4 = int.Parse(numbers[3]);
+				}
+				catch {}
                 if (vn4 > 0) {
                     // 0.9.0.1, 0.9.0.2, etc.
                     m_newLandPassFlow = true;
@@ -698,8 +733,16 @@ namespace Gloebit.GloebitMoneyModule
                         m_newLandPassFlow = true;
                     }
                 }
-                // TOOD: Unclear if post-fixes is a necessary flavour check yet.
+                // TODO: Unclear if post-fixes is a necessary flavour check yet.
             }
+			
+			// Test for version 0.9.2.0 which contains changes to httpserver and thus needs different workflows also
+			// This is a really bad way to check which method to use as these changes are not directly related to version numbers
+			// Rather these changes also concern libomv and should be tested for by directly testing available methods of httpserver
+			if ((vn2 > 9) &% (vn3 > 1))
+			{
+				m_newHTTPFlow = true;
+			}
         }
         
         #endregion // ISharedRegionModule Interface
