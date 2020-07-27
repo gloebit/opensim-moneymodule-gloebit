@@ -135,7 +135,7 @@ namespace Gloebit.GloebitMoneyModule
         // Set to false if anything is misconfigured
         private bool m_configured = true;
 		// Configure true if not present
-		private bool sendpopups = true;
+		private bool m_showWelcomeMessage = true;
         
         // Populated from Gloebit.ini
         private UUID[] m_enabledRegions = null;         // Regions on sim to individually enable GMM.
@@ -397,11 +397,11 @@ namespace Gloebit.GloebitMoneyModule
 				m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Enabled flag set to {0}.", enabled);
 				
 				// Should we send popups to users or not, some find them annoying especially if they are not using the system
-				sendpopups = config.GetBoolean("SendPopups", true);
+				m_showWelcomeMessage = config.GetBoolean("GLBShowWelcomeMessage", true);
 				
-				if (sendpopups == false)
+				if (m_showWelcomeMessage == false)
 				{
-					m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will not send popups to users!");
+					m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will not send welcome message to users!");
 				} else {
 					m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will inform users about Gloebit!");
 				}
@@ -1986,11 +1986,7 @@ namespace Gloebit.GloebitMoneyModule
             string title = "AUTHORIZE GLOEBIT";
             string body = "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:";
 			
-			// Some find these popups annoying especially if they don't want to use Gloebit on their region so we just don't send them popups
-			// Gloebit is still enabled and users who already authed themselves can use it, but it won't nag anyone to register
-			// A forever dismiss until the balance is clicked again would work better, but is a lot harder to implement
-			if (sendpopups)
-				SendUrlToClient(client, title, body, authorizeUri);
+			SendUrlToClient(client, title, body, authorizeUri);
         }
 
         /// <summary>
@@ -3512,9 +3508,10 @@ namespace Gloebit.GloebitMoneyModule
             Thread welcomeMessageThread = new Thread(delegate() {
                 Thread.Sleep(delay * 1000);  // Delay milliseconds
                 // Deliver welcome message if we have popups enabled
-				if (sendpopups)
+				if (m_showWelcomeMessage)
 					sendMessageToClient(client, msg, client.AgentId);
-                // If authed, delivery url where user can purchase Gloebits
+				
+				// If authed, delivery url where user can purchase Gloebits
                 if (user.IsAuthed()) {
                     if (m_showNewSessionPurchaseIM) {
                         Uri url = m_apiW.BuildPurchaseURI(BaseURI, user);

@@ -59,6 +59,8 @@
     ; GLBShowNewSessionPurchaseIM = false
     ;# {GLBShowNewSessionAuthIM} {Show auth app IM to user at session start?} {false, true} true
     ; GLBShowNewSessionAuthIM = true
+	;# {GLBShowWelcomeMessage} {Show welcome message when entering a region}
+	; GLBShowWelcomeMessage = true
 
     ;;;;; CONFIGURE SINGLE GLOEBIT DB FOR APP OR GRID ;;;;;;
     ;; Optional - If not configured here, Gloebit will use the DataService 
