@@ -705,7 +705,7 @@ namespace Gloebit.GloebitMoneyModule
 			int vn2 = -9999;
 			int vn3 = -9999;
 			int vn4 = -9999;
-			string detectedOSVersion;
+			string detectedOSVersion = "unknown";
             m_opensimVersion = OpenSim.VersionInfo.Version;
             m_opensimVersionNumber = OpenSim.VersionInfo.VersionNumber;
             char[] delimiterChars = { '.' };
