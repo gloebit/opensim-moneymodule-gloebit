@@ -197,7 +197,7 @@ namespace Gloebit.GloebitMoneyModule
         private Dictionary<UUID, IClientAPI> m_authWaitingForSubMap = new Dictionary<UUID, IClientAPI>();
 		
 		// New dictionary to hold newer http handlers
-		private Dictionary<string, XmlRpcMethod> m_xmlrpcHandlers;
+		private Dictionary<string, XmlRpcMethod> m_rpcHandlers;
         
         // Some internal storage to only retrieve info once
         private string m_opensimVersion = String.Empty;
@@ -552,6 +552,11 @@ namespace Gloebit.GloebitMoneyModule
             m_enabled = false;
             m_configured = false;
         }
+		
+		public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+		{
+			MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+		}
 
         public void AddRegion(Scene scene)
         {
@@ -594,20 +599,20 @@ namespace Gloebit.GloebitMoneyModule
                         // messaging in this flow and send users to the Gloebit website for purchasing.
 
 						// Post version 0.9.2.0 the httpserver changed requiring different approach to the preflights
-						if (m_newHTTPFlow == false)
+						if (m_newHTTPFlow == true)
 						{
+							m_rpcHandlers = new Dictionary<string, XmlRpcMethod>();
+							m_rpcHandlers.Add("getCurrencyQuote", quote_func);
+							m_rpcHandlers.Add("buyCurrency", buy_func);
+							m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func);
+							m_rpcHandlers.Add("buyLandPrep", landBuy_func);
+							MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
+							MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
+						} else {
 							httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
 							httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
 							httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
 							httpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func);
-						} else {
-							m_xmlrpcHandlers = new Dictionary<string, XmlRpcMethod>();
-							m_xmlrpcHandlers.Add("getCurrencyQuote", quote_func);
-							m_xmlrpcHandlers.Add("buyCurrency", buy_func);
-							m_xmlrpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func);
-							m_xmlrpcHandlers.Add("buyLandPrep", landBuy_func);
-							MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
-							MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
 						}
 						
 						/********** Register endpoints the Gloebit Service will call back into **********/
@@ -639,11 +644,6 @@ namespace Gloebit.GloebitMoneyModule
                 }
             }
         }
-		
-		public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
-		{
-			MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_xmlrpcHandlers);
-		}
 
         public void RemoveRegion(Scene scene)
         {
@@ -788,7 +788,7 @@ namespace Gloebit.GloebitMoneyModule
 			}			
 			
 			// Provide detailed feedback on which version is detected, for debugging and information
-			m_log.DebugFormat("[GLOEBITMONEYMODULE] OpenSim version {0} present, detected: {1} Using New LandPass Flow: {2} Using New HTTP Flow {3}", m_opensimVersionNumber.ToString(), detectedOSVersion.ToString(), m_newLandPassFlow.ToString(), m_newHTTPFlow.ToString());
+			m_log.DebugFormat("[GLOEBITMONEYMODULE] OpenSim version {0} present, detected: {1} Using New LandPass Flow: {2} Using New HTTP Flow: {3}", m_opensimVersionNumber.ToString(), detectedOSVersion.ToString(), m_newLandPassFlow.ToString(), m_newHTTPFlow.ToString());
         }
         
         #endregion // ISharedRegionModule Interface
