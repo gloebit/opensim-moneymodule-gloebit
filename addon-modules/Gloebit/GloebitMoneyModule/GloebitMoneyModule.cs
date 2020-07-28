@@ -788,7 +788,7 @@ namespace Gloebit.GloebitMoneyModule
 			}			
 			
 			// Provide detailed feedback on which version is detected, for debugging and information
-			m_log.DebugFormat("[GLOEBITMONEYMODULE] OpenSim version {0} present, detected: {1} Using New LandPass Flow: {3} Using New HTTP Flow {4}", m_opensimVersionNumber, detectedOSVersion, m_newLandPassFlow, m_newHTTPFlow);
+			m_log.DebugFormat("[GLOEBITMONEYMODULE] OpenSim version {0} present, detected: {1} Using New LandPass Flow: {2} Using New HTTP Flow {3}", m_opensimVersionNumber.ToString(), detectedOSVersion.ToString(), m_newLandPassFlow.ToString(), m_newHTTPFlow.ToString());
         }
         
         #endregion // ISharedRegionModule Interface
