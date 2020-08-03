@@ -134,8 +134,8 @@ namespace Gloebit.GloebitMoneyModule
         private bool m_enabled = true;
         // Set to false if anything is misconfigured
         private bool m_configured = true;
-		// Configure true if not present
-		private bool m_showWelcomeMessage = true;
+        // Configure true if not present
+        private bool m_showWelcomeMessage = true;
         
         // Populated from Gloebit.ini
         private UUID[] m_enabledRegions = null;         // Regions on sim to individually enable GMM.
@@ -195,19 +195,19 @@ namespace Gloebit.GloebitMoneyModule
         
         // Store link to client we can't yet create auth for because there is no sub on file.  Handle in return from sub creation.
         private Dictionary<UUID, IClientAPI> m_authWaitingForSubMap = new Dictionary<UUID, IClientAPI>();
-		
-		// New dictionary to hold newer http handlers
-		private Dictionary<string, XmlRpcMethod> m_rpcHandlers;
+
+        // New dictionary to hold newer http handlers
+        private Dictionary<string, XmlRpcMethod> m_rpcHandlers;
         
         // Some internal storage to only retrieve info once
         private string m_opensimVersion = String.Empty;
         private string m_opensimVersionNumber = String.Empty;
         private bool m_newLandPassFlow = false;
-		private bool m_newHTTPFlow = false;
-		
-		// Allow overriding of versions in case version number can't be identified
-		private bool m_FnewLandPassFlow = false;
-		private bool m_FnewHTTPFlow = false;
+        private bool m_newHTTPFlow = false;
+        
+        // Allow overriding of versions in case version number can't be identified
+        private bool m_FnewLandPassFlow = false;
+        private bool m_FnewHTTPFlow = false;
 
 
         #region IRegionModuleBase Interface
@@ -397,24 +397,24 @@ namespace Gloebit.GloebitMoneyModule
                 /*** Get GloebitMoneyModule configuration details ***/
                 // Is Gloebit disabled, enabled across the entire sim process, or on certain regions?
                 bool enabled = config.GetBoolean("Enabled", false);
-				
-				m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Enabled flag set to {0}.", enabled);
-				
-				// Should we send popups to users or not, some find them annoying especially if they are not using the system
-				m_showWelcomeMessage = config.GetBoolean("GLBShowWelcomeMessage", true);
-				
-				if (m_showWelcomeMessage == false)
-				{
-					m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will not send welcome message to users!");
-				} else {
-					m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will inform users about Gloebit!");
-				}
-				
-				// If version cannot be detected override workflow selection via config
-				// Currently not documented because last resort if all version checking fails
-				m_FnewLandPassFlow = config.GetBoolean("GLBNewLandPassFlow", false);
-				m_FnewHTTPFlow = config.GetBoolean("GLBNewHTTPFlow", false);
-				
+                
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Enabled flag set to {0}.", enabled);
+
+                // Should we send popups to users or not, some find them annoying especially if they are not using the system
+                m_showWelcomeMessage = config.GetBoolean("GLBShowWelcomeMessage", true);
+
+                if (m_showWelcomeMessage == false)
+                {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will not send welcome message to users!");
+                } else {
+                    m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will inform users about Gloebit!");
+                }
+
+                // If version cannot be detected override workflow selection via config
+                // Currently not documented because last resort if all version checking fails
+                m_FnewLandPassFlow = config.GetBoolean("GLBNewLandPassFlow", false);
+                m_FnewHTTPFlow = config.GetBoolean("GLBNewHTTPFlow", false);
+
                 m_enabled = m_enabled && enabled;
                 if (!m_enabled) {
                     m_log.Info("[GLOEBITMONEYMODULE] Not enabled globally for sim. (to enable set \"Enabled = true\" in [Gloebit] and \"economymodule = Gloebit\" in [Economy])");
@@ -443,7 +443,7 @@ namespace Gloebit.GloebitMoneyModule
                 }
                 // Should we disable adding info to OpenSimExtras map
                 m_disablePerSimCurrencyExtras = config.GetBoolean("DisablePerSimCurrencyExtras", false);
-                // Should we send new session IMs informing user how to auth or purchase Gloebits
+                // Should we send new session IMs informing user how to auth or purchase gloebits
                 m_showNewSessionPurchaseIM = config.GetBoolean("GLBShowNewSessionPurchaseIM", false);
                 m_showNewSessionAuthIM = config.GetBoolean("GLBShowNewSessionAuthIM", true);
                 // Are we using custom db connection info
@@ -473,7 +473,7 @@ namespace Gloebit.GloebitMoneyModule
                     default:
                         m_environment = GLBEnv.None;
                         m_apiUrl = null;
-                        m_log.WarnFormat("[GLOEBITMONEYMODULE] GLBEnvironment \"{0}\" unrecognised, setting to None", envString); 
+                        m_log.WarnFormat("[GLOEBITMONEYMODULE] GLBEnvironment \"{0}\" unrecognized, setting to None", envString); 
                         break;
                 }
                 m_keyAlias = config.GetString("GLBKeyAlias", null);
@@ -552,11 +552,11 @@ namespace Gloebit.GloebitMoneyModule
             m_enabled = false;
             m_configured = false;
         }
-		
-		public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
-		{
-			MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
-		}
+
+        public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
+        {
+            MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+        }
 
         public void AddRegion(Scene scene)
         {
@@ -595,27 +595,27 @@ namespace Gloebit.GloebitMoneyModule
 
                         // These functions can handle the calls to the economy helper-uri if it is configured to point at the sim.  
                         // They will enable land purchasing, buy-currency, and insufficient-funds flows.
-                        // *NOTE* Gloebits can not currently be purchased from a viewer, but this allows Gloebit to control the
+                        // *NOTE* gloebits can not currently be purchased from a viewer, but this allows Gloebit to control the
                         // messaging in this flow and send users to the Gloebit website for purchasing.
 
-						// Post version 0.9.2.0 the httpserver changed requiring different approach to the preflights
-						if (m_newHTTPFlow == true)
-						{
-							m_rpcHandlers = new Dictionary<string, XmlRpcMethod>();
-							m_rpcHandlers.Add("getCurrencyQuote", quote_func);
-							m_rpcHandlers.Add("buyCurrency", buy_func);
-							m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func);
-							m_rpcHandlers.Add("buyLandPrep", landBuy_func);
-							MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
-							MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
-						} else {
-							httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
-							httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
-							httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
-							httpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func);
-						}
-						
-						/********** Register endpoints the Gloebit Service will call back into **********/
+                        // Post version 0.9.2.0 the httpserver changed requiring different approach to the preflights
+                        if (m_newHTTPFlow == true)
+                        {
+                            m_rpcHandlers = new Dictionary<string, XmlRpcMethod>();
+                            m_rpcHandlers.Add("getCurrencyQuote", quote_func);
+                            m_rpcHandlers.Add("buyCurrency", buy_func);
+                            m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func);
+                            m_rpcHandlers.Add("buyLandPrep", landBuy_func);
+                            MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
+                            MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
+                        } else {
+                            httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
+                            httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
+                            httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
+                            httpServer.AddXmlRPCHandler("buyLandPrep", landBuy_func);
+                        }
+
+                        /********** Register endpoints the Gloebit Service will call back into **********/
                         RegisterGloebitWebhooks(httpServer);
                     }
 
@@ -696,99 +696,99 @@ namespace Gloebit.GloebitMoneyModule
         #endregion // IRegionModuleBase Interface
         
         #region ISharedRegionModule Interface
-		
-		// TODO: Find a better method to do version testing, do not rely on version number, it can be edited easily and does not reflect code
+
+        // TODO: Find a better method to do version testing, do not rely on version number, it can be edited easily and does not reflect code
         public void PostInitialise()
         {
-			// Setting to large negative so if not found is not 0
-			int vn1 = -9999;
-			int vn2 = -9999;
-			int vn3 = -9999;
-			int vn4 = -9999;
-			string detectedOSVersion = "unknown";
+            // Setting to large negative so if not found is not 0
+            int vn1 = -9999;
+            int vn2 = -9999;
+            int vn3 = -9999;
+            int vn4 = -9999;
+            string detectedOSVersion = "unknown";
             m_opensimVersion = OpenSim.VersionInfo.Version;
             m_opensimVersionNumber = OpenSim.VersionInfo.VersionNumber;
             char[] delimiterChars = { '.' };
             string[] numbers = m_opensimVersionNumber.Split(delimiterChars, System.StringSplitOptions.RemoveEmptyEntries);
-			
-			// See if we can parse the string at all
-			try {
-				vn1 = int.Parse(numbers[0]);
-				vn2 = int.Parse(numbers[1]);
-				vn3 = int.Parse(numbers[2]);
-			} catch {
-				m_log.DebugFormat("[GLOEBITMONEYMODULE] Unable to parse version information, Gloebit cannot handle unofficial versions");
-			}
-			// Fourth number may not be present on all versions
-			try {
-					vn4 = int.Parse(numbers[3]);
-				}
-			catch {}
-			
-			// This is a really poor way of detecting versions, instead the capabilities of functions and httpserver should be tested directly to determine which workflows to use!!!		
+
+            // See if we can parse the string at all
+            try {
+                vn1 = int.Parse(numbers[0]);
+                vn2 = int.Parse(numbers[1]);
+                vn3 = int.Parse(numbers[2]);
+            } catch {
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Unable to parse version information, Gloebit cannot handle unofficial versions");
+            }
+            // Fourth number may not be present on all versions
+            try {
+                vn4 = int.Parse(numbers[3]);
+            }
+            catch {}
+
+            // This is a really poor way of detecting versions, instead the capabilities of functions and httpserver should be tested directly to determine which workflows to use!!!		
             if ((vn1 > 0) || (vn2 > 9) || (vn2 == 9 && vn3 > 0)) 
-			{
+            {
                 // 0.9.1 and beyond are the new land pass flow.
                 // Note, there are some early versions of 0.9.1 before any release candidate which do not have the new
                 // flow, but we can't easily determine those and no one should be running those in production.
-				detectedOSVersion = "=>0.9.1";
+                detectedOSVersion = "=>0.9.1";
                 m_newLandPassFlow = true;
-				if ((vn2 == 9) && (vn3 == 2 || vn3 > 2) && (vn4 == 0 || vn4 > 0)) 
-				{
-					// Test for version 0.9.2.0 and beyond which contains changes to httpserver and thus needs different workflows also
-					detectedOSVersion = "=>0.9.2.0";
-					m_newLandPassFlow = true;
-					m_newHTTPFlow = true;
-				}
+                if ((vn2 == 9) && (vn3 == 2 || vn3 > 2) && (vn4 == 0 || vn4 > 0)) 
+                {
+                    // Test for version 0.9.2.0 and beyond which contains changes to httpserver and thus needs different workflows also
+                    detectedOSVersion = "=>0.9.2.0";
+                    m_newLandPassFlow = true;
+                    m_newHTTPFlow = true;
+                }
             }
-			else if (vn1 == 0 && vn2 == 9 && vn3 == 0)
-			{
+            else if (vn1 == 0 && vn2 == 9 && vn3 == 0)
+            {
                 // 0.9.0-release pulled in 0.9.1 changes and is new flow, but rest of 0.9.0 is not.
                 // assume dev on 0.9.0.1, 0.9.0.2 will be new flow
                 if (vn4 > 0)
-				{
+                {
                     // 0.9.0.1, 0.9.0.2, etc.
-					detectedOSVersion = "=>0.9.0.1";
+                    detectedOSVersion = "=>0.9.0.1";
                     m_newLandPassFlow = true;
                 }
-				else
-				{
+                else
+                {
                     // Need to pull version flavour and check it.
                     // TODO: may need to split on spaces or hyphens and then pull last field because flavour is not friggin public
                     char[] dChars = { '-', ' ' };
                     string[] versionParts = m_opensimVersion.Split(dChars, System.StringSplitOptions.RemoveEmptyEntries);
                     string flavour = versionParts[versionParts.Length - 1];     // TODO: do we every have to worry about this being length 0?
                     if (flavour == OpenSim.VersionInfo.Flavour.Release.ToString())
-					{
+                    {
                         // 0.9.0 release
-						detectedOSVersion = "=0.9.0";
+                        detectedOSVersion = "=0.9.0";
                         m_newLandPassFlow = true;
                     }
                 }
                 // TODO: Unclear if post-fixes is a necessary flavour check yet.
             }
-			else
-			{
-				// If all else fails version is unknown
-				detectedOSVersion = "unknown";
-				m_log.DebugFormat("[GLOEBITMONEYMODULE] Could not determine OpenSim version or unknown version, module may not function! Use config overrides!");		
-			}
-			
-			// If version is unknown or changed by user allow override via config	
-			if (m_FnewHTTPFlow == true)
-			{
-				m_log.DebugFormat("[GLOEBITMONEYMODULE] Using new HTTP Flow, set by config");
-				m_newHTTPFlow = true;
-			}
-			
-			if (m_FnewLandPassFlow == true)
-			{
-				m_log.DebugFormat("[GLOEBITMONEYMODULE] Using new LandPass Flow, set by config");
-				m_newLandPassFlow = true;
-			}			
-			
-			// Provide detailed feedback on which version is detected, for debugging and information
-			m_log.DebugFormat("[GLOEBITMONEYMODULE] OpenSim version {0} present, detected: {1} Using New LandPass Flow: {2} Using New HTTP Flow: {3}", m_opensimVersionNumber.ToString(), detectedOSVersion.ToString(), m_newLandPassFlow.ToString(), m_newHTTPFlow.ToString());
+            else
+            {
+                // If all else fails version is unknown
+                detectedOSVersion = "unknown";
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Could not determine OpenSim version or unknown version, module may not function! Use config overrides!");		
+            }
+
+            // If version is unknown or changed by user allow override via config	
+            if (m_FnewHTTPFlow == true)
+            {
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Using new HTTP Flow, set by config");
+                m_newHTTPFlow = true;
+            }
+
+            if (m_FnewLandPassFlow == true)
+            {
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Using new LandPass Flow, set by config");
+                m_newLandPassFlow = true;
+            }			
+
+            // Provide detailed feedback on which version is detected, for debugging and information
+            m_log.DebugFormat("[GLOEBITMONEYMODULE] OpenSim version {0} present, detected: {1} Using New LandPass Flow: {2} Using New HTTP Flow: {3}", m_opensimVersionNumber.ToString(), detectedOSVersion.ToString(), m_newLandPassFlow.ToString(), m_newHTTPFlow.ToString());
         }
         
         #endregion // ISharedRegionModule Interface
@@ -1388,7 +1388,7 @@ namespace Gloebit.GloebitMoneyModule
                 if (u.IsAuthed()) {
                     // Deliver Purchase URI in case the helper-uri is not working
                     Uri url = m_apiW.BuildPurchaseURI(BaseURI, u);
-                    SendUrlToClient(client, "Need more Gloebits?", "Buy Gloebits you can spend on this grid:", url);
+                    SendUrlToClient(client, "Need more gloebits?", "Buy gloebits you can spend on this grid:", url);
                 }
             }
             return realBal;
@@ -1489,9 +1489,9 @@ namespace Gloebit.GloebitMoneyModule
         /// </summary>
         /// <param name="transactionID">UUID to use for this transaction.  If UUID.Zero, a random UUID is chosen.</param>
         /// <param name="transactionType">enum from OpenSim defining the type of transaction (buy object, pay object, pay user, object pays user, etc).  This will not affect how Gloebit process the monetary component of a transaction, but is useful for easily varying how OpenSim should handle processing once funds are transferred.</param>
-        /// <param name="payerID">OpenSim UUID of agent sending Gloebits.</param>
-        /// <param name="payeeID">OpenSim UUID of agent receiving Gloebits.  UUID.Zero if this is a fee being paid to the app owner (not a u2u txn).</param>
-        /// <param name="amount">Amount of Gloebits being transferred.</param>
+        /// <param name="payerID">OpenSim UUID of agent sending gloebits.</param>
+        /// <param name="payeeID">OpenSim UUID of agent receiving gloebits.  UUID.Zero if this is a fee being paid to the app owner (not a u2u txn).</param>
+        /// <param name="amount">Amount of gloebits being transferred.</param>
         /// <param name="subscriptionID">UUID of subscription for automated transactions (Object pays user).  Otherwise UUID.Zero.</param>
         /// <param name="partID">UUID of the object, when transaction involves an object.  UUID.Zero otherwise.</param>
         /// <param name="partName">string name of the object, when transaction involves an object.  null otherwise.</param>
@@ -1714,7 +1714,7 @@ namespace Gloebit.GloebitMoneyModule
          * Any transaction which includes a local asset will receive callbacks at each transaction stage.
          * ENACT -> Funds have been transferred.  Process local asset (generally deliver a product)
          * CONSUME -> Funds have been released to recipient.  Finalize anything necessary.
-         * CANCEL -> Transaction has been cancelled.  Undo anything necessary
+         * CANCEL -> Transaction has been canceled.  Undo anything necessary
          */
 
         public bool processAssetEnactHold(GloebitTransaction txn, out string returnMsg) {
@@ -2031,8 +2031,8 @@ namespace Gloebit.GloebitMoneyModule
             IClientAPI client = LocateClientObject(UUID.Parse(user.PrincipalID));
             string title = "AUTHORIZE GLOEBIT";
             string body = "To use Gloebit currency, please authorize Gloebit to link to your avatar's account on this web page:";
-			
-			SendUrlToClient(client, title, body, authorizeUri);
+
+            SendUrlToClient(client, title, body, authorizeUri);
         }
 
         /// <summary>
@@ -2148,7 +2148,7 @@ namespace Gloebit.GloebitMoneyModule
 
                 // Deliver Purchase URI in case the helper-uri is not working
                 Uri url = m_apiW.BuildPurchaseURI (BaseURI, user);
-                SendUrlToClient (client, "Gloebit Authorization Successful", "Buy Gloebits you can spend on this grid:", url);
+                SendUrlToClient (client, "Gloebit Authorization Successful", "Buy gloebits you can spend on this grid:", url);
             }
         }
 
@@ -2677,7 +2677,7 @@ namespace Gloebit.GloebitMoneyModule
             // Validate that is the client sent the proper sale type the object has set
             if (saleType < 1 || saleType > 3) {
                 // Should not get here unless an object purchase is submitted with a bad or new (but unimplemented) saleType.
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] ObjectBuy Unrecognised saleType:{0} --- expected 1,2 or 3 for original, copy, or contents", saleType);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] ObjectBuy Unrecognized saleType:{0} --- expected 1,2 or 3 for original, copy, or contents", saleType);
                 alertUsersTransactionPreparationFailure(TransactionType.USER_BUYS_OBJECT, TransactionPrecheckFailure.SALE_TYPE_INVALID, remoteClient);
                 return;
             }
@@ -3534,14 +3534,14 @@ namespace Gloebit.GloebitMoneyModule
             if (m_environment == GLBEnv.Sandbox) {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in Sandbox Mode for testing.  All payments and transactions are fake.  Try it out.", client.Name);
             } else if (m_environment == GLBEnv.Production) {
-                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module.  You can transact with Gloebits.", client.Name);
+                msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module.  You can transact with gloebits.", client.Name);
             } else {
                 msg = String.Format("Welcome {0}.  This area is using the Gloebit Money Module in a Custom Devloper Mode.", client.Name);
             }
             // Add instructions for clicking balance to see auth or purchase url
             // TODO: Should this be a separate message?
             if (user.IsAuthed()) {
-                msg = String.Format("{0}\nClick on your balance in the top right to purchase more Gloebits.", msg);
+                msg = String.Format("{0}\nClick on your balance in the top right to purchase more gloebits.", msg);
             } else {
                 msg = String.Format("{0}\nClick on your balance in the top right to link this avatar on this app to your Gloebit account.", msg);
 
@@ -3554,14 +3554,14 @@ namespace Gloebit.GloebitMoneyModule
             Thread welcomeMessageThread = new Thread(delegate() {
                 Thread.Sleep(delay * 1000);  // Delay milliseconds
                 // Deliver welcome message if we have popups enabled
-				if (m_showWelcomeMessage)
-					sendMessageToClient(client, msg, client.AgentId);
-				
-				// If authed, delivery url where user can purchase Gloebits
+                if (m_showWelcomeMessage)
+                    sendMessageToClient(client, msg, client.AgentId);
+
+                // If authed, delivery url where user can purchase Gloebits
                 if (user.IsAuthed()) {
                     if (m_showNewSessionPurchaseIM) {
                         Uri url = m_apiW.BuildPurchaseURI(BaseURI, user);
-                        SendUrlToClient(client, "How to purchase Gloebits:", "Buy Gloebits you can spend in this area:", url);
+                        SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
                     }
                 } else {
                     if (m_showNewSessionAuthIM) {
@@ -3614,7 +3614,7 @@ namespace Gloebit.GloebitMoneyModule
                 // build txn details string
                 string paymentFrom = String.Format("Payment from: {0}", txn.PayerName);
                 string paymentTo = String.Format("Payment to: {0}", txn.PayeeName);
-                string amountStr = String.Format("Amount: {0:n0} Gloebits", txn.Amount);
+                string amountStr = String.Format("Amount: {0:n0} gloebits", txn.Amount);
                 // TODO: add description back in once txn includes it.
                 // string descStr = String.Format("Description: {0}", description);
                 string txnDetails = String.Format("Details:\n   {0}\n   {1}\n   {2}", paymentFrom, paymentTo, amountStr/*, descStr*/);
@@ -3640,7 +3640,7 @@ namespace Gloebit.GloebitMoneyModule
         /// </summary>
         /// <param name="payerID">UUID of payer from transaction that triggered this alert.</param>
         /// <param name="payeeID">UUID of payee from transaction that triggered this alert.</param>
-        /// <param name="amount">Int amount of Gloebits from transaction that triggered this alert.</param>
+        /// <param name="amount">Int amount of gloebits from transaction that triggered this alert.</param>
         /// <param name="subName">String name of subscription being sent to Gloebit for creation.</param>
         /// <param name="subDesc">String description of subscription being sent to Gloebit for creation.</param> 
         private void alertUsersSubscriptionTransactionFailedForSubscriptionCreation(UUID payerID, UUID payeeID, int amount, string subName, string subDesc)
@@ -3663,7 +3663,7 @@ namespace Gloebit.GloebitMoneyModule
         /// </summary>
         /// <param name="payerID">UUID of payer from transaction that triggered this alert.</param>
         /// <param name="payeeID">UUID of payee from transaction that triggered this alert.</param>
-        /// <param name="amount">Int amount of Gloebits from transaction that triggered this alert.</param>
+        /// <param name="amount">Int amount of gloebits from transaction that triggered this alert.</param>
         /// <param name="sub">GloebitSubscription that triggered this alert.</param>
         private void alertUsersSubscriptionTransactionFailedForGloebitAuthorization(UUID payerID, UUID payeeID, int amount, GloebitSubscription sub)
         {
@@ -3852,7 +3852,7 @@ namespace Gloebit.GloebitMoneyModule
                             break;
                         default:
                             // Should not get here as this should fail before transaction is built.
-                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] Transaction Begun With Unrecognised saleType:{0} --- expected 1,2 or 3 for original, copy, or contents", txn.SaleType);
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] Transaction Begun With Unrecognized saleType:{0} --- expected 1,2 or 3 for original, copy, or contents", txn.SaleType);
                             // TODO: Assert this.
                             //assert(txn.TransactionType >= 1 && txn.TransactionType <= 3);
                             break;
@@ -3966,13 +3966,13 @@ namespace Gloebit.GloebitMoneyModule
                     status = "Successfully submitted to Gloebit service.";
                     break;
                 case GloebitAPI.TransactionStage.QUEUE:
-                    // a) queued and Gloebits transferred.
+                    // a) queued and gloebits transferred.
                     // b) resubmitted
                     // c) queued, but early enact failure
                     status = "Successfully received by Gloebit and queued for processing.";
                     break;
                 case GloebitAPI.TransactionStage.ENACT_GLOEBIT:
-                    status = "Successfully transferred Gloebits.";
+                    status = "Successfully transferred gloebits.";
                     break;
                 case GloebitAPI.TransactionStage.ENACT_ASSET:
                     switch ((TransactionType)txn.TransactionType) {
@@ -4045,16 +4045,16 @@ namespace Gloebit.GloebitMoneyModule
                     }
                     break;
                 case GloebitAPI.TransactionStage.CONSUME_GLOEBIT:
-                    status = "Successfully finalized transfer of Gloebits.";
+                    status = "Successfully finalized transfer of gloebits.";
                     break;
                 case GloebitAPI.TransactionStage.CONSUME_ASSET:
                     status = "Successfully finalized local components of transaction.";
                     break;
                 case GloebitAPI.TransactionStage.CANCEL_GLOEBIT:
-                    status = "Successfully cancelled and rolled back transfer of Gloebits.";
+                    status = "Successfully canceled and rolled back transfer of gloebits.";
                     break;
                 case GloebitAPI.TransactionStage.CANCEL_ASSET:
-                    status = "Successfully cancelled and rolled back local components of transaction.";
+                    status = "Successfully canceled and rolled back local components of transaction.";
                     break;
                 default:
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionStageCompleted called on unhandled transaction stage : {0}", stage);
@@ -4174,11 +4174,11 @@ namespace Gloebit.GloebitMoneyModule
                             // message payer and payee
                             // TODO: Is it a privacy issue to alert buyer here?
                             // TODO: research if/when account is in this state.  Only by admin?  All accounts until merchants?
-                            error = "Payee's Gloebit account is unable to receive Gloebits.";
+                            error = "Payee's Gloebit account is unable to receive gloebits.";
                             instruction = contactPayee;
                             payeeInstruction = String.Format("Please contact {0} to address this issue", m_contactGloebit);
                             messagePayee = true;
-                            payeeMessage = String.Format("Gloebit:\nAttempt to pay you failed because your Gloebit account cannot receive Gloebits.\n\n{0}", payeeInstruction);
+                            payeeMessage = String.Format("Gloebit:\nAttempt to pay you failed because your Gloebit account cannot receive gloebits.\n\n{0}", payeeInstruction);
                             break;
                         default:
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] alertUsersTransactionFailed called on unhandled validation failure : {0}", failure);
@@ -4194,11 +4194,11 @@ namespace Gloebit.GloebitMoneyModule
                     break;
                 case GloebitAPI.TransactionStage.ENACT_GLOEBIT:
                     // We get these through early-enact failures via GloebitAPIWrapper.transactU2UCompleted call -> AlertTransactionFailed
-                    error = "Transfer of Gloebits failed.";
+                    error = "Transfer of gloebits failed.";
                     switch (failure) {
                         case GloebitAPI.TransactionFailure.INSUFFICIENT_FUNDS:
                             error = String.Format("{0}  Insufficient funds.", error);
-                            instruction = "Go to https://www.gloebit.com/purchase to get more Gloebits.";
+                            instruction = "Go to https://www.gloebit.com/purchase to get more gloebits.";
                             payeeInstruction = contactPayer;    // not considering privacy issue since caused by auto-debit and payer would want to know of failure.
                             break;
                         default:

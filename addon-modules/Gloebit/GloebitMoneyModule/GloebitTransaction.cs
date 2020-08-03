@@ -53,7 +53,7 @@ namespace Gloebit.GloebitMoneyModule {
         public bool IsSubscriptionDebit;
         public UUID SubscriptionID;
 
-        // Object info required when enacting/consume/cancelling, delivering, and handling subscriptions
+        // Object info required when enacting/consume/canceling, delivering, and handling subscriptions
         public UUID PartID;         // UUID of object
         public string PartName;     // object name
         public string PartDescription;
@@ -126,7 +126,7 @@ namespace Gloebit.GloebitMoneyModule {
             this.PayerEndingBalance = -1;
 
 
-            // Object info required when enacting/consume/cancelling, delivering, and handling subscriptions
+            // Object info required when enacting/consume/canceling, delivering, and handling subscriptions
             this.PartID = partID;
             this.PartName = partName;
             this.PartDescription = partDescription;
@@ -301,7 +301,7 @@ namespace Gloebit.GloebitMoneyModule {
                 break;
             default:
                 // no recognized state request
-                returnMsg = "Unrecognised state request";
+                returnMsg = "Unrecognized state request";
                 result = false;
                 break;
             }
@@ -317,7 +317,7 @@ namespace Gloebit.GloebitMoneyModule {
         {
             if (this.canceled) {
                 // getting a delayed enact sent before cancel.  return false.
-                returnMsg = "Enact: already cancelled";
+                returnMsg = "Enact: already canceled";
                 return false;
             }
             if (this.consumed) {
@@ -350,7 +350,7 @@ namespace Gloebit.GloebitMoneyModule {
                 m_log.DebugFormat("PayerEndingBalance: {0}", this.PayerEndingBalance);
                 m_log.DebugFormat("enacted: {0}", this.enacted);
                 m_log.DebugFormat("consumed: {0}", this.consumed);
-                m_log.DebugFormat("cancelled: {0}", this.canceled);
+                m_log.DebugFormat("canceled: {0}", this.canceled);
                 m_log.DebugFormat("cTime: {0}", this.cTime);
                 m_log.DebugFormat("enactedTime: {0}", this.enactedTime);
                 m_log.DebugFormat("finishedTime: {0}", this.finishedTime);
@@ -375,7 +375,7 @@ namespace Gloebit.GloebitMoneyModule {
         {
             if (this.canceled) {
                 // Should never get a delayed consume after a cancel.  return false.
-                returnMsg = "Consume: already cancelled";
+                returnMsg = "Consume: already canceled";
                 return false;
             }
             if (!this.enacted) {
@@ -421,8 +421,8 @@ namespace Gloebit.GloebitMoneyModule {
                 //return true;
             }
             if (this.canceled) {
-                // already cancelled. return true.
-                returnMsg = "Cancel: already cancelled";
+                // already canceled. return true.
+                returnMsg = "Cancel: already canceled";
                 return true;
             }
             // First reception of cancel for asset.

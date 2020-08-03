@@ -98,59 +98,59 @@ namespace Gloebit.GloebitMoneyModule {
             
         public static GloebitUser Get(string appKeyStr, string agentIdStr) {
             m_log.Info("[GLOEBITMONEYMODULE] in GloebitUser.Get");
-			
-			try
-			{
-				GloebitUser u;
-				lock(s_userMap) {
-					s_userMap.TryGetValue(agentIdStr, out u);
-				}
-	
-				if (u == null) {
-					m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for prior user for {0}", agentIdStr);
-					string[] keys = new string[2]{"AppKey", "PrincipalID"};
-					string[] values = new string[2]{appKeyStr, agentIdStr};
-					GloebitUser[] users = GloebitUserData.Instance.Get(keys, values);
-	
-					switch(users.Length) {
-					case 1:
-						u = users[0];
-						m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1} --- SesionID{2}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken), u.LastSessionID);
-						break;
-					case 0:
-						m_log.DebugFormat("[GLOEBITMONEYMODULE] CREATING NEW USER {0}", agentIdStr);
-						u = new GloebitUser(appKeyStr, agentIdStr, String.Empty, String.Empty, String.Empty);
-						break;
-					default:
-						throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one prior token for {0}", agentIdStr));
-					}
-	
-					// Store in map and return GloebitUser
-					lock(s_userMap) {
-						// Make sure no one else has already loaded this user
-						GloebitUser alreadyLoadedUser;
-						s_userMap.TryGetValue(agentIdStr, out alreadyLoadedUser);
-						if (alreadyLoadedUser == null) {
-							s_userMap[agentIdStr] = u;
-						} else {
-							u = alreadyLoadedUser;
-						}
-					}
-				}
-	
-				// Create a thread local copy of the user to return.
-				GloebitUser localUser;
-				lock (u.userLock) {
-					localUser = new GloebitUser(u);
-				}
-	
-				return localUser;
-			}
-			catch(Exception e)
-			{
-				m_log.DebugFormat("[GLOEBITMONEYMODULE] failed GloebitUser.Get because {0}", e);
-				return null;
-			}
+
+            try
+            {
+                GloebitUser u;
+                lock(s_userMap) {
+                    s_userMap.TryGetValue(agentIdStr, out u);
+                }
+
+                if (u == null) {
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for prior user for {0}", agentIdStr);
+                    string[] keys = new string[2]{"AppKey", "PrincipalID"};
+                    string[] values = new string[2]{appKeyStr, agentIdStr};
+                    GloebitUser[] users = GloebitUserData.Instance.Get(keys, values);
+
+                    switch(users.Length) {
+                    case 1:
+                        u = users[0];
+                        m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND USER TOKEN! {0} valid token? {1} --- SesionID{2}", u.PrincipalID, !String.IsNullOrEmpty(u.GloebitToken), u.LastSessionID);
+                        break;
+                    case 0:
+                        m_log.DebugFormat("[GLOEBITMONEYMODULE] CREATING NEW USER {0}", agentIdStr);
+                        u = new GloebitUser(appKeyStr, agentIdStr, String.Empty, String.Empty, String.Empty);
+                        break;
+                    default:
+                        throw new Exception(String.Format("[GLOEBITMONEYMODULE] Failed to find exactly one prior token for {0}", agentIdStr));
+                    }
+
+                    // Store in map and return GloebitUser
+                    lock(s_userMap) {
+                        // Make sure no one else has already loaded this user
+                        GloebitUser alreadyLoadedUser;
+                        s_userMap.TryGetValue(agentIdStr, out alreadyLoadedUser);
+                        if (alreadyLoadedUser == null) {
+                            s_userMap[agentIdStr] = u;
+                        } else {
+                            u = alreadyLoadedUser;
+                        }
+                    }
+                }
+
+                // Create a thread local copy of the user to return.
+                GloebitUser localUser;
+                lock (u.userLock) {
+                    localUser = new GloebitUser(u);
+                }
+
+                return localUser;
+            }
+            catch(Exception e)
+            {
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] failed GloebitUser.Get because {0}", e);
+                return null;
+            }
         }
 
         public static void InvalidateCache(UUID agentID) {

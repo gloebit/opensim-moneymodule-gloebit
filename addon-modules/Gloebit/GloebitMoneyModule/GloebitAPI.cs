@@ -298,7 +298,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="txn">GloebitTransaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer id and name.  <see cref="GloebitTransaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaction history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
-        /// <param name="payerUser">GloebitUser object for the user sending the Gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
+        /// <param name="payerUser">GloebitUser object for the user sending the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <returns>true if async transact web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactCompleted should eventually be called with additional details on state of request.</returns>
         public bool Transact(GloebitTransaction txn, string description, OSDMap descMap, GloebitUser payerUser, Uri baseURI) {
@@ -355,7 +355,7 @@ namespace Gloebit.GloebitMoneyModule {
 
         
 
-        // TODO: does recipient have to authorize app?  Do they need to become a merchant on that platform or opt in to agreeing to receive Gloebits?  How do they currently authorize sale on a grid?
+        // TODO: does recipient have to authorize app?  Do they need to become a merchant on that platform or opt in to agreeing to receive gloebits?  How do they currently authorize sale on a grid?
         // TODO: Should we pass a bool for charging a fee or the actual fee % -- to the module owner --- could always charge a fee.  could be % set in app for when charged.  could be % set for each transaction type in app.
         // TODO: Should we always charge our fee, or have a bool or transaction type for occasions when we may not charge?
         // TODO: Do we need an endpoint for reversals/refunds, or just an admin interface from Gloebit?
@@ -371,9 +371,9 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="txn">GloebitTransaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer/payee id and name.  <see cref="GloebitTransaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaction history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
-        /// <param name="sender">GloebitUser object for the user sending the Gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
-        /// <param name="recipient">GloebitUser object for the user receiving the Gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
-        /// <param name="recipientEmail">Email address of the user on this grid receiving the Gloebits.  Empty string if user created account without email.</param>
+        /// <param name="sender">GloebitUser object for the user sending the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
+        /// <param name="recipient">GloebitUser object for the user receiving the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
+        /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <returns>true if async transactU2U web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactU2UCompleted should eventually be called with additional details on state of request.</returns>
         public bool TransactU2U(GloebitTransaction txn, string description, OSDMap descMap, GloebitUser sender, GloebitUser recipient, string recipientEmail, Uri baseURI) {
@@ -449,9 +449,9 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="txn">GloebitTransaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer/payee id and name.  <see cref="GloebitTransaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
         /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaction history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
-        /// <param name="sender">GloebitUser object for the user sending the Gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
-        /// <param name="recipient">GloebitUser object for the user receiving the Gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
-        /// <param name="recipientEmail">Email address of the user on this grid receiving the Gloebits.  Empty string if user created account without email.</param>
+        /// <param name="sender">GloebitUser object for the user sending the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
+        /// <param name="recipient">GloebitUser object for the user receiving the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
+        /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <param name="stage">TransactionStage handed back to caller representing stage of transaction that failed or completed.</param>
         /// <param name="failure">TransactionFailure handed back to caller representing specific transaction failure, or NONE.</param>
@@ -471,7 +471,7 @@ namespace Gloebit.GloebitMoneyModule {
             // If the recipient has ever authorized, we have an AppUserID from Gloebit which will allow identification.
             // If not, Gloebit will attempt id from email.
             // TODO: If we use emails, we may need to make sure account merging works for email/3rd party providers.
-            // TODO: If we allow anyone to receive, need to ensure that Gloebits received are locked down until user authenticates as merchant.
+            // TODO: If we allow anyone to receive, need to ensure that gloebits received are locked down until user authenticates as merchant.
             
             // ************ BUILD AND SEND TRANSACT U2U POST REQUEST ******** //
             
@@ -616,7 +616,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="transact_params">OSDMap which will be populated with form parameters.</param>
         /// <param name="txn">GloebitTransaction representing local transaction we are create transact_params from.</param>
         /// <param name="recipientGloebitID">UUID from the Gloebit system of user being paid.  May be empty.</param>
-        /// <param name="recipientEmail">Email of the user being paid Gloebits.  May be empty.</param>
+        /// <param name="recipientEmail">Email of the user being paid gloebits.  May be empty.</param>
         private void PopulateTransactParamsU2U(OSDMap transact_params, GloebitTransaction txn, string recipientGloebitID, string recipientEmail)
         {
             /***** U2U specific transact params *****/
@@ -694,7 +694,7 @@ namespace Gloebit.GloebitMoneyModule {
             // TODO: Adding an "early-enact-failed" status to make this simpler
             } else if (status == "queued") {                                /* successfully queued.  an early enact failed */
                 // This is a complex error/flow response which we should really consider if there is a better way to handle.
-                // Is this always a permanent failure?  Could this succeed in queue if user purchased Gloebits at same time?
+                // Is this always a permanent failure?  Could this succeed in queue if user purchased gloebits at same time?
                 // Can anything other than insufficient funds cause this problem?  Internet Issue?
                 stage = TransactionStage.ENACT_GLOEBIT;
                 // TODO: perhaps the stage should be queue here, and early_enact error as this is not being enacted by a transaction processor.
@@ -719,10 +719,10 @@ namespace Gloebit.GloebitMoneyModule {
                     // nothing to tell user.  buyer doesn't need to know it was double submitted
                     stage = TransactionStage.QUEUE;
                     failure = TransactionFailure.RACE_CONDITION;
-                } else if (status == "cannot-spend") {                      /* Buyer's Gloebit account is locked and not allowed to spend Gloebits */
+                } else if (status == "cannot-spend") {                      /* Buyer's Gloebit account is locked and not allowed to spend gloebits */
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYER_ACCOUNT_LOCKED;
-                } else if (status == "cannot-receive") {                    /* Seller's Gloebit account can not receive Gloebits */
+                } else if (status == "cannot-receive") {                    /* Seller's Gloebit account can not receive gloebits */
                     // TODO: Check role in new system.  This is for role=Payee, not role=Application
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYEE_CANNOT_RECEIVE;
@@ -1060,7 +1060,7 @@ namespace Gloebit.GloebitMoneyModule {
                             paramString = OSDParser.SerializeJsonString(paramMap);
                         } else {
                             // ERROR - we are not handling this content type properly
-                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, unrecognised content type:{1}", relativeURL, contentType);
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, unrecognized content type:{1}", relativeURL, contentType);
                             return null;
                         }
                 
@@ -1078,7 +1078,7 @@ namespace Gloebit.GloebitMoneyModule {
                     break;
                 default:
                     // ERROR - we are not handling this request type properly
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, unrecognised web request method:{1}", relativeURL, method);
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.BuildGloebitRequest relativeURL:{0}, unrecognized web request method:{1}", relativeURL, method);
                     return null;
             }
             return request;
@@ -1219,8 +1219,8 @@ namespace Gloebit.GloebitMoneyModule {
             ENACT_ASSET     = 650,   // performing local components of transaction
             CONSUME_GLOEBIT = 700,   // committing Gloebit components of transaction
             CONSUME_ASSET   = 750,   // committing local components of transaction
-            CANCEL_GLOEBIT  = 800,   // cancelling Gloebit components of transaction
-            CANCEL_ASSET    = 850,   // cancelling local components of transaction
+            CANCEL_GLOEBIT  = 800,   // canceling Gloebit components of transaction
+            CANCEL_ASSET    = 850,   // canceling local components of transaction
             COMPLETE        = 1000,  // Not really a stage.  May not need this.  Once local asset is consumed, we are complete.
         }
         

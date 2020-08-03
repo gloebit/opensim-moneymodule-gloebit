@@ -32,8 +32,8 @@ using OpenMetaverse;
 
 namespace Gloebit.GloebitMoneyModule {
 
-	// Compiler complains about not declaring an override for GetHashCode, but we don't use that so we'll just tell it to stop complaining		
-	#pragma warning disable 0659
+    // Compiler complains about not declaring an override for GetHashCode, but we don't use that so we'll just tell it to stop complaining		
+    #pragma warning disable 0659
 
     public class GloebitSubscription {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
@@ -255,7 +255,7 @@ namespace Gloebit.GloebitMoneyModule {
             //m_log.DebugFormat("[GLOEBITMONEYMODULE] FOUND SUBSCRIPTION in cache! oID:{0} appKey:{1} url:{2} sID:{3} oN:{4} oD:{5}", subscription.ObjectID, subscription.AppKey, subscription.GlbApiUrl, subscription.SubscriptionID, subscription.ObjectName, subscription.Description);
             //return subscription;
         }
-		
+
         public override bool Equals(Object obj)
         {
             //Check for null and compare run-time types.
@@ -288,7 +288,7 @@ namespace Gloebit.GloebitMoneyModule {
                     (Enabled == s.Enabled));
             }
         }
-	}
-	#pragma warning restore 0659
+    }
+    #pragma warning restore 0659
 }
 

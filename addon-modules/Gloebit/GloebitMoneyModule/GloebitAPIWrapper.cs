@@ -173,7 +173,7 @@ namespace Gloebit.GloebitMoneyModule {
             Uri url = BuildPurchaseURI(m_platformAccessors.GetBaseURI(), u);
             Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
-            response["str_response_string"] = String.Format("<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window and return to OpenSim.<br /><br /><br />You'll now be able spend Gloebits from your Gloebit account as the agent you authorized on this OpenSim Grid.<br /><br />If you need Gloebits, you can <a href=\"{0}\">purchase them here</a>.</body></html>", url);
+            response["str_response_string"] = String.Format("<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window and return to OpenSim.<br /><br /><br />You'll now be able spend gloebits from your Gloebit account as the agent you authorized on this OpenSim Grid.<br /><br />If you need gloebits, you can <a href=\"{0}\">purchase them here</a>.</body></html>", url);
             response["content_type"] = "text/html";
 
             return response;
@@ -209,7 +209,7 @@ namespace Gloebit.GloebitMoneyModule {
         }
 
         /// <summary>
-        /// Retrieves the Gloebit balance of the Gloebit account linked to the user defined by the userIDOnApp.
+        /// Retrieves the gloebit balance of the Gloebit account linked to the user defined by the userIDOnApp.
         /// If there is no token, or an invalid token on file, and forceAuthOnInvalidToken is true, we request authorization from the AppUser.
         /// If we request authorization, the userName is provided to that API Authorize function.  Otherwise, it is not used.
         /// </summary>
@@ -268,13 +268,13 @@ namespace Gloebit.GloebitMoneyModule {
         //       if it can supply extra info for how to handle the return.  This seems more complex than necessary right now, so we've
         //       left it here.
         /// <summary>
-        /// Builds a URI for a user to purchase Gloebits
+        /// Builds a URI for a user to purchase gloebits
         /// </summary>
         /// <param name="callbackBaseUri">Base URI for where the /gloebit/buy_complete/ path was registered.  Supplied in the purchase uri
         ///                               so we can let the platform know when a user has completed a purchase.  This alert is not
         ///                               yet implemented on the Gloebit server.</param>
-        /// <param name ="u">GloebitUser representing the agent and app requesting to purchase Gloebits</param>
-        /// <returns>URI for the platform to provide at which this user can purchase Gloebits.</returns>
+        /// <param name ="u">GloebitUser representing the agent and app requesting to purchase gloebits</param>
+        /// <returns>URI for the platform to provide at which this user can purchase gloebits.</returns>
         public Uri BuildPurchaseURI(Uri callbackBaseUri, GloebitUser u) {
             UriBuilder purchaseUri = new UriBuilder(m_url);
             purchaseUri.Path = "/purchase";
@@ -293,7 +293,7 @@ namespace Gloebit.GloebitMoneyModule {
         /*** GloebitAPI Optional HTTP Callback Entrance Point - must be registered by GMM to work - not yet implemented ***/
         /// <summary>
         /// NOT YET IMPLEMENTED BY GLOEBIT SERVICE
-        /// Used by the redirect-to parameter to GloebitAPI.Purchase.  Called when a user has finished purchasing Gloebits
+        /// Used by the redirect-to parameter to GloebitAPI.Purchase.  Called when a user has finished purchasing gloebits
         /// Sends a balance update to the user
         /// </summary>
         /// <param name="requestData">response data from GloebitAPI.Purchase</param>
@@ -321,7 +321,7 @@ namespace Gloebit.GloebitMoneyModule {
             return response;
         }
 
-        #endregion // Purchasing Gloebits
+        #endregion // Purchasing gloebits
 
         #region Transaction
 
@@ -628,7 +628,7 @@ namespace Gloebit.GloebitMoneyModule {
                             // Send dialog asking user to auth or report --- needs different message.
                             m_log.Info("[GLOEBITMONEYMODULE] TransactU2UCompleted - SUBSCRIPTION_AUTH_DECLINED - requesting SubAuth approval");
                             break;
-                        case GloebitAPI.TransactionFailure.PAYER_ACCOUNT_LOCKED:                  /* Buyer's Gloebit account is locked and not allowed to spend Gloebits */
+                        case GloebitAPI.TransactionFailure.PAYER_ACCOUNT_LOCKED:                  /* Buyer's Gloebit account is locked and not allowed to spend gloebits */
                             m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- payer account locked.  id:{0}", tID);
                             break;
                         case GloebitAPI.TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED:            /* can not identify merchant from params supplied by app */
@@ -636,7 +636,7 @@ namespace Gloebit.GloebitMoneyModule {
                             break;
                         case GloebitAPI.TransactionFailure.PAYEE_CANNOT_RECEIVE:                  /* Seller's Gloebit account can not receive Gloebits */
                             // TODO: research if/when account is in this state.  Only by admin?  All accounts until merchants?
-                            m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- payee account locked - can't receive Gloebits.  id:{0}", tID);
+                            m_log.InfoFormat("[GLOEBITMONEYMODULE] transactU2UCompleted - FAILURE -- payee account locked - can't receive gloebits.  id:{0}", tID);
                             break;
                         default:
                             // Shouldn't get here.
