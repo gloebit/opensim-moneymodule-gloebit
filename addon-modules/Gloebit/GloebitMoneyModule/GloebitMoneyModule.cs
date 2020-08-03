@@ -400,21 +400,6 @@ namespace Gloebit.GloebitMoneyModule
                 
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Enabled flag set to {0}.", enabled);
 
-                // Should we send popups to users or not, some find them annoying especially if they are not using the system
-                m_showWelcomeMessage = config.GetBoolean("GLBShowWelcomeMessage", true);
-
-                if (m_showWelcomeMessage == false)
-                {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will not send welcome message to users!");
-                } else {
-                    m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] Will inform users about Gloebit!");
-                }
-
-                // If version cannot be detected override workflow selection via config
-                // Currently not documented because last resort if all version checking fails
-                m_FnewLandPassFlow = config.GetBoolean("GLBNewLandPassFlow", false);
-                m_FnewHTTPFlow = config.GetBoolean("GLBNewHTTPFlow", false);
-
                 m_enabled = m_enabled && enabled;
                 if (!m_enabled) {
                     m_log.Info("[GLOEBITMONEYMODULE] Not enabled globally for sim. (to enable set \"Enabled = true\" in [Gloebit] and \"economymodule = Gloebit\" in [Economy])");
@@ -446,6 +431,17 @@ namespace Gloebit.GloebitMoneyModule
                 // Should we send new session IMs informing user how to auth or purchase gloebits
                 m_showNewSessionPurchaseIM = config.GetBoolean("GLBShowNewSessionPurchaseIM", false);
                 m_showNewSessionAuthIM = config.GetBoolean("GLBShowNewSessionAuthIM", true);
+                // Should we send a welcome message informing user that Gloebit is enabled
+                m_showWelcomeMessage = config.GetBoolean("GLBShowWelcomeMessage", true);
+                string nsms_msg = "\n\t";
+                nsms_msg = String.Format("{0}Welcome Message: {1},\tTo modify, set m_showWelcomeMessage in [Gloebit] section of config\n\t", nsms_msg, m_showWelcomeMessage);
+                nsms_msg = String.Format("{0}Auth Message: {1},\tTo modify, set m_showNewSessionAuthIM in [Gloebit] section of config\n\t", nsms_msg, m_showNewSessionAuthIM);
+                nsms_msg = String.Format("{0}Purchase Message: {1},\tTo modify, set m_showNewSessionPurchaseIM in [Gloebit] section of config", nsms_msg, m_showNewSessionPurchaseIM);
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] is configured with the following settings for messaging users connecting to a new session{0}", nsms_msg);
+                // If version cannot be detected override workflow selection via config
+                // Currently not documented because last resort if all version checking fails
+                m_FnewLandPassFlow = config.GetBoolean("GLBNewLandPassFlow", false);
+                m_FnewHTTPFlow = config.GetBoolean("GLBNewHTTPFlow", false);
                 // Are we using custom db connection info
                 m_dbProvider = config.GetString("GLBSpecificStorageProvider");
                 m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
@@ -3553,9 +3549,10 @@ namespace Gloebit.GloebitMoneyModule
             }
             Thread welcomeMessageThread = new Thread(delegate() {
                 Thread.Sleep(delay * 1000);  // Delay milliseconds
-                // Deliver welcome message if we have popups enabled
-                if (m_showWelcomeMessage)
+                // Deliver welcome message if we have welcome popup enabled
+                if (m_showWelcomeMessage) {
                     sendMessageToClient(client, msg, client.AgentId);
+                }
 
                 // If authed, delivery url where user can purchase Gloebits
                 if (user.IsAuthed()) {
