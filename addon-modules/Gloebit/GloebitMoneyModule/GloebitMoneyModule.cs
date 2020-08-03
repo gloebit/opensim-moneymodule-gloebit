@@ -434,9 +434,9 @@ namespace Gloebit.GloebitMoneyModule
                 // Should we send a welcome message informing user that Gloebit is enabled
                 m_showWelcomeMessage = config.GetBoolean("GLBShowWelcomeMessage", true);
                 string nsms_msg = "\n\t";
-                nsms_msg = String.Format("{0}Welcome Message: {1},\tTo modify, set m_showWelcomeMessage in [Gloebit] section of config\n\t", nsms_msg, m_showWelcomeMessage);
-                nsms_msg = String.Format("{0}Auth Message: {1},\tTo modify, set m_showNewSessionAuthIM in [Gloebit] section of config\n\t", nsms_msg, m_showNewSessionAuthIM);
-                nsms_msg = String.Format("{0}Purchase Message: {1},\tTo modify, set m_showNewSessionPurchaseIM in [Gloebit] section of config", nsms_msg, m_showNewSessionPurchaseIM);
+                nsms_msg = String.Format("{0}Welcome Message: {1},\tTo modify, set GLBShowWelcomeMessage in [Gloebit] section of config\n\t", nsms_msg, m_showWelcomeMessage);
+                nsms_msg = String.Format("{0}Auth Message: {1},\tTo modify, set GLBShowNewSessionAuthIM in [Gloebit] section of config\n\t", nsms_msg, m_showNewSessionAuthIM);
+                nsms_msg = String.Format("{0}Purchase Message: {1},\tTo modify, set GLBShowNewSessionPurchaseIM in [Gloebit] section of config", nsms_msg, m_showNewSessionPurchaseIM);
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] [Gloebit] is configured with the following settings for messaging users connecting to a new session{0}", nsms_msg);
                 // If version cannot be detected override workflow selection via config
                 // Currently not documented because last resort if all version checking fails
