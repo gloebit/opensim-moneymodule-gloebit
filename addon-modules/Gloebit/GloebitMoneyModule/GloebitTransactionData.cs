@@ -162,7 +162,7 @@ namespace Gloebit.GloebitMoneyModule
             
             public override bool Store(GloebitTransaction txn)
             {
-		try {
+		        try {
                     // remove null datetimes as pgsql throws exceptions on null fields
                     if (txn.enactedTime == null) {
                         txn.enactedTime = SqlDateTime.MinValue.Value;
@@ -173,10 +173,13 @@ namespace Gloebit.GloebitMoneyModule
                     //m_log.InfoFormat("GloebitTransactionData.PGSQLImpl: storing transaction type:{0}, SaleType:{2}, PayerEndingBalance:{3}, cTime:{4}, enactedTime:{5}, finishedTime:{6}", txn.TransactionType, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime);
                     // call parent
                     return base.Store(txn);
-		} catch(System.OverflowException e) {
+		        } catch(System.OverflowException e) {
                     m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction type:{0}, SaleType:{1}, PayerEndingBalance:{2}, cTime:{3}, enactedTime:{4}, finishedTime:{5}, stacktrace:{6}", txn.TransactionType, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime, e);
-		    throw;
-		}
+		            return false;
+		        } catch(Exception e) {
+                    m_log.DebugFormat("[PGSQL GENERIC TABLE HANDLER]: Failed to store data: {0}", e);
+                    return false;
+                }
             }
         }
         
