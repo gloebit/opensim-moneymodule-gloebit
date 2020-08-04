@@ -134,8 +134,6 @@ namespace Gloebit.GloebitMoneyModule
         private bool m_enabled = true;
         // Set to false if anything is misconfigured
         private bool m_configured = true;
-        // Configure true if not present
-        private bool m_showWelcomeMessage = true;
         
         // Populated from Gloebit.ini
         private UUID[] m_enabledRegions = null;         // Regions on sim to individually enable GMM.
@@ -151,6 +149,9 @@ namespace Gloebit.GloebitMoneyModule
         private bool m_disablePerSimCurrencyExtras = false;
         private bool m_showNewSessionPurchaseIM = false;
         private bool m_showNewSessionAuthIM = true;
+        private bool m_showWelcomeMessage = true;
+        private bool m_forceNewLandPassFlow = false;
+        private bool m_forceNewHTTPFlow = false;
         
         // Populated from grid info
         private string m_gridnick = "unknown_grid";
@@ -204,10 +205,6 @@ namespace Gloebit.GloebitMoneyModule
         private string m_opensimVersionNumber = String.Empty;
         private bool m_newLandPassFlow = false;
         private bool m_newHTTPFlow = false;
-        
-        // Allow overriding of versions in case version number can't be identified
-        private bool m_forceNewLandPassFlow = false;
-        private bool m_forceNewHTTPFlow = false;
 
 
         #region IRegionModuleBase Interface
@@ -547,6 +544,7 @@ namespace Gloebit.GloebitMoneyModule
             m_configured = false;
         }
 
+        // Helper funciton used in AddRegion for post 0.9.2.0 XML RPC Handlers 
         public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
         {
             MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
