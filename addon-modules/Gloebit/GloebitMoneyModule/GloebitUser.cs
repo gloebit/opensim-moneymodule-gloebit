@@ -113,7 +113,7 @@ namespace Gloebit.GloebitMoneyModule {
                     users = GloebitUserData.Instance.Get(keys, values);
                 } catch(Exception e) {
                     m_log.WarnFormat("[GLOEBITMONEYMODULE] failed GloebitUser.Get because {0}", e);
-                    users = [];
+                    users = new GloebitUser[0];
                 }
 
                 switch(users.Length) {
