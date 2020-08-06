@@ -146,10 +146,10 @@ namespace Gloebit.GloebitMoneyModule {
             this.enactedTime = null; // set to null instead of DateTime.MinValue to avoid crash on reading 0 timestamp
             this.finishedTime = null; // set to null instead of DateTime.MinValue to avoid crash on reading 0 timestamp
             // TODO: We have made these nullable and initialize to null.  We could alternatively choose a time that is not zero
-            // and avoid any potential conficts from allowing null.
+            // and avoid any potential conflicts from allowing null.
             // On MySql, I had to set the columns to allow NULL, otherwise, inserting null defaulted to the current local time.
             // On PGSql, I set the columns to allow NULL, but haven't tested.
-            // On SQLite, I don't think that you can set them to allow NULL explicitely, and haven't checked defaults.
+            // On SQLite, I don't think that you can set them to allow NULL explicitly, and haven't checked defaults.
         }
 
         // Creates a new transaction
@@ -385,7 +385,7 @@ namespace Gloebit.GloebitMoneyModule {
             }
             if (this.consumed) {
                 // already consumed. return true.
-                returnMsg = "Cosume: Already consumed";
+                returnMsg = "Consume: Already consumed";
                 return true;
             }
 

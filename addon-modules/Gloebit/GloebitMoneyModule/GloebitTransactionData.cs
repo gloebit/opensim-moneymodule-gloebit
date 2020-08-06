@@ -33,6 +33,7 @@ using OpenSim.Data.SQLite;
 namespace Gloebit.GloebitMoneyModule
 {
     class GloebitTransactionData {
+        private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         private static IGloebitTransactionData m_impl;
 
@@ -93,50 +94,59 @@ namespace Gloebit.GloebitMoneyModule
             public override bool Store(GloebitTransaction txn)
             {
                 //            m_log.DebugFormat("[MYSQL GENERIC TABLE HANDLER]: Store(T row) invoked");
-                
-                using (MySqlCommand cmd = new MySqlCommand())
+
+                try
                 {
-                    string query = "";
-                    List<String> names = new List<String>();
-                    List<String> values = new List<String>();
-                    
-                    foreach (FieldInfo fi in m_Fields.Values)
+                
+                    using (MySqlCommand cmd = new MySqlCommand())
                     {
-                        names.Add(fi.Name);
-                        values.Add("?" + fi.Name);
-                        
-                        // Temporarily return more information about what field is unexpectedly null for
-                        // http://opensimulator.org/mantis/view.php?id=5403.  This might be due to a bug in the
-                        // InventoryTransferModule or we may be required to substitute a DBNull here.
-                        /*if (fi.GetValue(asset) == null)
-                            throw new NullReferenceException(
-                                                             string.Format(
-                                                                           "[MYSQL GENERIC TABLE HANDLER]: Trying to store field {0} for {1} which is unexpectedly null",
-                                                                           fi.Name, asset));*/
-                        
-                        cmd.Parameters.AddWithValue(fi.Name, fi.GetValue(txn));
-                    }
-                    
-                    /*if (m_DataField != null)
-                    {
-                        Dictionary<string, string> data =
-                        (Dictionary<string, string>)m_DataField.GetValue(row);
-                        
-                        foreach (KeyValuePair<string, string> kvp in data)
+                        string query = "";
+                        List<String> names = new List<String>();
+                        List<String> values = new List<String>();
+
+                        foreach (FieldInfo fi in m_Fields.Values)
                         {
-                            names.Add(kvp.Key);
-                            values.Add("?" + kvp.Key);
-                            cmd.Parameters.AddWithValue("?" + kvp.Key, kvp.Value);
+                            names.Add(fi.Name);
+                            values.Add("?" + fi.Name);
+
+                            // Temporarily return more information about what field is unexpectedly null for
+                            // http://opensimulator.org/mantis/view.php?id=5403.  This might be due to a bug in the
+                            // InventoryTransferModule or we may be required to substitute a DBNull here.
+                            /*if (fi.GetValue(asset) == null)
+                                throw new NullReferenceException(
+                                                                string.Format(
+                                                                            "[MYSQL GENERIC TABLE HANDLER]: Trying to store field {0} for {1} which is unexpectedly null",
+                                                                            fi.Name, asset));*/
+
+                            cmd.Parameters.AddWithValue(fi.Name, fi.GetValue(txn));
                         }
-                    }*/
-                    
-                    query = String.Format("replace into {0} (`", m_Realm) + String.Join("`,`", names.ToArray()) + "`) values (" + String.Join(",", values.ToArray()) + ")";
-                    
-                    cmd.CommandText = query;
-                    
-                    if (ExecuteNonQuery(cmd) > 0)
-                        return true;
-                    
+
+                        /*if (m_DataField != null)
+                        {
+                            Dictionary<string, string> data =
+                            (Dictionary<string, string>)m_DataField.GetValue(row);
+
+                            foreach (KeyValuePair<string, string> kvp in data)
+                            {  
+                                names.Add(kvp.Key);
+                                values.Add("?" + kvp.Key);
+                                cmd.Parameters.AddWithValue("?" + kvp.Key, kvp.Value);
+                            }
+                        }*/
+
+                        query = String.Format("replace into {0} (`", m_Realm) + String.Join("`,`", names.ToArray()) + "`) values (" + String.Join(",", values.ToArray()) + ")";
+
+                        cmd.CommandText = query;
+
+                        if (ExecuteNonQuery(cmd) > 0)
+                            return true;
+
+                        return false;
+                    }
+                }
+                catch(Exception e)
+                {
+                    m_log.DebugFormat("[MYSQL GENERIC TABLE HANDLER]: Failed to store data: {0}", e);
                     return false;
                 }
             }
@@ -152,7 +162,7 @@ namespace Gloebit.GloebitMoneyModule
             
             public override bool Store(GloebitTransaction txn)
             {
-		try {
+		        try {
                     // remove null datetimes as pgsql throws exceptions on null fields
                     if (txn.enactedTime == null) {
                         txn.enactedTime = SqlDateTime.MinValue.Value;
@@ -163,10 +173,13 @@ namespace Gloebit.GloebitMoneyModule
                     //m_log.InfoFormat("GloebitTransactionData.PGSQLImpl: storing transaction type:{0}, SaleType:{2}, PayerEndingBalance:{3}, cTime:{4}, enactedTime:{5}, finishedTime:{6}", txn.TransactionType, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime);
                     // call parent
                     return base.Store(txn);
-		} catch(System.OverflowException e) {
+		        } catch(System.OverflowException e) {
                     m_log.ErrorFormat("GloebitTransactionData.PGSQLImpl: Failure storing transaction type:{0}, SaleType:{1}, PayerEndingBalance:{2}, cTime:{3}, enactedTime:{4}, finishedTime:{5}, stacktrace:{6}", txn.TransactionType, txn.SaleType, txn.PayerEndingBalance, txn.cTime, txn.enactedTime, txn.finishedTime, e);
-		    throw;
-		}
+		            return false;
+		        } catch(Exception e) {
+                    m_log.DebugFormat("[PGSQL GENERIC TABLE HANDLER]: Failed to store data: {0}", e);
+                    return false;
+                }
             }
         }
         

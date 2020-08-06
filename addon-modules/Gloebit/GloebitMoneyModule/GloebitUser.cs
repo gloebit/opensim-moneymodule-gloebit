@@ -27,7 +27,7 @@
  * --- account.
  * Do not confuse this with representing a single local user, though this is
  * --- generally the case.  There can be multiple records for a sinlge local
- * --- account if this product has connected via multple Gloebit Apps, such as
+ * --- account if this product has connected via multiple Gloebit Apps, such as
  * --- to our Sandbox environment and to our Production environment.
  * This stores a record per user per Gloebit App (per OAuth Key).
  * --- The primary function here is to handle storage and retrieval of the
@@ -108,7 +108,13 @@ namespace Gloebit.GloebitMoneyModule {
                 m_log.DebugFormat("[GLOEBITMONEYMODULE] Looking for prior user for {0}", agentIdStr);
                 string[] keys = new string[2]{"AppKey", "PrincipalID"};
                 string[] values = new string[2]{appKeyStr, agentIdStr};
-                GloebitUser[] users = GloebitUserData.Instance.Get(keys, values);
+                GloebitUser[] users;
+                try {
+                    users = GloebitUserData.Instance.Get(keys, values);
+                } catch(Exception e) {
+                    m_log.WarnFormat("[GLOEBITMONEYMODULE] failed GloebitUser.Get because {0}", e);
+                    users = new GloebitUser[0];
+                }
 
                 switch(users.Length) {
                 case 1:

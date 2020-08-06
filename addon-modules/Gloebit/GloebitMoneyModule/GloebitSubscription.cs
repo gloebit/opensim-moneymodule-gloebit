@@ -32,6 +32,9 @@ using OpenMetaverse;
 
 namespace Gloebit.GloebitMoneyModule {
 
+    // Compiler complains about not declaring an override for GetHashCode, but we don't use that so we'll just tell it to stop complaining		
+    #pragma warning disable 0659
+
     public class GloebitSubscription {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -286,5 +289,6 @@ namespace Gloebit.GloebitMoneyModule {
             }
         }
     }
+    #pragma warning restore 0659
 }
 

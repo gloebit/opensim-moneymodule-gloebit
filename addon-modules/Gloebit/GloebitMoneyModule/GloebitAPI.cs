@@ -88,7 +88,7 @@ namespace Gloebit.GloebitMoneyModule {
                 responseStream = null;
                 
                 bufferRead = new byte[BUFFER_SIZE];
-                streamDecoder = Encoding.UTF8.GetDecoder();     // Create Decoder for appropriate enconding type.
+                streamDecoder = Encoding.UTF8.GetDecoder();     // Create Decoder for appropriate encoding type.
                 responseData = new StringBuilder(String.Empty);
 
                 this.continuation = continuation;
@@ -232,7 +232,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// Returns zero if a link between this OpenSim user and a Gloebit account have not been created and the user has not granted authorization to this grid/region.
         /// Requires "balance" in scope of authorization token.
         /// </summary>
-        /// <returns>The Gloebit balance for the Gloebit accunt the user has linked to this OpenSim agentID on this grid/region.  Returns zero if a link between this OpenSim user and a Gloebit account has not been created and the user has not granted authorization to this grid/region.</returns>
+        /// <returns>The Gloebit balance for the Gloebit account the user has linked to this OpenSim agentID on this grid/region.  Returns zero if a link between this OpenSim user and a Gloebit account has not been created and the user has not granted authorization to this grid/region.</returns>
         /// <param name="user">GloebitUser object for the OpenSim user for whom the balance request is being made. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="invalidatedToken">Bool set to true if request fails due to a bad token which we have invalidated.  Eventually, this should be a more general error interface</param>
         /// <returns>Double balance of user or 0.0 if fails for any reason</returns>
@@ -297,7 +297,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// </remarks>
         /// <param name="txn">GloebitTransaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer id and name.  <see cref="GloebitTransaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
-        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaction history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
         /// <param name="payerUser">GloebitUser object for the user sending the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         /// <returns>true if async transact web request was built and submitted successfully; false if failed to submit request;  If true, IAsyncEndpointCallback transactCompleted should eventually be called with additional details on state of request.</returns>
@@ -370,7 +370,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// </remarks>
         /// <param name="txn">GloebitTransaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer/payee id and name.  <see cref="GloebitTransaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
-        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaction history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
         /// <param name="sender">GloebitUser object for the user sending the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="recipient">GloebitUser object for the user receiving the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
@@ -382,7 +382,7 @@ namespace Gloebit.GloebitMoneyModule {
             
             // ************ IDENTIFY GLOEBIT RECIPIENT ******** //
             // 1. If the recipient has authed ever, we'll have a recipient.GloebitID to use.
-            // 2. If not, and the recipeint's account is on this grid, Get the email from the profile for the account.
+            // 2. If not, and the recipient's account is on this grid, Get the email from the profile for the account.
             
             // ************ BUILD AND SEND TRANSACT U2U POST REQUEST ******** //
             
@@ -448,7 +448,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// </remarks>
         /// <param name="txn">GloebitTransaction representing local transaction we are requesting.  This is prebuilt by GMM, and already includes most transaciton details such as amount, payer/payee id and name.  <see cref="GloebitTransaction"/></param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
-        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaction history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
         /// <param name="sender">GloebitUser object for the user sending the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="recipient">GloebitUser object for the user receiving the gloebits. <see cref="GloebitUser.Get(UUID)"/></param>
         /// <param name="recipientEmail">Email address of the user on this grid receiving the gloebits.  Empty string if user created account without email.</param>
@@ -458,7 +458,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <returns>
         /// true if sync transactU2U web request was built and submitted successfully and returned a successful response from the web service.
         /// --- successful response means that all Gloebit components of the transaction enacted successfully, and transaction would only fail if local
-        ///     component enaction failed.  (Note: possibiliy of only "queue" success if resubmitted)
+        ///     component enaction failed.  (Note: possibility of only "queue" success if resubmitted)
         /// false if failed to submit request, or if response returned false.
         /// --- See out parameters stage and failure for details on failure.
         /// If true, or if false in any stage after SUBMIT, IAsyncEndpointCallback transactU2UCompleted will be called with additional details on state of request prior to this function returning.
@@ -554,7 +554,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="txn">GloebitTransaction representing local transaction we are create transact_params from.</param>
         /// <param name="description">Description of purpose of transaction recorded in Gloebit transaction histories.  Should eventually be added to txn and removed as parameter</param>
         /// <param name="senderGloebitID">UUID from the Gloebit system of user making payment.</param>
-        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaciton history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
+        /// <param name="descMap">Map of platform, location & transaction descriptors for tracking/querying and transaction history details.  For more details, <see cref="GloebitMoneyModule.buildBaseTransactionDescMap"/> helper function.</param>
         /// <param name="baseURI">The base url where this server's http services can be accessed.  Used by enact/consume/cancel callbacks for local transaction part requiring processing.</param>
         private void PopulateTransactParamsBase(OSDMap transact_params, GloebitTransaction txn, string description, string senderGloebitID, OSDMap descMap, Uri baseURI)
         {
@@ -631,7 +631,7 @@ namespace Gloebit.GloebitMoneyModule {
         }
         
         /// <summary>
-        /// Given the response from a TransactU2U web reqeust, retrieves and stores vital information in the transaction object and data store.
+        /// Given the response from a TransactU2U web request, retrieves and stores vital information in the transaction object and data store.
         /// </summary>
         /// <param name="txn">GloebitTransaction representing local transaction for which we received the response.</param>
         /// <param name="responseDataMap">OSDMap containing the web response body.</param>
@@ -708,7 +708,7 @@ namespace Gloebit.GloebitMoneyModule {
                     // Shouldn't ever get here.
                     failure = TransactionFailure.ENACTING_GLOEBIT_FAILED;
                 }
-            } else {                                                        /* failure prior to successful queing.  Something requires fixing */
+            } else {                                                        /* failure prior to successful queuing.  Something requires fixing */
                 if (reason == "unknown OAuth2 token") {                     /* Invalid Token.  May have been revoked by user or expired */
                     stage = TransactionStage.AUTHENTICATE;
                     failure = TransactionFailure.AUTHENTICATION_FAILED;
@@ -719,17 +719,17 @@ namespace Gloebit.GloebitMoneyModule {
                     // nothing to tell user.  buyer doesn't need to know it was double submitted
                     stage = TransactionStage.QUEUE;
                     failure = TransactionFailure.RACE_CONDITION;
-                } else if (status == "cannot-spend") {                      /* Buyer's gloebit account is locked and not allowed to spend gloebits */
+                } else if (status == "cannot-spend") {                      /* Buyer's Gloebit account is locked and not allowed to spend gloebits */
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYER_ACCOUNT_LOCKED;
-                } else if (status == "cannot-receive") {                    /* Seller's gloebit account can not receive gloebits */
+                } else if (status == "cannot-receive") {                    /* Seller's Gloebit account can not receive gloebits */
                     // TODO: Check role in new system.  This is for role=Payee, not role=Application
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYEE_CANNOT_RECEIVE;
                 } else if (status == "unknown-merchant") {                  /* can not identify merchant from params supplied by app */
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED;
-                } else if (reason == "transaction is missing parameters needed to identify gloebit account of seller - supply at least one of seller-email-address or seller-id-from-gloebit.") {
+                } else if (reason == "transaction is missing parameters needed to identify Gloebit account of seller - supply at least one of seller-email-address or seller-id-from-gloebit.") {
                     // TODO: handle this better in the long run
                     stage = TransactionStage.VALIDATE;
                     failure = TransactionFailure.PAYEE_CANNOT_BE_IDENTIFIED;
@@ -794,7 +794,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// Request a new subscription be created by Gloebit for this app.
         /// Subscriptions are required for any recurring, unattended/automated payments that a user will sign up for.
         /// Upon completion of this request, the interface function CreateSubscriptionCompleted will be called with the results.
-        /// If successful, an ID will be created and returnd by Gloebit which should be used for requesting user authorization and
+        /// If successful, an ID will be created and returned by Gloebit which should be used for requesting user authorization and
         /// creating transactions under this subscription code.
         /// </summary>
         /// <param name="subscription">Local GloebitSubscription with the details for this subscription.</param>
@@ -888,7 +888,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// Request creation of a pending authorization for an existing subscription for this application.
         /// A subscription authorization must be created and then approved by the user before a recurring, unattended/automated payment
         /// can be requested for this user by this app.  The authorization is for a single, specific subscription.
-        /// The authorization is not only specific to the Gloebit account linked to this user, but also to the app account by the id of the use ron this app.
+        /// The authorization is not only specific to the Gloebit account linked to this user, but also to the app account by the id of the use on this app.
         /// A subscription for this app must already have been created via CreateSubscription.
         /// Upon completion of this request, the interface function CreateSubscriptionAuthorizationCompleted will be called with the results.
         /// The application does not need to store SubscriptionAuthorizations locally.  A transaction can be submitted without knowledge of an
@@ -956,7 +956,7 @@ namespace Gloebit.GloebitMoneyModule {
                     } else if (status == "duplicate-and-already-approved-by-user") {
                         m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization duplicate request to create subscription - subscription has already been approved by user.");
                     } else if (status == "duplicate-and-previously-declined-by-user") {
-                        m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization SUCCESS & FAILURE - user previously declined authorization -- consider if app should re-request or if that is harrassing user or has Gloebit API reset this automatcially?. status:{0} reason:{1}", status, reason);
+                        m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization SUCCESS & FAILURE - user previously declined authorization -- consider if app should re-request or if that is harassing user or has Gloebit API reset this automatically?. status:{0} reason:{1}", status, reason);
                     }
                     
                     string sPending = responseDataMap["pending"];
@@ -976,7 +976,7 @@ namespace Gloebit.GloebitMoneyModule {
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization FAILED - app has disabled this subscription. status:{0} reason:{1}", status, reason);
                             break;
                         case "duplicate-and-previously-declined-by-user":
-                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization FAILED - user previously declined authorization -- consider if app should re-request or if that is harrassing user. status:{0} reason:{1}", status, reason);
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CreateSubscriptionAuthorization FAILED - user previously declined authorization -- consider if app should re-request or if that is harassing user. status:{0} reason:{1}", status, reason);
                             break;
                         default:
                             switch(reason) {
@@ -1211,15 +1211,15 @@ namespace Gloebit.GloebitMoneyModule {
         {
             BEGIN           = 0,    // Not really a stage.  may not need this
             BUILD           = 100,   // Preparing the transaction locally for submission
-            SUBMIT          = 200,   // Submitting the transaciton to Gloebit via the API Endpoints.
+            SUBMIT          = 200,   // Submitting the transaction to Gloebit via the API Endpoints.
             AUTHENTICATE    = 300,   // Checking OAuth Token included in header
-            VALIDATE        = 400,   // Validating the txn form submitted to Gloebit -- may need to add in somesubscription specific validations
-            QUEUE           = 500,   // Queing the transaction for processing
-            ENACT_GLOEBIT   = 600,   // perfoming Gloebit components of transaction
+            VALIDATE        = 400,   // Validating the txn form submitted to Gloebit -- may need to add in some subscription specific validations
+            QUEUE           = 500,   // Queueing the transaction for processing
+            ENACT_GLOEBIT   = 600,   // performing Gloebit components of transaction
             ENACT_ASSET     = 650,   // performing local components of transaction
             CONSUME_GLOEBIT = 700,   // committing Gloebit components of transaction
             CONSUME_ASSET   = 750,   // committing local components of transaction
-            CANCEL_GLOEBIT  = 800,   // canceling gloebit components of transaction
+            CANCEL_GLOEBIT  = 800,   // canceling Gloebit components of transaction
             CANCEL_ASSET    = 850,   // canceling local components of transaction
             COMPLETE        = 1000,  // Not really a stage.  May not need this.  Once local asset is consumed, we are complete.
         }
