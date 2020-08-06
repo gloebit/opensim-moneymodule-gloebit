@@ -63,6 +63,8 @@
  * this file will likely require major modification or replacement.
  */
 
+#define NEWHTTPFLOW
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -547,7 +549,9 @@ namespace Gloebit.GloebitMoneyModule
         // Helper funciton used in AddRegion for post 0.9.2.0 XML RPC Handlers 
         public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
         {
+#if NEWHTTPFLOW
             MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+#endif
         }
 
         public void AddRegion(Scene scene)
@@ -598,8 +602,10 @@ namespace Gloebit.GloebitMoneyModule
                             m_rpcHandlers.Add("buyCurrency", buy_func);
                             m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func);
                             m_rpcHandlers.Add("buyLandPrep", landBuy_func);
+#if NEWHTTPFLOW
                             MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
                             MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
+#endif
                         } else {
                             httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
                             httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
