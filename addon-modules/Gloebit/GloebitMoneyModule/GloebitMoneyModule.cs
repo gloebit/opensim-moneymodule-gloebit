@@ -547,7 +547,10 @@ namespace Gloebit.GloebitMoneyModule
         // Helper funciton used in AddRegion for post 0.9.2.0 XML RPC Handlers 
         public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
         {
-            MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+            if (m_newHTTPFlow == true)
+            {
+                MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+            }
         }
 
         public void AddRegion(Scene scene)
