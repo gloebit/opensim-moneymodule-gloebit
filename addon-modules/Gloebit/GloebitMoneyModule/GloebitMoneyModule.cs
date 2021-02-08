@@ -3406,6 +3406,9 @@ namespace Gloebit.GloebitMoneyModule
 
             ret.Value = retparam;
 
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] preflightBuyLandPrep_func return {0}", ret.ToString());
+
             return ret;
         }
 
@@ -3421,6 +3424,9 @@ namespace Gloebit.GloebitMoneyModule
 
             retparam.Add("success", true);
             ret.Value = retparam;
+			
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] landBuy_func return {0}", ret.ToString());
 
             return ret;
         }
