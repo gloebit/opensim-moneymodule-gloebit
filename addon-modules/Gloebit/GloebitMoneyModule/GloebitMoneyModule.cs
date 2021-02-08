@@ -153,6 +153,8 @@ namespace Gloebit.GloebitMoneyModule
         private bool m_forceNewLandPassFlow = false;
         private bool m_forceNewHTTPFlow = false;
         
+        private bool m_Debug = false;
+        
         // Populated from grid info
         private string m_gridnick = "unknown_grid";
         private string m_gridname = "unknown_grid_name";
@@ -437,6 +439,8 @@ namespace Gloebit.GloebitMoneyModule
                 // Currently not documented because last resort if all version checking fails
                 m_forceNewLandPassFlow = config.GetBoolean("GLBNewLandPassFlow", false);
                 m_forceNewHTTPFlow = config.GetBoolean("GLBNewHTTPFlow", false);
+                // Hidden from ini
+                m_Debug = config.GetBoolean("GLBDebug", false);
                 // Are we using custom db connection info
                 m_dbProvider = config.GetString("GLBSpecificStorageProvider");
                 m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
@@ -3091,7 +3095,8 @@ namespace Gloebit.GloebitMoneyModule
         /// </param>
         private void ProcessLandBuy(Object osender, EventManager.LandBuyArgs e)
         {
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] ProcessLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ProcessLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
             
             if (e.economyValidated == false) {  /* first time through */
                 if (!e.landValidated) {
