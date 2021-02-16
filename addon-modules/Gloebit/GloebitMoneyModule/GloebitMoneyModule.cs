@@ -441,6 +441,7 @@ namespace Gloebit.GloebitMoneyModule
                 m_forceNewHTTPFlow = config.GetBoolean("GLBNewHTTPFlow", false);
                 // Hidden from ini
                 m_Debug = config.GetBoolean("GLBDebug", false);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Debug enabled!");
                 // Are we using custom db connection info
                 m_dbProvider = config.GetString("GLBSpecificStorageProvider");
                 m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
