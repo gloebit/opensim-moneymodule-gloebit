@@ -63,8 +63,6 @@
  * this file will likely require major modification or replacement.
  */
 
-#define NEWHTTPFLOW
-
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -154,6 +152,8 @@ namespace Gloebit.GloebitMoneyModule
         private bool m_showWelcomeMessage = true;
         private bool m_forceNewLandPassFlow = false;
         private bool m_forceNewHTTPFlow = false;
+        
+        private bool m_Debug = false;
         
         // Populated from grid info
         private string m_gridnick = "unknown_grid";
@@ -439,6 +439,9 @@ namespace Gloebit.GloebitMoneyModule
                 // Currently not documented because last resort if all version checking fails
                 m_forceNewLandPassFlow = config.GetBoolean("GLBNewLandPassFlow", false);
                 m_forceNewHTTPFlow = config.GetBoolean("GLBNewHTTPFlow", false);
+                // Hidden from ini
+                m_Debug = config.GetBoolean("GLBDebug", false);
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] Debug enabled!");
                 // Are we using custom db connection info
                 m_dbProvider = config.GetString("GLBSpecificStorageProvider");
                 m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
@@ -549,9 +552,10 @@ namespace Gloebit.GloebitMoneyModule
         // Helper funciton used in AddRegion for post 0.9.2.0 XML RPC Handlers 
         public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
         {
-#if NEWHTTPFLOW
-            MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
-#endif
+            if (m_newHTTPFlow == true)
+            {
+                MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+            }
         }
 
         public void AddRegion(Scene scene)
@@ -602,10 +606,8 @@ namespace Gloebit.GloebitMoneyModule
                             m_rpcHandlers.Add("buyCurrency", buy_func);
                             m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func);
                             m_rpcHandlers.Add("buyLandPrep", landBuy_func);
-#if NEWHTTPFLOW
                             MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
                             MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
-#endif
                         } else {
                             httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
                             httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
@@ -3046,7 +3048,8 @@ namespace Gloebit.GloebitMoneyModule
         /// </param>
         private void ValidateLandBuy(Object osender, EventManager.LandBuyArgs e)
         {
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] ValidateLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ValidateLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
             
             if (e.economyValidated == false) {  /* Don't reValidate if something has said it's ready to go. */
                 if (e.parcelPrice == 0) {
@@ -3094,7 +3097,8 @@ namespace Gloebit.GloebitMoneyModule
         /// </param>
         private void ProcessLandBuy(Object osender, EventManager.LandBuyArgs e)
         {
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] ProcessLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ProcessLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
             
             if (e.economyValidated == false) {  /* first time through */
                 if (!e.landValidated) {
@@ -3352,7 +3356,8 @@ namespace Gloebit.GloebitMoneyModule
             string secureSessionId = requestData["secureSessionId"] as string;
 
             // currencyBuy:viewerMinorVersion:secureSessionId:viewerBuildVersion:estimatedCost:confirm:agentId:viewerPatchVersion:viewerMajorVersion:viewerChannel:language
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
             m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
                 agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
 
@@ -3402,6 +3407,9 @@ namespace Gloebit.GloebitMoneyModule
 
             ret.Value = retparam;
 
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] preflightBuyLandPrep_func return {0}", ret.ToString());
+
             return ret;
         }
 
@@ -3417,6 +3425,9 @@ namespace Gloebit.GloebitMoneyModule
 
             retparam.Add("success", true);
             ret.Value = retparam;
+			
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] landBuy_func return {0}", ret.ToString());
 
             return ret;
         }
