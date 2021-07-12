@@ -441,7 +441,8 @@ namespace Gloebit.GloebitMoneyModule
                 m_forceNewHTTPFlow = config.GetBoolean("GLBNewHTTPFlow", false);
                 // Hidden from ini
                 m_Debug = config.GetBoolean("GLBDebug", false);
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] Debug enabled!");
+                if (m_Debug)
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Debug enabled!",);
                 // Are we using custom db connection info
                 m_dbProvider = config.GetString("GLBSpecificStorageProvider");
                 m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
@@ -552,6 +553,9 @@ namespace Gloebit.GloebitMoneyModule
         // Helper funciton used in AddRegion for post 0.9.2.0 XML RPC Handlers 
         public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
         {
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] received XML RPC request");
+
             if (m_newHTTPFlow == true)
             {
                 MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
