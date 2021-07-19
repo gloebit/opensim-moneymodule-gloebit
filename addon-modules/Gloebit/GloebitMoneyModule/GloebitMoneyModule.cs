@@ -605,6 +605,7 @@ namespace Gloebit.GloebitMoneyModule
                         // Post version 0.9.2.0 the httpserver changed requiring different approach to the preflights
                         if (m_newHTTPFlow == true)
                         {
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] registering SimpleStreamHandlers...");
                             m_rpcHandlers = new Dictionary<string, XmlRpcMethod>();
                             m_rpcHandlers.Add("getCurrencyQuote", quote_func);
                             m_rpcHandlers.Add("buyCurrency", buy_func);
@@ -613,6 +614,7 @@ namespace Gloebit.GloebitMoneyModule
                             MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
                             MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
                         } else {
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] registering XMLRPCHandlers...");
                             httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
                             httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
                             httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
