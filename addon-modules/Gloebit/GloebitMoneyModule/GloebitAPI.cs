@@ -568,8 +568,8 @@ namespace Gloebit.GloebitMoneyModule {
             transact_params["transaction-id"] = txn.TransactionID.ToString();
             
             // TODO: make payerID required in all txns and move to base params section
-            transact_params["buyer-id-on-application"] = txn.PayerID;
-            transact_params["app-user-id"] = senderGloebitID;
+            transact_params["buyer-id-on-application"] = txn.PayerID.ToString();
+            transact_params["app-user-id"] = senderGloebitID.ToString();
             
             /***** Asset Params *****/
             // TODO: should only build this if asset, not product txn.  u2u txn probably has to be asset.
@@ -605,7 +605,7 @@ namespace Gloebit.GloebitMoneyModule {
             /***** Subscription Params *****/
             if (txn.IsSubscriptionDebit) {
                 transact_params["automated-transaction"] = true;
-                transact_params["subscription-id"] = txn.SubscriptionID;
+                transact_params["subscription-id"] = txn.SubscriptionID.ToString();
             }
             
         }
@@ -621,9 +621,9 @@ namespace Gloebit.GloebitMoneyModule {
         {
             /***** U2U specific transact params *****/
             transact_params["seller-name-on-application"] = txn.PayeeName;
-            transact_params["seller-id-on-application"] = txn.PayeeID;
-            if (!String.IsNullOrEmpty(recipientGloebitID) && recipientGloebitID != UUID.Zero.ToString()) {
-                transact_params["seller-id-from-gloebit"] = recipientGloebitID;
+            transact_params["seller-id-on-application"] = txn.PayeeID.ToString();
+            if (!String.IsNullOrEmpty(recipientGloebitID) && recipientGloebitID.ToString() != UUID.Zero.ToString()) {
+                transact_params["seller-id-from-gloebit"] = recipientGloebitID.ToString();
             }
             if (!String.IsNullOrEmpty(recipientEmail)) {
                 transact_params["seller-email-address"] = recipientEmail;
