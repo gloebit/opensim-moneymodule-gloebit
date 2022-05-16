@@ -1741,14 +1741,16 @@ namespace Gloebit.GloebitMoneyModule
                     // 5008 - OnMoneyTransfer - Pay Object
                     // need to alert the object that it has been paid.
                     ObjectPaid handleObjectPaid = OnObjectPaid;
-                    if(handleObjectPaid != null) {
+                    if (handleObjectPaid != null) {
                         SceneObjectPart prim = findPrim(txn.PartID);
-                        if (prim.payeeList.Contains(txn.PayerID))
+                        if (prim.payeeList.Contains(txn.PayerID) || prim.payeeList.Count == 0)
                             handleObjectPaid(txn.PartID, txn.PayerID, txn.Amount);
                         else
+                        {
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold - Payer not in object allowed payer list");
                             returnMsg = String.Format("Asset enact failed: Payer not in object allowed payer list");
                             return false;
+                        }
                         // This doesn't provide a return or ability to query state, so we assume success
                     } else {
                         // This really shouldn't happen, as it would mean that the OpenSim region is not properly set up
