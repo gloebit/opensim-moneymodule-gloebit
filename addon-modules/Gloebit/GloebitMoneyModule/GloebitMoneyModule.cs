@@ -1747,6 +1747,7 @@ namespace Gloebit.GloebitMoneyModule
                             handleObjectPaid(txn.PartID, txn.PayerID, txn.Amount);
                         else
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold - Payer not in object allowed payer list");
+                            return false;
                         // This doesn't provide a return or ability to query state, so we assume success
                     } else {
                         // This really shouldn't happen, as it would mean that the OpenSim region is not properly set up
