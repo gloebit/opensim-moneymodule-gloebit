@@ -23,7 +23,7 @@ using System.Data.SqlTypes;
 using System.Reflection;
 using System.Xml;
 using log4net;
-using MySql.Data.MySqlClient;
+using MySqlConnector;
 using Nini.Config;
 using OpenSim.Data.MySQL;
 using OpenSim.Data.PGSQL;
@@ -138,7 +138,7 @@ namespace Gloebit.GloebitMoneyModule
 
                         cmd.CommandText = query;
 
-                        if (ExecuteNonQuery(cmd) > 0)
+                        if (cmd.ExecuteNonQuery() > 0)
                             return true;
 
                         return false;
