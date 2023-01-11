@@ -1,5 +1,5 @@
 <?xml version="1.0" ?>
-<Project frameworkVersion="v4_6_1" name="Gloebit" path="addon-modules/Gloebit/GloebitMoneyModule" type="Library">
+<Project frameworkVersion="v4_6" name="Gloebit" path="addon-modules/Gloebit/GloebitMoneyModule" type="Library">
   <Configuration name="Debug">
     <Options>
       <OutputPath>../../../bin/</OutputPath>
@@ -21,7 +21,7 @@
   <Reference name="OpenMetaverse.StructuredData" path="../../../bin/"/>
   <Reference name="Nini" path="../../../bin/"/>
   <Reference name="log4net" path="../../../bin/"/>
-  <Reference name="MySqlConnector" path="../../../bin/"/>
+  <Reference name="MySql.Data" path="../../../bin/"/>
   <Reference name="OpenSim.Data"/>
   <Reference name="OpenSim.Data.MySQL"/>
   <Reference name="OpenSim.Data.PGSQL"/>

@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Reflection;
 using System.Text;
-using MySqlConnector;
+using MySql.Data.MySqlClient;
 using Nini.Config;
 using OpenSim.Data.MySQL;
 using OpenSim.Data.PGSQL;

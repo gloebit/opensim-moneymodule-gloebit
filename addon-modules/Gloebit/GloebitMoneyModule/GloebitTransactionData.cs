@@ -23,7 +23,7 @@ using System.Data.SqlTypes;
 using System.Reflection;
 using System.Xml;
 using log4net;
-using MySqlConnector;
+using MySql.Data.MySqlClient;
 using Nini.Config;
 using OpenSim.Data.MySQL;
 using OpenSim.Data.PGSQL;
