@@ -97,7 +97,8 @@ namespace Gloebit.GloebitMoneyModule
 
                 try
                 {
-                
+
+                    using (MySqlConnection conn = new MySqlConnection(m_connectionString))
                     using (MySqlCommand cmd = new MySqlCommand())
                     {
                         string query = "";
@@ -136,7 +137,10 @@ namespace Gloebit.GloebitMoneyModule
 
                         query = String.Format("replace into {0} (`", m_Realm) + String.Join("`,`", names.ToArray()) + "`) values (" + String.Join(",", values.ToArray()) + ")";
 
-                        cmd.CommandText = query;
+                        // Execute query
+                        cmd.Connection = conn;
+                        cmd.CommandText = query.ToString();
+                        conn.Open();
 
                         if (cmd.ExecuteNonQuery() > 0)
                             return true;

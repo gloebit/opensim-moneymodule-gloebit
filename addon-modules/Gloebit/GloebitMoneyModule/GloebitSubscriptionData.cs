@@ -96,18 +96,19 @@ namespace Gloebit.GloebitMoneyModule
             public override bool Store(GloebitSubscription subscription)
             {
                 //            m_log.DebugFormat("[MYSQL GENERIC TABLE HANDLER]: Store(T row) invoked");
-                
+
+                using (MySqlConnection conn = new MySqlConnection(m_connectionString))
                 using (MySqlCommand cmd = new MySqlCommand())
                 {
                     string query = "";
                     List<String> names = new List<String>();
                     List<String> values = new List<String>();
-                    
+
                     foreach (FieldInfo fi in m_Fields.Values)
                     {
                         names.Add(fi.Name);
                         values.Add("?" + fi.Name);
-                        
+
                         // Temporarily return more information about what field is unexpectedly null for
                         // http://opensimulator.org/mantis/view.php?id=5403.  This might be due to a bug in the
                         // InventoryTransferModule or we may be required to substitute a DBNull here.
@@ -116,10 +117,10 @@ namespace Gloebit.GloebitMoneyModule
                                                              string.Format(
                                                                            "[MYSQL GENERIC TABLE HANDLER]: Trying to store field {0} for {1} which is unexpectedly null",
                                                                            fi.Name, asset));*/
-                        
+
                         cmd.Parameters.AddWithValue(fi.Name, fi.GetValue(subscription));
                     }
-                    
+
                     /*if (m_DataField != null)
                     {
                         Dictionary<string, string> data =
@@ -132,14 +133,17 @@ namespace Gloebit.GloebitMoneyModule
                             cmd.Parameters.AddWithValue("?" + kvp.Key, kvp.Value);
                         }
                     }*/
-                    
+
                     query = String.Format("replace into {0} (`", m_Realm) + String.Join("`,`", names.ToArray()) + "`) values (" + String.Join(",", values.ToArray()) + ")";
-                    
-                    cmd.CommandText = query;
-                    
+
+                    // Execute query
+                    cmd.Connection = conn;
+                    cmd.CommandText = query.ToString();
+                    conn.Open();
+
                     if (cmd.ExecuteNonQuery() > 0)
                         return true;
-                    
+
                     return false;
                 }
             }
