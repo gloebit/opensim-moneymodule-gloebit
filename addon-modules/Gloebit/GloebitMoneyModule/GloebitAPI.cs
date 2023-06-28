@@ -251,7 +251,7 @@ namespace Gloebit.GloebitMoneyModule {
 
             //************ PARSE AND HANDLE GET BALANCE RESPONSE *********//
 
-            HttpWebResponse response;
+            HttpWebResponse response = null;
             try
             {
                 response = (HttpWebResponse)request.GetResponse();
@@ -259,7 +259,7 @@ namespace Gloebit.GloebitMoneyModule {
             catch (Exception e)
             {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance could not get response {0}", e.Message);
-                response = null;
+                return -999999999;
             }
 
             if (response != null)
@@ -299,7 +299,7 @@ namespace Gloebit.GloebitMoneyModule {
                     }
                 }
             }
-            return 0.0;
+            return -999999999;
         }
         
         // ******* GLOEBIT TRANSACT ENDPOINTS ********* //
