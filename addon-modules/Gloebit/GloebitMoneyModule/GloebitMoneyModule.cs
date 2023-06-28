@@ -1388,6 +1388,12 @@ namespace Gloebit.GloebitMoneyModule
                 client.SendAlertMessage(e.Message + " ");
             }
 
+            if (realBal.Equals(-999999999))
+            {
+                client.SendAlertMessage("Unable to fetch Gloebit balance at this time, please try again later");
+                return 0;
+            }
+
             // Get balance rounded down (may not be int for merchants)
             returnfunds = (int)realBal;
             // NOTE: if updating as part of a transaction, call SendMoneyBalance directly with transaction information instead of using UpdateBalance
