@@ -248,40 +248,58 @@ namespace Gloebit.GloebitMoneyModule {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance failed to create HttpWebRequest");
                 return 0;
             }
-            
+
             //************ PARSE AND HANDLE GET BALANCE RESPONSE *********//
-            
-            HttpWebResponse response = (HttpWebResponse) request.GetResponse();
-            string status = response.StatusDescription;
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance status:{0}", status);
-            using(StreamReader response_stream = new StreamReader(response.GetResponseStream())) {
-                string response_str = response_stream.ReadToEnd();
 
-                OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance responseData:{0}", responseData.ToString());
-
-                if (responseData["success"]) {
-                    double balance = responseData["balance"].AsReal();
-                    return balance;
-                } else {
-                    string reason = responseData["reason"];
-                    switch(reason) {
-                        case "unknown token1":
-                        case "unknown token2":
-                            // The token is invalid (probably the user revoked our app through the website)
-                            // so force a reauthorization next time.
-                            m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.GetBalance failed - Invalidating Token");
-                            user.InvalidateToken();
-                            invalidatedToken = true;
-                            break;
-                        default:
-                            m_log.ErrorFormat("Unknown error getting balance, reason: '{0}'", reason);
-                            break;
-                    }
-                    return 0.0;
-                }
+            HttpWebResponse response = null;
+            try
+            {
+                response = (HttpWebResponse)request.GetResponse();
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance could not get response {0}", e.Message);
+                return -999999999;
             }
 
+            if (response != null)
+            {
+                string status = response.StatusDescription;
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance status:{0}", status);
+                using (StreamReader response_stream = new StreamReader(response.GetResponseStream()))
+                {
+                    string response_str = response_stream.ReadToEnd();
+
+                    OSDMap responseData = (OSDMap)OSDParser.DeserializeJson(response_str);
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.balance responseData:{0}", responseData.ToString());
+
+                    if (responseData["success"])
+                    {
+                        double balance = responseData["balance"].AsReal();
+                        return balance;
+                    }
+                    else
+                    {
+                        string reason = responseData["reason"];
+                        switch (reason)
+                        {
+                            case "unknown token1":
+                            case "unknown token2":
+                                // The token is invalid (probably the user revoked our app through the website)
+                                // so force a reauthorization next time.
+                                m_log.DebugFormat("[GLOEBITMONEYMODULE] GloebitAPI.GetBalance failed - Invalidating Token");
+                                user.InvalidateToken();
+                                invalidatedToken = true;
+                                break;
+                            default:
+                                m_log.ErrorFormat("Unknown error getting balance, reason: '{0}'", reason);
+                                break;
+                        }
+                        return 0.0;
+                    }
+                }
+            }
+            return -999999999;
         }
         
         // ******* GLOEBIT TRANSACT ENDPOINTS ********* //

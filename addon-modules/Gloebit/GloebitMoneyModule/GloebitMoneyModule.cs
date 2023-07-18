@@ -63,8 +63,6 @@
  * this file will likely require major modification or replacement.
  */
 
-#define NEWHTTPFLOW
-
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -154,6 +152,8 @@ namespace Gloebit.GloebitMoneyModule
         private bool m_showWelcomeMessage = true;
         private bool m_forceNewLandPassFlow = false;
         private bool m_forceNewHTTPFlow = false;
+        
+        private bool m_Debug = false;
         
         // Populated from grid info
         private string m_gridnick = "unknown_grid";
@@ -293,7 +293,90 @@ namespace Gloebit.GloebitMoneyModule
             }
 
             if(m_configured) {
-                InitGloebitAPI();
+                if (!InitGloebitAPI())
+                    m_enabled = false;
+            }
+
+            if (m_enabled)
+            {
+                // Setting to large negative so if not found is not 0
+                int vn1 = -9999;
+                int vn2 = -9999;
+                int vn3 = -9999;
+                int vn4 = -9999;
+                string detectedOSVersion = "unknown";
+                m_opensimVersion = OpenSim.VersionInfo.Version;
+                m_opensimVersionNumber = OpenSim.VersionInfo.VersionNumber;
+                char[] delimiterChars = { '.' };
+                string[] numbers = m_opensimVersionNumber.Split(delimiterChars, System.StringSplitOptions.RemoveEmptyEntries);
+
+                // See if we can parse the string at all
+                try {
+                    vn1 = int.Parse(numbers[0]);
+                    vn2 = int.Parse(numbers[1]);
+                    vn3 = int.Parse(numbers[2]);
+                } catch {
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Unable to parse version information, Gloebit cannot handle unofficial versions");
+                }
+                // Fourth number may not be present on all versions
+                try {
+                    vn4 = int.Parse(numbers[3]);
+                }
+                catch {}
+
+                /*** Version Tests ***/
+                // changes to httpserver which require different workflows >= 0.9.2.0
+                // new land pass flow >= 0.9.1; 0.9.0 releae; 
+
+                if ((vn1 > 0) || (vn2 > 9) || (vn2 == 9 && vn3 >= 2)) {
+                    // Test for version 0.9.2.0 and beyond which contains changes to httpserver and thus needs different workflows also
+                    detectedOSVersion = "=>0.9.2";
+                    m_newLandPassFlow = true;
+                    m_newHTTPFlow = true;
+                } else if ((vn1 == 0) && (vn2 == 9) && (vn3 > 0)) {
+                    // 0.9.1 and beyond are the new land pass flow.
+                    // Note, there are some early versions of 0.9.1 before any release candidate which do not have the new
+                    // flow, but we can't easily determine those and no one should be running those in production.
+                    detectedOSVersion = "=>0.9.1";
+                    m_newLandPassFlow = true;
+                } else if (vn1 == 0 && vn2 == 9 && vn3 == 0) {
+                    // 0.9.0-release pulled in 0.9.1 changes and is new flow, but rest of 0.9.0 is not.
+                    // assume dev on 0.9.0.1, 0.9.0.2 will be new flow
+                    if (vn4 > 0) {
+                        // 0.9.0.1, 0.9.0.2, etc.
+                        detectedOSVersion = "=>0.9.0.1";
+                        m_newLandPassFlow = true;
+                    } else {
+                        // Need to pull version flavour and check it.
+                        // TODO: may need to split on spaces or hyphens and then pull last field because flavour is not friggin public
+                        char[] dChars = { '-', ' ' };
+                        string[] versionParts = m_opensimVersion.Split(dChars, System.StringSplitOptions.RemoveEmptyEntries);
+                        string flavour = versionParts[versionParts.Length - 1];     // TODO: do we every have to worry about this being length 0?
+                        if (flavour == OpenSim.VersionInfo.Flavour.Release.ToString()) {
+                            // 0.9.0 release
+                            detectedOSVersion = "=0.9.0";
+                            m_newLandPassFlow = true;
+                        }
+                    }
+                    // TODO: Unclear if post-fixes is a necessary flavour check yet.
+                } else {
+                    // If all else fails version is unknown
+                    detectedOSVersion = "unknown or earlier than 0.9.0 release";
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Could not confirm recent OpenSim version.  Module may not function! Use config overrides if necessary.\n\tIf >= 0.9.0 release: set GLBNewLandPassFlow to True.\n\tIf >= 0.9.2: set GLBNewHTTPFlow to True");
+                }
+
+                // In case version is unknown or changed by user allow override via config
+                if (m_forceNewHTTPFlow == true) {
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Using new HTTP Flow, set by config");
+                    m_newHTTPFlow = true;
+                }
+                if (m_forceNewLandPassFlow == true) {
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Using new LandPass Flow, set by config");
+                    m_newLandPassFlow = true;
+                }			
+
+                // Provide detailed feedback on which version is detected, for debugging and information
+                m_log.DebugFormat("[GLOEBITMONEYMODULE] OpenSim version {0} present, detected: {1} Using New LandPass Flow: {2} Using New HTTP Flow: {3}", m_opensimVersionNumber.ToString(), detectedOSVersion.ToString(), m_newLandPassFlow.ToString(), m_newHTTPFlow.ToString());
             }
         }
 
@@ -439,6 +522,10 @@ namespace Gloebit.GloebitMoneyModule
                 // Currently not documented because last resort if all version checking fails
                 m_forceNewLandPassFlow = config.GetBoolean("GLBNewLandPassFlow", false);
                 m_forceNewHTTPFlow = config.GetBoolean("GLBNewHTTPFlow", false);
+                // Hidden from ini
+                m_Debug = config.GetBoolean("GLBDebug", false);
+                if (m_Debug)
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] Debug enabled!");
                 // Are we using custom db connection info
                 m_dbProvider = config.GetString("GLBSpecificStorageProvider");
                 m_dbConnectionString = config.GetString("GLBSpecificConnectionString");
@@ -549,9 +636,13 @@ namespace Gloebit.GloebitMoneyModule
         // Helper funciton used in AddRegion for post 0.9.2.0 XML RPC Handlers 
         public void processPHP(IOSHttpRequest request, IOSHttpResponse response)
         {
-#if NEWHTTPFLOW
-            MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
-#endif
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] received XML RPC request");
+
+            if (m_newHTTPFlow == true)
+            {
+                MainServer.Instance.HandleXmlRpcRequests((OSHttpRequest)request, (OSHttpResponse)response, m_rpcHandlers);
+            }
         }
 
         public void AddRegion(Scene scene)
@@ -597,16 +688,16 @@ namespace Gloebit.GloebitMoneyModule
                         // Post version 0.9.2.0 the httpserver changed requiring different approach to the preflights
                         if (m_newHTTPFlow == true)
                         {
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] registering SimpleStreamHandlers...");
                             m_rpcHandlers = new Dictionary<string, XmlRpcMethod>();
                             m_rpcHandlers.Add("getCurrencyQuote", quote_func);
                             m_rpcHandlers.Add("buyCurrency", buy_func);
                             m_rpcHandlers.Add("preflightBuyLandPrep", preflightBuyLandPrep_func);
                             m_rpcHandlers.Add("buyLandPrep", landBuy_func);
-#if NEWHTTPFLOW
                             MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/landtool.php", processPHP));
                             MainServer.Instance.AddSimpleStreamHandler(new SimpleStreamHandler("/currency.php", processPHP));
-#endif
                         } else {
+                            m_log.DebugFormat("[GLOEBITMONEYMODULE] registering XMLRPCHandlers...");
                             httpServer.AddXmlRPCHandler("getCurrencyQuote", quote_func);
                             httpServer.AddXmlRPCHandler("buyCurrency", buy_func);
                             httpServer.AddXmlRPCHandler("preflightBuyLandPrep", preflightBuyLandPrep_func);
@@ -699,84 +790,7 @@ namespace Gloebit.GloebitMoneyModule
         //       instead the capabilities of functions and httpserver should be tested directly to determine which workflows to use
         public void PostInitialise()
         {
-            // Setting to large negative so if not found is not 0
-            int vn1 = -9999;
-            int vn2 = -9999;
-            int vn3 = -9999;
-            int vn4 = -9999;
-            string detectedOSVersion = "unknown";
-            m_opensimVersion = OpenSim.VersionInfo.Version;
-            m_opensimVersionNumber = OpenSim.VersionInfo.VersionNumber;
-            char[] delimiterChars = { '.' };
-            string[] numbers = m_opensimVersionNumber.Split(delimiterChars, System.StringSplitOptions.RemoveEmptyEntries);
-
-            // See if we can parse the string at all
-            try {
-                vn1 = int.Parse(numbers[0]);
-                vn2 = int.Parse(numbers[1]);
-                vn3 = int.Parse(numbers[2]);
-            } catch {
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] Unable to parse version information, Gloebit cannot handle unofficial versions");
-            }
-            // Fourth number may not be present on all versions
-            try {
-                vn4 = int.Parse(numbers[3]);
-            }
-            catch {}
-
-            /*** Version Tests ***/
-            // changes to httpserver which require different workflows >= 0.9.2.0
-            // new land pass flow >= 0.9.1; 0.9.0 releae; 
-
-            if ((vn1 > 0) || (vn2 > 9) || (vn2 == 9 && vn3 >= 2)) {
-                // Test for version 0.9.2.0 and beyond which contains changes to httpserver and thus needs different workflows also
-                detectedOSVersion = "=>0.9.2";
-                m_newLandPassFlow = true;
-                m_newHTTPFlow = true;
-            } else if ((vn1 == 0) && (vn2 == 9) && (vn3 > 0)) {
-                // 0.9.1 and beyond are the new land pass flow.
-                // Note, there are some early versions of 0.9.1 before any release candidate which do not have the new
-                // flow, but we can't easily determine those and no one should be running those in production.
-                detectedOSVersion = "=>0.9.1";
-                m_newLandPassFlow = true;
-            } else if (vn1 == 0 && vn2 == 9 && vn3 == 0) {
-                // 0.9.0-release pulled in 0.9.1 changes and is new flow, but rest of 0.9.0 is not.
-                // assume dev on 0.9.0.1, 0.9.0.2 will be new flow
-                if (vn4 > 0) {
-                    // 0.9.0.1, 0.9.0.2, etc.
-                    detectedOSVersion = "=>0.9.0.1";
-                    m_newLandPassFlow = true;
-                } else {
-                    // Need to pull version flavour and check it.
-                    // TODO: may need to split on spaces or hyphens and then pull last field because flavour is not friggin public
-                    char[] dChars = { '-', ' ' };
-                    string[] versionParts = m_opensimVersion.Split(dChars, System.StringSplitOptions.RemoveEmptyEntries);
-                    string flavour = versionParts[versionParts.Length - 1];     // TODO: do we every have to worry about this being length 0?
-                    if (flavour == OpenSim.VersionInfo.Flavour.Release.ToString()) {
-                        // 0.9.0 release
-                        detectedOSVersion = "=0.9.0";
-                        m_newLandPassFlow = true;
-                    }
-                }
-                // TODO: Unclear if post-fixes is a necessary flavour check yet.
-            } else {
-                // If all else fails version is unknown
-                detectedOSVersion = "unknown or earlier than 0.9.0 release";
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] Could not confirm recent OpenSim version.  Module may not function! Use config overrides if necessary.\n\tIf >= 0.9.0 release: set GLBNewLandPassFlow to True.\n\tIf >= 0.9.2: set GLBNewHTTPFlow to True");
-            }
-
-            // In case version is unknown or changed by user allow override via config
-            if (m_forceNewHTTPFlow == true) {
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] Using new HTTP Flow, set by config");
-                m_newHTTPFlow = true;
-            }
-            if (m_forceNewLandPassFlow == true) {
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] Using new LandPass Flow, set by config");
-                m_newLandPassFlow = true;
-            }			
-
-            // Provide detailed feedback on which version is detected, for debugging and information
-            m_log.DebugFormat("[GLOEBITMONEYMODULE] OpenSim version {0} present, detected: {1} Using New LandPass Flow: {2} Using New HTTP Flow: {3}", m_opensimVersionNumber.ToString(), detectedOSVersion.ToString(), m_newLandPassFlow.ToString(), m_newHTTPFlow.ToString());
+            
         }
         
         #endregion // ISharedRegionModule Interface
@@ -1289,10 +1303,19 @@ namespace Gloebit.GloebitMoneyModule
         /// Define Callback interfaces for async operations, enacting of delivery of assets, and various alerts
         /// Initialize DB connections
         /// </summary>
-        private void InitGloebitAPI()
+        private bool InitGloebitAPI()
         {
             m_log.Info("[GLOEBITMONEYMODULE] Initializing Gloebit API");
-            m_apiW = new GloebitAPIWrapper(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), m_dbProvider, m_dbConnectionString, this, this, this, this, this, this);
+            try
+            {
+                m_apiW = new GloebitAPIWrapper(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), m_dbProvider, m_dbConnectionString, this, this, this, this, this, this);
+                return true;
+            }
+            catch
+            {
+                m_log.Error("[GLOEBITMONEYMODULE] Encountered issues with database connection, disabling");
+                return false;
+            }
         }
 
         private void RegisterGloebitWebhooks(IHttpServer httpServer)
@@ -1363,6 +1386,12 @@ namespace Gloebit.GloebitMoneyModule
             {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] UpdateBalance Failure, Exception:{0} \n\nE:{1}", e.Message, e);
                 client.SendAlertMessage(e.Message + " ");
+            }
+
+            if (realBal.Equals(-999999999))
+            {
+                client.SendAlertMessage("Unable to fetch Gloebit balance at this time, please try again later");
+                return 0;
             }
 
             // Get balance rounded down (may not be int for merchants)
@@ -1730,8 +1759,16 @@ namespace Gloebit.GloebitMoneyModule
                     // 5008 - OnMoneyTransfer - Pay Object
                     // need to alert the object that it has been paid.
                     ObjectPaid handleObjectPaid = OnObjectPaid;
-                    if(handleObjectPaid != null) {
-                        handleObjectPaid(txn.PartID, txn.PayerID, txn.Amount);
+                    if (handleObjectPaid != null) {
+                        SceneObjectPart prim = findPrim(txn.PartID);
+                        if (prim.payeeList.Contains(txn.PayerID) || prim.payeeList.Count == 0)
+                            handleObjectPaid(txn.PartID, txn.PayerID, txn.Amount);
+                        else
+                        {
+                            m_log.ErrorFormat("[GLOEBITMONEYMODULE].processAssetEnactHold - Payer not in object allowed payer list");
+                            returnMsg = String.Format("Asset enact failed: Payer not in object allowed payer list");
+                            return false;
+                        }
                         // This doesn't provide a return or ability to query state, so we assume success
                     } else {
                         // This really shouldn't happen, as it would mean that the OpenSim region is not properly set up
@@ -3046,7 +3083,8 @@ namespace Gloebit.GloebitMoneyModule
         /// </param>
         private void ValidateLandBuy(Object osender, EventManager.LandBuyArgs e)
         {
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] ValidateLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ValidateLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
             
             if (e.economyValidated == false) {  /* Don't reValidate if something has said it's ready to go. */
                 if (e.parcelPrice == 0) {
@@ -3094,7 +3132,8 @@ namespace Gloebit.GloebitMoneyModule
         /// </param>
         private void ProcessLandBuy(Object osender, EventManager.LandBuyArgs e)
         {
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] ProcessLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] ProcessLandBuy osender: {0}\nLandBuyArgs: \n   agentId:{1}\n   groupId:{2}\n   parcelOwnerID:{3}\n   final:{4}\n   groupOwned:{5}\n   removeContribution:{6}\n   parcelLocalID:{7}\n   parcelArea:{8}\n   parcelPrice:{9}\n   authenticated:{10}\n   landValidated:{11}\n   economyValidated:{12}\n   transactionID:{13}\n   amountDebited:{14}", osender, e.agentId, e.groupId, e.parcelOwnerID, e.final, e.groupOwned, e.removeContribution, e.parcelLocalID, e.parcelArea, e.parcelPrice, e.authenticated, e.landValidated, e.economyValidated, e.transactionID, e.amountDebited);
             
             if (e.economyValidated == false) {  /* first time through */
                 if (!e.landValidated) {
@@ -3352,7 +3391,8 @@ namespace Gloebit.GloebitMoneyModule
             string secureSessionId = requestData["secureSessionId"] as string;
 
             // currencyBuy:viewerMinorVersion:secureSessionId:viewerBuildVersion:estimatedCost:confirm:agentId:viewerPatchVersion:viewerMajorVersion:viewerChannel:language
-            // m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
             m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
                 agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
 
@@ -3402,6 +3442,9 @@ namespace Gloebit.GloebitMoneyModule
 
             ret.Value = retparam;
 
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] preflightBuyLandPrep_func return {0}", ret.ToString());
+
             return ret;
         }
 
@@ -3417,6 +3460,9 @@ namespace Gloebit.GloebitMoneyModule
 
             retparam.Add("success", true);
             ret.Value = retparam;
+			
+            if (m_Debug)
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] landBuy_func return {0}", ret.ToString());
 
             return ret;
         }
