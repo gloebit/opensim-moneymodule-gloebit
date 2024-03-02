@@ -1,5 +1,5 @@
 <?xml version="1.0" ?>
-<Project frameworkVersion="v4_6" name="Gloebit" path="addon-modules/Gloebit/GloebitMoneyModule" type="Library">
+<Project name="Gloebit" path="addon-modules/Gloebit/GloebitMoneyModule" type="Library" version="0.5.0-$Rev$" frameworkVersion="net6_0">
   <Configuration name="Debug">
     <Options>
       <OutputPath>../../../bin/</OutputPath>
