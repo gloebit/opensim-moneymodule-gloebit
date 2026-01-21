@@ -1311,9 +1311,9 @@ namespace Gloebit.GloebitMoneyModule
                 m_apiW = new GloebitAPIWrapper(m_key, m_keyAlias, m_secret, new Uri(m_apiUrl), m_dbProvider, m_dbConnectionString, this, this, this, this, this, this);
                 return true;
             }
-            catch
+            catch (Exception e)
             {
-                m_log.Error("[GLOEBITMONEYMODULE] Encountered issues with database connection, disabling");
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] Encountered issues with database connection, disabling\n{0}", e.ToString());
                 return false;
             }
         }
