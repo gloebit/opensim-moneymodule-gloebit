@@ -7,9 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       opensim_versions:
-        description: 'Comma-separated OpenSim tags to build against (e.g. 0.9.3.0Dev,0.9.3.1Dev)'
+        description: 'Comma-separated OpenSim refs to build against'
         required: false
         default: '0.9.3.0,0.9.3.1Dev'
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
   matrix-setup:
@@ -30,6 +34,7 @@ jobs:
   build:
     needs: matrix-setup
     strategy:
+      fail-fast: false
       matrix:
         opensim_version: ${{ fromJson(needs.matrix-setup.outputs.opensim_versions) }}
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -45,12 +50,27 @@ jobs:
           ref: ${{ matrix.opensim_version }}
           path: opensim
 
-      - name: Setup .NET
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
             6.0.x
             8.0.x
+
+      - name: Install libgdiplus (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgdiplus
+
+      - name: Install libgdiplus (macOS)
+        if: runner.os == 'macOS'
+        run: brew install mono-libgdiplus
+
+      - name: Pin .NET 8 SDK for build
+        working-directory: opensim
+        shell: bash
+        run: |
+          # Ensure we use .NET 8 SDK, not whatever else is installed
+          echo '{"sdk":{"version":"8.0.0","rollForward":"latestFeature"}}' > global.json
 
       - name: Copy Gloebit module into OpenSim
         shell: bash
@@ -115,7 +135,7 @@ jobs:
           body: |
             Gloebit Money Module DLLs for OpenSim 0.9.3.x (.NET 8)
 
-            Built against OpenSim branches/tags: 0.9.3.0, 0.9.3.1Dev
+            Built against OpenSim: 0.9.3.0, 0.9.3.1Dev
             Platforms: Linux, Windows, macOS
 
             ## Installation
