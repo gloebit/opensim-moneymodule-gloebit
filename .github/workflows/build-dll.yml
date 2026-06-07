@@ -1,0 +1,126 @@
+name: Build Gloebit DLL
+
+on:
+  push:
+    tags:
+      - 'build-*'
+  workflow_dispatch:
+    inputs:
+      opensim_versions:
+        description: 'Comma-separated OpenSim tags to build against (e.g. 0.9.3.0Dev,0.9.3.1Dev)'
+        required: false
+        default: '0.9.3.0Dev,0.9.3.1Dev'
+
+jobs:
+  matrix-setup:
+    runs-on: ubuntu-latest
+    outputs:
+      opensim_versions: ${{ steps.set-matrix.outputs.versions }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSIONS="${{ github.event.inputs.opensim_versions }}"
+          else
+            VERSIONS="0.9.3.0Dev,0.9.3.1Dev"
+          fi
+          JSON=$(echo "$VERSIONS" | jq -R -c 'split(",")')
+          echo "versions=$JSON" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: matrix-setup
+    strategy:
+      matrix:
+        opensim_version: ${{ fromJson(needs.matrix-setup.outputs.opensim_versions) }}
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Gloebit module
+        uses: actions/checkout@v4
+
+      - name: Checkout OpenSim
+        uses: actions/checkout@v4
+        with:
+          repository: opensim/opensim
+          ref: ${{ matrix.opensim_version }}
+          path: opensim
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Copy Gloebit module into OpenSim
+        shell: bash
+        run: cp -r addon-modules/Gloebit opensim/addon-modules/
+
+      - name: Run prebuild
+        working-directory: opensim
+        shell: bash
+        run: dotnet bin/prebuild.dll /target vs2022 /file prebuild.xml
+
+      - name: Build
+        working-directory: opensim
+        run: dotnet build --configuration Release OpenSim.sln
+
+      - name: Get build info
+        id: info
+        shell: bash
+        run: |
+          GLOEBIT_HASH=$(git rev-parse --short HEAD)
+          OPENSIM_HASH=$(cd opensim && git rev-parse --short HEAD)
+          DATE=$(date +%Y-%m-%d)
+          OS_SHORT="${{ matrix.os }}"
+          OS_SHORT="${OS_SHORT/ubuntu-latest/linux}"
+          OS_SHORT="${OS_SHORT/windows-latest/windows}"
+          OS_SHORT="${OS_SHORT/macos-latest/macos}"
+          DLL_NAME="Gloebit--${{ matrix.opensim_version }}--${OS_SHORT}--${DATE}--${GLOEBIT_HASH}.dll"
+          echo "dll_name=$DLL_NAME" >> "$GITHUB_OUTPUT"
+          echo "os_short=$OS_SHORT" >> "$GITHUB_OUTPUT"
+
+      - name: Rename and upload DLL
+        shell: bash
+        run: |
+          cp opensim/bin/Gloebit.dll "${{ steps.info.outputs.dll_name }}"
+          echo "Built: ${{ steps.info.outputs.dll_name }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gloebit-${{ matrix.opensim_version }}-${{ steps.info.outputs.os_short }}
+          path: ${{ steps.info.outputs.dll_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/build-')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dlls
+          merge-multiple: true
+
+      - name: List DLLs
+        run: find dlls -name "*.dll" -type f | sort
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: |
+            Gloebit Money Module DLLs for OpenSim 0.9.3.x (.NET 8)
+
+            Built against OpenSim tags: 0.9.3.0Dev, 0.9.3.1Dev
+            Platforms: Linux, Windows, macOS
+
+            ## Installation
+            1. Download the DLL matching your OpenSim version and platform
+            2. Copy to your OpenSim `bin/` directory
+            3. Configure per [instructions](http://dev.gloebit.com/opensim/configuration-instructions/)
+
+            If your exact version isn't listed, try the closest match or [build from source](https://github.com/gloebit/opensim-moneymodule-gloebit).
+          files: dlls/*
+          fail_on_unmatched_files: false
