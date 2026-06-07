@@ -69,10 +69,15 @@ jobs:
         shell: bash
         run: cp -r addon-modules/Gloebit opensim/addon-modules/
 
-      - name: Pin SDK to .NET 8 for build
+      - name: Setup System.Drawing.Common
         working-directory: opensim
         shell: bash
-        run: echo '{"sdk":{"version":"8.0.100","rollForward":"latestFeature","allowPrerelease":false}}' > global.json
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp bin/System.Drawing.Common.dll.win bin/System.Drawing.Common.dll
+          else
+            cp bin/System.Drawing.Common.dll.linux bin/System.Drawing.Common.dll
+          fi
 
       - name: Run prebuild
         working-directory: opensim
