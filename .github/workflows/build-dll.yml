@@ -79,12 +79,26 @@ jobs:
             cp bin/System.Drawing.Common.dll.linux bin/System.Drawing.Common.dll
           fi
 
-      - name: Run prebuild
+      - name: Run prebuild (Windows)
+        if: runner.os == 'Windows'
+        working-directory: opensim
+        shell: cmd
+        run: dotnet bin\prebuild.dll /target vs2022 /file prebuild.xml
+
+      - name: Run prebuild (Linux/macOS)
+        if: runner.os != 'Windows'
         working-directory: opensim
         shell: bash
         run: dotnet bin/prebuild.dll /target vs2022 /file prebuild.xml
 
-      - name: Build
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        working-directory: opensim
+        shell: cmd
+        run: dotnet build --configuration Release OpenSim.sln
+
+      - name: Build (Linux/macOS)
+        if: runner.os != 'Windows'
         working-directory: opensim
         shell: bash
         run: dotnet build --configuration Release OpenSim.sln
