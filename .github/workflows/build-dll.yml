@@ -69,6 +69,11 @@ jobs:
         shell: bash
         run: cp -r addon-modules/Gloebit opensim/addon-modules/
 
+      - name: Pin SDK to .NET 8 for build
+        working-directory: opensim
+        shell: bash
+        run: echo '{"sdk":{"version":"8.0.100","rollForward":"latestFeature","allowPrerelease":false}}' > global.json
+
       - name: Run prebuild
         working-directory: opensim
         shell: bash
