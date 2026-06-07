@@ -86,6 +86,7 @@ jobs:
 
       - name: Build
         working-directory: opensim
+        shell: bash
         run: dotnet build --configuration Release OpenSim.sln
 
       - name: Get build info
