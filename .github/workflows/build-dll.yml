@@ -65,13 +65,6 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install mono-libgdiplus
 
-      - name: Pin .NET 8 SDK for build
-        working-directory: opensim
-        shell: bash
-        run: |
-          # Ensure we use .NET 8 SDK, not whatever else is installed
-          echo '{"sdk":{"version":"8.0.0","rollForward":"latestFeature"}}' > global.json
-
       - name: Copy Gloebit module into OpenSim
         shell: bash
         run: cp -r addon-modules/Gloebit opensim/addon-modules/
