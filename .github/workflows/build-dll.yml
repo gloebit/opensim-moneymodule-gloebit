@@ -9,7 +9,7 @@ on:
       opensim_versions:
         description: 'Comma-separated OpenSim tags to build against (e.g. 0.9.3.0Dev,0.9.3.1Dev)'
         required: false
-        default: '0.9.3.0Dev,0.9.3.1Dev'
+        default: '0.9.3.0,0.9.3.1Dev'
 
 jobs:
   matrix-setup:
@@ -22,7 +22,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSIONS="${{ github.event.inputs.opensim_versions }}"
           else
-            VERSIONS="0.9.3.0Dev,0.9.3.1Dev"
+            VERSIONS="0.9.3.0,0.9.3.1Dev"
           fi
           JSON=$(echo "$VERSIONS" | jq -R -c 'split(",")')
           echo "versions=$JSON" >> "$GITHUB_OUTPUT"
@@ -115,7 +115,7 @@ jobs:
           body: |
             Gloebit Money Module DLLs for OpenSim 0.9.3.x (.NET 8)
 
-            Built against OpenSim tags: 0.9.3.0Dev, 0.9.3.1Dev
+            Built against OpenSim branches/tags: 0.9.3.0, 0.9.3.1Dev
             Platforms: Linux, Windows, macOS
 
             ## Installation
