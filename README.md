@@ -5,17 +5,33 @@ This is a plugin (addon) to enable the Gloebit currency service on an OpenSim gr
 
 
 # How to use this with OpenSim
+
+## OpenSim 0.9.3.x (.NET 8) — New!
+
+Pre-built DLLs for OpenSim 0.9.3.0 and 0.9.3.1 are available for Linux, Windows, and macOS:
+
+**[Download from GitHub Releases](https://github.com/gloebit/opensim-moneymodule-gloebit/releases)**
+
+These builds are compiled against the official OpenSim 0.9.3 source on .NET 8. They have not yet been fully tested in production — please report any issues on the [issue tracker](https://github.com/gloebit/opensim-moneymodule-gloebit/issues). Download the DLL matching your OpenSim version and platform, rename it to `Gloebit.dll`, and copy it to your OpenSim `bin/` directory.
+
+## OpenSim 0.9.2.x and earlier (Mono/.NET 4.x)
+
+Pre-built DLLs for older OpenSim versions are available [here](http://dev.gloebit.com/opensim/downloads/). To build from the last Mono/.NET 4.x compatible source, use the [`pre-net8-last-stable`](https://github.com/gloebit/opensim-moneymodule-gloebit/tree/pre-net8-last-stable) tag.
+
+## Build from source
+
 1. Download or Build the DLL
   * Download\
-    If you don't want to build yourself, you can download the most recent release of the plugin [here](http://dev.gloebit.com/opensim/downloads/).  Download the DLL built for or as close to your version of OpenSim as possible.  If you run into any linking errors, then either the version of OpenSim or your build environment are incompatible with the prebuilt DLLs and you'll need to build it directly against your repository.
+    Download the most recent release of the plugin from [GitHub Releases](https://github.com/gloebit/opensim-moneymodule-gloebit/releases) (0.9.3+) or [dev.gloebit.com](http://dev.gloebit.com/opensim/downloads/) (older versions). Download the DLL built for or as close to your version of OpenSim as possible. If you run into any linking errors, then either the version of OpenSim or your build environment are incompatible with the prebuilt DLLs and you'll need to build it directly against your repository.
   * or Build\
     For the latest features and to ensure compatibility with your system, we recommend building the DLL yourself.
     1. Clone or Download this repository
     2. Copy the Gloebit directory into the addon-modules directory in your OpenSim repository
-    3. Install mono and mono-devel version 5.12 or higher
-    4. Run the OpenSim runprebuild script eg:`. runprebuild.sh`
-    5. Build OpenSim eb:`msbuild` or `nant`
-    6. Check build result should not return error or excessive amounts of warnings(3-5 normally)
+    3. For OpenSim 0.9.3+: Install the .NET 8 SDK
+    4. For OpenSim 0.9.2 and earlier: Install mono and mono-devel version 5.12 or higher
+    5. Run the OpenSim runprebuild script: `./runprebuild.sh` (Linux/macOS) or `runprebuild.bat` (Windows)
+    6. Build: `dotnet build --configuration Release OpenSim.sln` (0.9.3+) or `msbuild`/`nant` (older)
+    7. Check build result should not return error or excessive amounts of warnings (3-5 normally)
 2. Configure the plugin
   * Follow the instructions [here](http://dev.gloebit.com/opensim/configuration-instructions/).
 
