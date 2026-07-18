@@ -16,20 +16,17 @@
     ;; Configure GMM to environment and Gloebit application on that environment to interact with
     ;; see http://dev.gloebit.com/opensim/configuration-instructions/ for more details.
 
-    ;; Environments:
-    ;;      sandbox - connects to sandbox.gloebit.com;  fake/sandboxed payments and gloebits;
-    ;;              https://sandbox.gloebit.com/signup/ - create sandbox account
-    ;;              https://sandbox.gloebit.com/merchant-signup/ - request ability to create apps
-    ;;              https://sandbox.gloebit.com/merchant-tools/ - create app and retrieve Key and Secret
+    ;; Environment:
     ;;      production - connects to www.gloebit.com; real payments and gloebits;
-    ;;              https://www.gloebit.com/signup/ - create production account
+    ;;              https://www.gloebit.com/signup/ - create your account
     ;;              https://www.gloebit.com/merchant-signup/ - request ability to create apps
-    ;;              (requires manual approval on production before gaining access to merchant tools)
+    ;;              (requires manual approval before gaining access to merchant tools)
     ;;              https://www.gloebit.com/merchant-tools/ - create app and retrieve Key and Secret
-    GLBEnvironment = sandbox
+    ;; Note: the separate "sandbox" test environment has been decommissioned; use production.
+    GLBEnvironment = production
 
     ;; Application the GMM on this process will connect to within the environment specified above
-    ;; Fill in GLBKey and GLBSecret with values from app created at https://sandbox.gloebit.com/merchant-tools/
+    ;; Fill in GLBKey and GLBSecret with values from the app you create at https://www.gloebit.com/merchant-tools/
     ;; See http://dev.gloebit.com/opensim/configuration-instructions/ for more details.
     GLBKey = 00000000-0000-0000-0000-000000000000
     GLBSecret = 00000000-0000-0000-0000-000000000000
