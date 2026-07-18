@@ -6,6 +6,15 @@ This is a plugin (addon) to enable the Gloebit currency service on an OpenSim gr
 
 # How to use this with OpenSim
 
+## Easiest ways to enable Gloebit
+
+You may not need to download or build anything:
+
+- **DreamGrid** bundles the Gloebit module — enable it entirely in the GUI: open the **Money** panel, paste your OAuth **Key** and **Secret**, set the environment to production, and restart. No DLL copying or `.ini` editing. See the [DreamGrid Gloebit guide](https://outworldz.com/Outworldz_installer/Help/Gloebit.htm).
+- **Managed OpenSim hosts** (e.g. Zetamex, Dreamland Metaverse, DigiWorldz, YourSimSpot) can enable Gloebit for you — send them your OAuth Key and Secret.
+
+If you self-host or build from source, continue below.
+
 ## OpenSim 0.9.3.x (.NET 8) — New!
 
 Pre-built DLLs for OpenSim 0.9.3.0 and 0.9.3.1 are available for Linux, Windows, and macOS:
