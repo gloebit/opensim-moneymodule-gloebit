@@ -9,7 +9,7 @@ on:
       opensim_versions:
         description: 'Comma-separated OpenSim refs to build against'
         required: false
-        default: '0.9.3.0,0.9.3.1Dev'
+        default: '0.9.3.0,0.9.3.1Dev,master'
 
 env:
   DOTNET_NOLOGO: true
@@ -26,7 +26,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSIONS="${{ github.event.inputs.opensim_versions }}"
           else
-            VERSIONS="0.9.3.0,0.9.3.1Dev"
+            VERSIONS="0.9.3.0,0.9.3.1Dev,master"
           fi
           JSON=$(echo "$VERSIONS" | jq -R -c 'split(",")')
           echo "versions=$JSON" >> "$GITHUB_OUTPUT"
@@ -39,6 +39,9 @@ jobs:
         opensim_version: ${{ fromJson(needs.matrix-setup.outputs.opensim_versions) }}
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    # OpenSim master is an early warning that upstream changes break the module.
+    # Its failure must not block a release, and its DLLs are not released.
+    continue-on-error: ${{ matrix.opensim_version == 'master' }}
     steps:
       - name: Checkout Gloebit module
         uses: actions/checkout@v4
@@ -127,7 +130,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Gloebit-${{ matrix.opensim_version }}-${{ steps.info.outputs.os_short }}
+          name: ${{ matrix.opensim_version == 'master' && 'canary-' || '' }}Gloebit-${{ matrix.opensim_version }}-${{ steps.info.outputs.os_short }}
           path: ${{ steps.info.outputs.dll_name }}
 
   release:
@@ -141,6 +144,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dlls
+          pattern: Gloebit-*
           merge-multiple: true
 
       - name: List DLLs
