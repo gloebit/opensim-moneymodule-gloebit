@@ -276,37 +276,46 @@ namespace Gloebit.GloebitMoneyModule {
                 return false;
             }
 
-            // Call proper state processor
-            switch (stateRequested) {
-            case "enact":
-                result = myTxn.enactHold(assetCallbacks, transactionAlerts, out returnMsg);
-                break;
-            case "consume":
-                result = myTxn.consumeHold(assetCallbacks, transactionAlerts, out returnMsg);
-                if (result) {
-                    lock(s_transactionMap) {
-                        s_transactionMap.Remove(transactionIDstr);
+            // Always release the transaction below, even if a handler throws.  Otherwise every later callback for it
+            // gets "pending", and Gloebit's transaction processor retries it forever.
+            try {
+                // Call proper state processor
+                switch (stateRequested) {
+                case "enact":
+                    result = myTxn.enactHold(assetCallbacks, transactionAlerts, out returnMsg);
+                    break;
+                case "consume":
+                    result = myTxn.consumeHold(assetCallbacks, transactionAlerts, out returnMsg);
+                    if (result) {
+                        lock(s_transactionMap) {
+                            s_transactionMap.Remove(transactionIDstr);
+                        }
                     }
-                }
-                break;
-            case "cancel":
-                result = myTxn.cancelHold(assetCallbacks, transactionAlerts, out returnMsg);
-                if (result) {
-                    lock(s_transactionMap) {
-                        s_transactionMap.Remove(transactionIDstr);
+                    break;
+                case "cancel":
+                    result = myTxn.cancelHold(assetCallbacks, transactionAlerts, out returnMsg);
+                    if (result) {
+                        lock(s_transactionMap) {
+                            s_transactionMap.Remove(transactionIDstr);
+                        }
                     }
+                    break;
+                default:
+                    // no recognized state request
+                    returnMsg = "Unrecognized state request";
+                    result = false;
+                    break;
                 }
-                break;
-            default:
-                // no recognized state request
-                returnMsg = "Unrecognized state request";
+            } catch (Exception e) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitTransaction.ProcessStateRequest {0} failed for transaction {1}: {2}", stateRequested, transactionIDstr, e);
+                // a permanent failure, so the processor settles the transaction instead of retrying it
+                returnMsg = String.Format("{0} failed: {1}", stateRequested, e.Message);
                 result = false;
-                break;
-            }
-
-            // remove from race condition protection
-            lock(s_pendingTransactionMap) {
-                s_pendingTransactionMap.Remove(transactionIDstr);
+            } finally {
+                // remove from race condition protection
+                lock(s_pendingTransactionMap) {
+                    s_pendingTransactionMap.Remove(transactionIDstr);
+                }
             }
             return result;
         }
