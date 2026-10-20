@@ -276,8 +276,9 @@ namespace Gloebit.GloebitMoneyModule {
                 return false;
             }
 
-            // Always release the transaction below, even if a handler throws.  Otherwise every later callback for it
-            // gets "pending", and Gloebit's transaction processor retries it forever.
+            // Always release the transaction, even if a handler throws.  Otherwise every later callback for it gets
+            // "pending" until the region restarts.  A throw still answers 500, which Gloebit retries; the retry
+            // then finds the transaction already enacted or consumed and answers true.
             try {
                 // Call proper state processor
                 switch (stateRequested) {
@@ -306,11 +307,6 @@ namespace Gloebit.GloebitMoneyModule {
                     result = false;
                     break;
                 }
-            } catch (Exception e) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitTransaction.ProcessStateRequest {0} failed for transaction {1}: {2}", stateRequested, transactionIDstr, e);
-                // a permanent failure, so the processor settles the transaction instead of retrying it
-                returnMsg = String.Format("{0} failed: {1}", stateRequested, e.Message);
-                result = false;
             } finally {
                 // remove from race condition protection
                 lock(s_pendingTransactionMap) {
