@@ -165,9 +165,16 @@ namespace Gloebit.GloebitMoneyModule {
 
             UUID parsedAgentId;
             Hashtable response = new Hashtable();
+            if (String.IsNullOrEmpty(code)) {
+                // The user declined on Gloebit (it redirects back with no code or state).
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func: authorization not completed for agent {0}", agentId);
+                response["int_response_code"] = 200;
+                response["str_response_string"] = "<html><head><title>Gloebit authorization not completed</title></head><body><h2>Gloebit authorization was not completed</h2>Your Gloebit account was not linked.  You can close this window, return to OpenSim, and start linking again at any time.</body></html>";
+                response["content_type"] = "text/html";
+                return response;
+            }
             // Only link an agent this region sent to Gloebit, once: anyone can call this endpoint with any agentId.
-            // A redirect without a code (the user declined) doesn't use up the nonce.
-            if (String.IsNullOrEmpty(code) || !UUID.TryParse(agentId, out parsedAgentId) || !m_api.RedeemAuthNonce(agentId, nonce)) {
+            if (!UUID.TryParse(agentId, out parsedAgentId) || !m_api.RedeemAuthNonce(agentId, nonce)) {
                 m_log.WarnFormat("[GLOEBITMONEYMODULE] authComplete_func refused for agent {0}: missing, used or expired nonce", agentId);
                 response["int_response_code"] = 400;
                 response["str_response_string"] = "<html><head><title>Gloebit authorization expired</title></head><body><h2>This authorization link has expired or was already used</h2>Please close this window, return to OpenSim, and start linking your Gloebit account again.</body></html>";
@@ -717,10 +724,7 @@ namespace Gloebit.GloebitMoneyModule {
             bool success = false;
 
             // Only act on a url this module built: anyone can call this endpoint, and the transaction id is not secret.
-            // An unsigned consume is still accepted: it only finalizes a transaction Gloebit already enacted (it is refused
-            // otherwise), and transactions submitted before this version was installed have unsigned urls.
-            bool unsignedConsume = (stateRequested == "consume" && String.IsNullOrEmpty(signature));
-            if (!unsignedConsume && !GloebitCallbackSignature.IsValid(m_secret, transactionIDstr, stateRequested, signature)) {
+            if (!GloebitCallbackSignature.IsValid(m_secret, transactionIDstr, stateRequested, signature)) {
                 m_log.WarnFormat("[GLOEBITMONEYMODULE] transactionState_func refused {0} for transaction {1}: missing or invalid signature", stateRequested, transactionIDstr);
                 returnMsg = "invalid signature";
             } else {
