@@ -39,14 +39,8 @@ namespace Gloebit.GloebitMoneyModule
         public static string Compute(string secret, string transactionID, string state)
         {
             string message = String.Format("gloebit-hold-callback\n{0}\n{1}", transactionID.ToLowerInvariant(), state);
-            using (HMACSHA256 hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret ?? String.Empty))) {
-                byte[] hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(message));
-                StringBuilder hex = new StringBuilder(hash.Length * 2);
-                foreach (byte b in hash) {
-                    hex.Append(b.ToString("x2"));
-                }
-                return hex.ToString();
-            }
+            byte[] hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret ?? String.Empty), Encoding.UTF8.GetBytes(message));
+            return Convert.ToHexString(hash).ToLowerInvariant();
         }
 
         /// <summary>

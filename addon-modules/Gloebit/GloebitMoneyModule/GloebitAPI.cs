@@ -58,7 +58,7 @@ namespace Gloebit.GloebitMoneyModule {
         private string m_secret;
         public readonly Uri m_url;
 
-        // One-time values put in each auth redirect url, so /gloebit/auth_complete only links an agent
+        // One-time values sent as the OAuth state of each auth request (Gloebit echoes it back), so /gloebit/auth_complete only links an agent
         // to a Gloebit account when that agent was sent to Gloebit by this region.  Kept in memory: a region
         // restart only means the user has to start linking again.
         private static readonly TimeSpan AUTH_NONCE_LIFETIME = TimeSpan.FromHours(1);
@@ -126,12 +126,11 @@ namespace Gloebit.GloebitMoneyModule {
         /// Helper function to build the auth redirect callback url consistently everywhere.
         /// <param name="baseURI">The base url where this server's http services can be accessed.</param>
         /// <param name="agentId">The uuid of the agent being authorized.</param>
-        /// <param name="nonce">The one-time value issued for this authorization; see IssueAuthNonce.</param>
         /// </summary>
-        private static Uri BuildAuthCallbackURL(Uri baseURI, string agentId, string nonce) {
+        private static Uri BuildAuthCallbackURL(Uri baseURI, string agentId) {
             UriBuilder redirect_uri = new UriBuilder(baseURI);
             redirect_uri.Path = "gloebit/auth_complete";
-            redirect_uri.Query = String.Format("agentId={0}&nonce={1}", agentId, nonce);
+            redirect_uri.Query = String.Format("agentId={0}", agentId);
             return redirect_uri.Uri;
         }
 
@@ -188,8 +187,9 @@ namespace Gloebit.GloebitMoneyModule {
             }
 
             auth_params["scope"] = "balance transact";
-            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID, IssueAuthNonce(user.PrincipalID)).ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID).ToString();
             auth_params["response_type"] = "code";
+            auth_params["state"] = IssueAuthNonce(user.PrincipalID);
             auth_params["user"] = userName;
             auth_params["uid"] = user.PrincipalID;
 
@@ -216,8 +216,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <returns>The authenticated User object containing the access token necessary for enacting Gloebit functionality on behalf of this user.</returns>
         /// <param name="user">GloebitUser for which this app is asking for permission to enact Gloebit functionality.</param>
         /// <param name="auth_code">Authorization Code returned to the redirect_uri from the Gloebit Authorize endpoint.</param>
-        /// <param name="nonce">The one-time value from the redirect_uri, already redeemed.  Needed to rebuild the redirect_uri exactly.</param>
-        public void ExchangeAccessToken(GloebitUser user, string auth_code, string nonce, Uri baseURI) {
+        public void ExchangeAccessToken(GloebitUser user, string auth_code, Uri baseURI) {
             
             m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.ExchangeAccessToken AgentID:{0}", user.PrincipalID);
             
@@ -231,7 +230,7 @@ namespace Gloebit.GloebitMoneyModule {
             auth_params["code"] = auth_code;
             auth_params["grant_type"] = "authorization_code";
             auth_params["scope"] = "balance transact";
-            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID, nonce).ToString();
+            auth_params["redirect_uri"] = BuildAuthCallbackURL(baseURI, user.PrincipalID).ToString();
             
             HttpWebRequest request = BuildGloebitRequest("oauth2/access-token", "POST", null, "application/x-www-form-urlencoded", auth_params);
             if (request == null) {
@@ -252,7 +251,8 @@ namespace Gloebit.GloebitMoneyModule {
                         string user_id_on_app = responseDataMap["user_id_on_app"];
                         bool success = false;
                         // TODO - do something to handle the "refresh_token" field properly
-                        if(!String.IsNullOrEmpty(token) && !String.Equals(user_id_on_app, user.PrincipalID, StringComparison.OrdinalIgnoreCase)) {
+                        // Gloebit leaves user_id_on_app out when the user had already authorized this agent before.
+                        if(!String.IsNullOrEmpty(token) && !String.IsNullOrEmpty(user_id_on_app) && !String.Equals(user_id_on_app, user.PrincipalID, StringComparison.OrdinalIgnoreCase)) {
                             // The code was granted for a different agent than the one it was returned for: don't link them.
                             success = false;
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken refused: token is for user_id_on_app {0}, not agent {1}", user_id_on_app, user.PrincipalID);
@@ -1105,7 +1105,7 @@ namespace Gloebit.GloebitMoneyModule {
             HttpWebRequest request = (HttpWebRequest) WebRequest.Create(requestURI);
         
             request.Headers.Add("X-Gloebit-Module-Version", MODULE_VERSION);
-            request.Headers.Add("X-Gloebit-Platform-Version", String.Format("OpenSim {0}", OpenSim.VersionInfo.Version));
+            request.Headers.Add("X-Gloebit-Platform-Version", OpenSim.VersionInfo.Version.Trim());
 
             // Add authorization header
             if (user != null && user.GloebitToken != "") {
