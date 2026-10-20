@@ -177,7 +177,7 @@ namespace Gloebit.GloebitMoneyModule {
             if (!UUID.TryParse(agentId, out parsedAgentId) || !m_api.RedeemAuthNonce(agentId, nonce)) {
                 m_log.WarnFormat("[GLOEBITMONEYMODULE] authComplete_func refused for agent {0}: missing, used or expired nonce", agentId);
                 response["int_response_code"] = 400;
-                response["str_response_string"] = "<html><head><title>Gloebit authorization expired</title></head><body><h2>This authorization link has expired or was already used</h2>Please close this window, return to OpenSim, and start linking your Gloebit account again.</body></html>";
+                response["str_response_string"] = "<html><head><title>Gloebit authorization link already used</title></head><body><h2>This authorization link has expired or was already used</h2>If you just linked your Gloebit account, you're all set and can close this window.  Otherwise, return to OpenSim and start linking your Gloebit account again.</body></html>";
                 response["content_type"] = "text/html";
                 return response;
             }
@@ -724,7 +724,7 @@ namespace Gloebit.GloebitMoneyModule {
             bool success = false;
 
             // Only act on a url this module built: anyone can call this endpoint, and the transaction id is not secret.
-            if (!GloebitCallbackSignature.IsValid(m_secret, transactionIDstr, stateRequested, signature)) {
+            if (!m_api.IsValidHoldCallback(transactionIDstr, stateRequested, signature)) {
                 m_log.WarnFormat("[GLOEBITMONEYMODULE] transactionState_func refused {0} for transaction {1}: missing or invalid signature", stateRequested, transactionIDstr);
                 returnMsg = "invalid signature";
             } else {

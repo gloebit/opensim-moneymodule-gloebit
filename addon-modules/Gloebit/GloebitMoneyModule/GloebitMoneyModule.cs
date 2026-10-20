@@ -268,6 +268,9 @@ namespace Gloebit.GloebitMoneyModule
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}, GLBEnvironment: {1}, GLBApiUrl: {2} GLBKeyAlias {3}, GLBKey: {4}, GLBSecret {5}",
                 m_enabled, m_environment, m_apiUrl, m_keyAlias, m_key, (m_secret == null ? "null" : "configured"));
+            if (m_enabled && String.IsNullOrEmpty(m_secret)) {
+                m_log.Error("[GLOEBITMONEYMODULE] GLBSecret is not set.  Every purchase will be refused and canceled, because purchase callbacks are signed with it.  Set GLBSecret to your app's secret from Gloebit.");
+            }
 
             // TODO: I've added GLBEnv.Custom for testing.  Remove before we ship
             if(m_environment != GLBEnv.Sandbox && m_environment != GLBEnv.Production && m_environment != GLBEnv.Custom) {
