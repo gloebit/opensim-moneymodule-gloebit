@@ -29,7 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       opensim_versions: ${{ steps.set-matrix.outputs.versions }}
+      master_sha: ${{ steps.master.outputs.sha }}
     steps:
+      - id: master
+        # resolve once, so every platform builds the same OpenSim master commit
+        run: echo "sha=$(git ls-remote https://github.com/opensim/opensim.git refs/heads/master | cut -f1)" >> "$GITHUB_OUTPUT"
       - id: set-matrix
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -61,7 +65,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: opensim/opensim
-          ref: ${{ matrix.opensim_version }}
+          ref: ${{ matrix.opensim_version == 'master' && needs.matrix-setup.outputs.master_sha || matrix.opensim_version }}
           path: opensim
 
       - name: Setup .NET 8
@@ -224,7 +228,7 @@ jobs:
     # Replaces the rolling pre-release with this run's master DLLs.
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_weekly == 'true')
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_weekly == 'true'))
     permissions:
       contents: write
     env:
@@ -261,8 +265,21 @@ jobs:
             echo
             echo "Module commit: [\`${GITHUB_SHA:0:7}\`](https://github.com/${{ github.repository }}/commit/$GITHUB_SHA). Built $(date -u +%Y-%m-%d)."
           } > notes.md
-          gh release delete "$WEEKLY_TAG" --repo "${{ github.repository }}" --cleanup-tag --yes || true
-          gh release create "$WEEKLY_TAG" dlls/*.dll --repo "${{ github.repository }}" --prerelease \
-            --target "$GITHUB_SHA" \
-            --title "OpenSim master weekly: OpenSim ${sha:0:7} ($date)" \
-            --notes-file notes.md
+          REPO="${{ github.repository }}"
+          TITLE="OpenSim master weekly: OpenSim ${sha:0:7} ($date)"
+          if ! gh release view "$WEEKLY_TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$WEEKLY_TAG" dlls/*.dll --repo "$REPO" --prerelease \
+              --target "$GITHUB_SHA" --title "$TITLE" --notes-file notes.md
+            exit 0
+          fi
+          # Swap in place so the pre-release always has a full set of DLLs:
+          # upload the new ones, drop last week's, update the notes, then move the tag.
+          OLD=$(gh release view "$WEEKLY_TAG" --repo "$REPO" --json assets --jq '.assets[].name')
+          gh release upload "$WEEKLY_TAG" dlls/*.dll --repo "$REPO" --clobber
+          for asset in $OLD; do
+            if [ ! -e "dlls/$asset" ]; then
+              gh release delete-asset "$WEEKLY_TAG" "$asset" --repo "$REPO" --yes
+            fi
+          done
+          gh release edit "$WEEKLY_TAG" --repo "$REPO" --prerelease --title "$TITLE" --notes-file notes.md
+          gh api -X PATCH "repos/$REPO/git/refs/tags/$WEEKLY_TAG" -f sha="$GITHUB_SHA" -F force=true > /dev/null
