@@ -62,7 +62,10 @@ namespace Gloebit.GloebitMoneyModule {
         // to a Gloebit account when that agent was sent to Gloebit by this region.  Kept in memory: a region
         // restart only means the user has to start linking again.
         private static readonly TimeSpan AUTH_NONCE_LIFETIME = TimeSpan.FromHours(1);
-        private readonly Dictionary<string, KeyValuePair<string, DateTime>> m_authNonces = new Dictionary<string, KeyValuePair<string, DateTime>>();
+        // Older nonces for an agent are dropped past this many, so repeated auth prompts can't grow the map without limit.
+        private const int MAX_AUTH_NONCES_PER_AGENT = 3;
+        // agent id (lower case) --> its outstanding nonces and their expiry times, oldest first
+        private readonly Dictionary<string, List<KeyValuePair<string, DateTime>>> m_authNonces = new Dictionary<string, List<KeyValuePair<string, DateTime>>>();
 
 
         
@@ -139,15 +142,34 @@ namespace Gloebit.GloebitMoneyModule {
         /// </summary>
         private string IssueAuthNonce(string agentId) {
             string nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+            string agent = agentId.ToLowerInvariant();
             DateTime now = DateTime.UtcNow;
             lock (m_authNonces) {
-                List<string> expired = m_authNonces.Where(e => e.Value.Value < now).Select(e => e.Key).ToList();
-                foreach (string old in expired) {
-                    m_authNonces.Remove(old);
+                List<KeyValuePair<string, DateTime>> nonces;
+                if (!m_authNonces.TryGetValue(agent, out nonces)) {
+                    nonces = new List<KeyValuePair<string, DateTime>>();
+                    m_authNonces[agent] = nonces;
                 }
-                m_authNonces[nonce] = new KeyValuePair<string, DateTime>(agentId.ToLowerInvariant(), now + AUTH_NONCE_LIFETIME);
+                nonces.RemoveAll(n => n.Value < now);
+                nonces.Add(new KeyValuePair<string, DateTime>(nonce, now + AUTH_NONCE_LIFETIME));
+                if (nonces.Count > MAX_AUTH_NONCES_PER_AGENT) {
+                    nonces.RemoveRange(0, nonces.Count - MAX_AUTH_NONCES_PER_AGENT);
+                }
             }
             return nonce;
+        }
+
+        /// <summary>
+        /// Reports whether signature is valid for the hold callback requesting state for transactionID.
+        /// A cancel needs no signature: it can only stop a purchase, never deliver one, and Gloebit's transaction
+        /// processor retries a refused cancel forever (callbacks for transactions submitted before this version,
+        /// or before the secret changed, carry no valid signature).
+        /// </summary>
+        public bool IsValidHoldCallback(string transactionID, string state, string signature) {
+            if (state == "cancel") {
+                return true;
+            }
+            return GloebitCallbackSignature.IsValid(m_secret, transactionID, state, signature);
         }
 
         /// <summary>
@@ -157,13 +179,22 @@ namespace Gloebit.GloebitMoneyModule {
             if (String.IsNullOrEmpty(agentId) || String.IsNullOrEmpty(nonce)) {
                 return false;
             }
+            string agent = agentId.ToLowerInvariant();
             lock (m_authNonces) {
-                KeyValuePair<string, DateTime> issued;
-                if (!m_authNonces.TryGetValue(nonce, out issued)) {
+                List<KeyValuePair<string, DateTime>> nonces;
+                if (!m_authNonces.TryGetValue(agent, out nonces)) {
                     return false;
                 }
-                m_authNonces.Remove(nonce);
-                return issued.Key == agentId.ToLowerInvariant() && issued.Value >= DateTime.UtcNow;
+                int index = nonces.FindIndex(n => n.Key == nonce);
+                if (index < 0) {
+                    return false;
+                }
+                DateTime expires = nonces[index].Value;
+                nonces.RemoveAt(index);
+                if (nonces.Count == 0) {
+                    m_authNonces.Remove(agent);
+                }
+                return expires >= DateTime.UtcNow;
             }
         }
 
