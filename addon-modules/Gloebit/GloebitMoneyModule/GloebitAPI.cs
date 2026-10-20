@@ -251,8 +251,7 @@ namespace Gloebit.GloebitMoneyModule {
                         string user_id_on_app = responseDataMap["user_id_on_app"];
                         bool success = false;
                         // TODO - do something to handle the "refresh_token" field properly
-                        // Gloebit leaves user_id_on_app out when the user had already authorized this agent before.
-                        if(!String.IsNullOrEmpty(token) && !String.IsNullOrEmpty(user_id_on_app) && !String.Equals(user_id_on_app, user.PrincipalID, StringComparison.OrdinalIgnoreCase)) {
+                        if(!String.IsNullOrEmpty(token) && !String.Equals(user_id_on_app, user.PrincipalID, StringComparison.OrdinalIgnoreCase)) {
                             // The code was granted for a different agent than the one it was returned for: don't link them.
                             success = false;
                             m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.CompleteExchangeAccessToken refused: token is for user_id_on_app {0}, not agent {1}", user_id_on_app, user.PrincipalID);
