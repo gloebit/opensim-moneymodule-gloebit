@@ -227,23 +227,21 @@ namespace Gloebit.GloebitMoneyModule {
             return transaction;
         }
 
-        public Uri BuildEnactURI(Uri baseURI) {
-            UriBuilder enact_uri = new UriBuilder(baseURI);
-            enact_uri.Path = "gloebit/transaction";
-            enact_uri.Query = String.Format("id={0}&state={1}", this.TransactionID, "enact");
-            return enact_uri.Uri;
+        public Uri BuildEnactURI(Uri baseURI, string secret) {
+            return BuildHoldURI(baseURI, "enact", secret);
         }
-        public Uri BuildConsumeURI(Uri baseURI) {
-            UriBuilder consume_uri = new UriBuilder(baseURI);
-            consume_uri.Path = "gloebit/transaction";
-            consume_uri.Query = String.Format("id={0}&state={1}", this.TransactionID, "consume");
-            return consume_uri.Uri;
+        public Uri BuildConsumeURI(Uri baseURI, string secret) {
+            return BuildHoldURI(baseURI, "consume", secret);
         }
-        public Uri BuildCancelURI(Uri baseURI) {
-            UriBuilder cancel_uri = new UriBuilder(baseURI);
-            cancel_uri.Path = "gloebit/transaction";
-            cancel_uri.Query = String.Format("id={0}&state={1}", this.TransactionID, "cancel");
-            return cancel_uri.Uri;
+        public Uri BuildCancelURI(Uri baseURI, string secret) {
+            return BuildHoldURI(baseURI, "cancel", secret);
+        }
+        private Uri BuildHoldURI(Uri baseURI, string state, string secret) {
+            UriBuilder hold_uri = new UriBuilder(baseURI);
+            hold_uri.Path = "gloebit/transaction";
+            string sig = GloebitCallbackSignature.Compute(secret, this.TransactionID.ToString(), state);
+            hold_uri.Query = String.Format("id={0}&state={1}&{2}={3}", this.TransactionID, state, GloebitCallbackSignature.QueryArg, sig);
+            return hold_uri.Uri;
         }
 
         /**************************************************/
@@ -311,6 +309,41 @@ namespace Gloebit.GloebitMoneyModule {
                 s_pendingTransactionMap.Remove(transactionIDstr);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Marks this transaction canceled after Gloebit refused its submission, without alerting anyone (the
+        /// failure has already been reported).  Gloebit will never enact or consume it, and once it is canceled
+        /// a later enact or consume callback is refused.
+        /// </summary>
+        /// <returns>false if it was already enacted or consumed, or a callback for it is being processed, so it was left alone.</returns>
+        public bool CancelAfterRefusedSubmission()
+        {
+            string transactionIDstr = this.TransactionID.ToString();
+            lock(s_pendingTransactionMap) {
+                if (s_pendingTransactionMap.ContainsKey(transactionIDstr)) {
+                    return false;
+                }
+                s_pendingTransactionMap[transactionIDstr] = this;
+            }
+            try {
+                if (this.enacted || this.consumed) {
+                    return false;
+                }
+                if (!this.canceled) {
+                    this.canceled = true;
+                    this.finishedTime = DateTime.UtcNow;
+                    GloebitTransactionData.Instance.Store(this);
+                }
+                lock(s_transactionMap) {
+                    s_transactionMap.Remove(transactionIDstr);
+                }
+                return true;
+            } finally {
+                lock(s_pendingTransactionMap) {
+                    s_pendingTransactionMap.Remove(transactionIDstr);
+                }
+            }
         }
 
         private bool enactHold(IAssetCallback assetCallbacks, GloebitAPIWrapper.ITransactionAlert transactionAlerts, out string returnMsg)

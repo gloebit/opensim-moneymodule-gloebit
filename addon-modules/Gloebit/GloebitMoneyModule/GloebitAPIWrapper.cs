@@ -161,17 +161,26 @@ namespace Gloebit.GloebitMoneyModule {
 
             string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
+            string nonce = requestData["nonce"] as string;
 
-            UUID parsedAgentId = UUID.Parse(agentId);
+            UUID parsedAgentId;
+            Hashtable response = new Hashtable();
+            // Only link an agent this region sent to Gloebit, once: anyone can call this endpoint with any agentId.
+            if (!UUID.TryParse(agentId, out parsedAgentId) || !m_api.RedeemAuthNonce(agentId, nonce)) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] authComplete_func refused for agent {0}: missing, used or expired nonce", agentId);
+                response["int_response_code"] = 400;
+                response["str_response_string"] = "<html><head><title>Gloebit authorization expired</title></head><body><h2>This authorization link has expired or was already used</h2>Please close this window, return to OpenSim, and start linking your Gloebit account again.</body></html>";
+                response["content_type"] = "text/html";
+                return response;
+            }
             GloebitUser u = GloebitUser.Get(m_key, parsedAgentId);
 
             // Start async flow to exchange the code for a permanent token
-            m_api.ExchangeAccessToken(u, code, m_platformAccessors.GetBaseURI());
+            m_api.ExchangeAccessToken(u, code, nonce, m_platformAccessors.GetBaseURI());
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func started ExchangeAccessToken");
 
             // TODO: create interface function to build this response
             Uri url = BuildPurchaseURI(m_platformAccessors.GetBaseURI(), u);
-            Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
             response["str_response_string"] = String.Format("<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window and return to OpenSim.<br /><br /><br />You'll now be able spend gloebits from your Gloebit account as the agent you authorized on this OpenSim Grid.<br /><br />If you need gloebits, you can <a href=\"{0}\">purchase them here</a>.</body></html>", url);
             response["content_type"] = "text/html";
@@ -552,6 +561,14 @@ namespace Gloebit.GloebitMoneyModule {
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted with FAILURE reason:{0} status:{1} id:{2}", reason, status, tID);
 
+            // Gloebit won't complete this submission, so close the local transaction instead of leaving it open.
+            // Two exceptions: another submission of the same id owns it, or the processor will retry the early enact.
+            bool anotherSubmissionOwnsIt = (failure == GloebitAPI.TransactionFailure.RACE_CONDITION);
+            bool processorWillRetry = (status == "queued" && reason == "pending");
+            if (!anotherSubmissionOwnsIt && !processorWillRetry && !txn.CancelAfterRefusedSubmission()) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE].transactU2UCompleted could not close refused transaction id:{0}; it was enacted or is being processed", txn.TransactionID);
+            }
+
             // Handle errors
             switch (stage) {
                 case GloebitAPI.TransactionStage.ENACT_GLOEBIT:     /* Placed this first as it is an odd case where early-enact failed. */
@@ -694,9 +711,17 @@ namespace Gloebit.GloebitMoneyModule {
             // TODO: check that these exist in requestData.  If not, signal error and send response with false.
             string transactionIDstr = requestData["id"] as string;
             string stateRequested = requestData["state"] as string;
+            string signature = requestData[GloebitCallbackSignature.QueryArg] as string;
             string returnMsg = "";
+            bool success = false;
 
-            bool success = GloebitTransaction.ProcessStateRequest(transactionIDstr, stateRequested, m_assetCallbacks, m_transactionAlerts, out returnMsg);
+            // Only act on a url this module built: anyone can call this endpoint, and the transaction id is not secret.
+            if (!GloebitCallbackSignature.IsValid(m_secret, transactionIDstr, stateRequested, signature)) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] transactionState_func refused {0} for transaction {1}: missing or invalid signature", stateRequested, transactionIDstr);
+                returnMsg = "invalid signature";
+            } else {
+                success = GloebitTransaction.ProcessStateRequest(transactionIDstr, stateRequested, m_assetCallbacks, m_transactionAlerts, out returnMsg);
+            }
 
             //JsonValue[] result;
             //JsonValue[0] = JsonValue.CreateBooleanValue(success);
