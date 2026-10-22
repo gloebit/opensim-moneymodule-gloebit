@@ -696,7 +696,26 @@ namespace Gloebit.GloebitMoneyModule {
             string stateRequested = requestData["state"] as string;
             string returnMsg = "";
 
-            bool success = GloebitTransaction.ProcessStateRequest(transactionIDstr, stateRequested, m_assetCallbacks, m_transactionAlerts, out returnMsg);
+            bool success;
+            try {
+                success = GloebitTransaction.ProcessStateRequest(transactionIDstr, stateRequested, m_assetCallbacks, m_transactionAlerts, out returnMsg);
+            } catch (Exception e) {
+                // An unhandled exception here previously escaped as an HTTP 500,
+                // which is not this function's documented contract (always 200,
+                // success/failure communicated via the JSON body) and crashes
+                // the Gloebit transaction processor, which doesn't tolerate one
+                // merchant callback failing. "pending" marks this retryable
+                // rather than a permanent failure: we don't know whether the
+                // exception is transient, and ProcessStateRequest's existing
+                // idempotency checks (e.g. consumeHold's "already consumed"
+                // guard) make a retry safe even if this attempt partially
+                // succeeded before throwing -- unlike a wrongly-triggered
+                // cancel on a transaction that may have already consumed.
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] transactionState_func unhandled exception for id:{0} state:{1} -- {2}",
+                    transactionIDstr, stateRequested, e.ToString());
+                success = false;
+                returnMsg = "pending";
+            }
 
             //JsonValue[] result;
             //JsonValue[0] = JsonValue.CreateBooleanValue(success);
