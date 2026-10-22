@@ -278,38 +278,49 @@ namespace Gloebit.GloebitMoneyModule {
                 return false;
             }
 
-            // Call proper state processor
-            switch (stateRequested) {
-            case "enact":
-                result = myTxn.enactHold(assetCallbacks, transactionAlerts, out returnMsg);
-                break;
-            case "consume":
-                result = myTxn.consumeHold(assetCallbacks, transactionAlerts, out returnMsg);
-                if (result) {
-                    lock(s_transactionMap) {
-                        s_transactionMap.Remove(transactionIDstr);
+            // Call proper state processor.
+            // try/finally so an exception from enactHold/consumeHold/
+            // cancelHold (e.g. the grid's own asset callback throwing)
+            // can't skip the race-condition-map cleanup below -- without
+            // this, a leaked entry would make every retry of this same
+            // transaction ID hit alreadyProcessing=true above and return
+            // "pending" forever, without ever reaching this switch again.
+            string localReturnMsg = null;
+            try {
+                switch (stateRequested) {
+                case "enact":
+                    result = myTxn.enactHold(assetCallbacks, transactionAlerts, out localReturnMsg);
+                    break;
+                case "consume":
+                    result = myTxn.consumeHold(assetCallbacks, transactionAlerts, out localReturnMsg);
+                    if (result) {
+                        lock(s_transactionMap) {
+                            s_transactionMap.Remove(transactionIDstr);
+                        }
                     }
-                }
-                break;
-            case "cancel":
-                result = myTxn.cancelHold(assetCallbacks, transactionAlerts, out returnMsg);
-                if (result) {
-                    lock(s_transactionMap) {
-                        s_transactionMap.Remove(transactionIDstr);
+                    break;
+                case "cancel":
+                    result = myTxn.cancelHold(assetCallbacks, transactionAlerts, out localReturnMsg);
+                    if (result) {
+                        lock(s_transactionMap) {
+                            s_transactionMap.Remove(transactionIDstr);
+                        }
                     }
+                    break;
+                default:
+                    // no recognized state request
+                    localReturnMsg = "Unrecognized state request";
+                    result = false;
+                    break;
                 }
-                break;
-            default:
-                // no recognized state request
-                returnMsg = "Unrecognized state request";
-                result = false;
-                break;
+            } finally {
+                // remove from race condition protection -- always, even if
+                // the switch above threw.
+                lock(s_pendingTransactionMap) {
+                    s_pendingTransactionMap.Remove(transactionIDstr);
+                }
             }
-
-            // remove from race condition protection
-            lock(s_pendingTransactionMap) {
-                s_pendingTransactionMap.Remove(transactionIDstr);
-            }
+            returnMsg = localReturnMsg;
             return result;
         }
 
