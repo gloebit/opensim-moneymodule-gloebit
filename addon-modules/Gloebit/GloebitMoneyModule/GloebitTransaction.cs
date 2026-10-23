@@ -277,8 +277,12 @@ namespace Gloebit.GloebitMoneyModule {
             }
 
             // Always release the transaction, even if a handler throws.  Otherwise every later callback for it gets
-            // "pending" until the region restarts.  A throw still answers 500, which Gloebit retries; the retry
-            // then finds the transaction already enacted or consumed and answers true.
+            // "pending" until the region restarts.  This is still true for enactHold and for
+            // processAssetConsumeHold/processAssetCancelHold themselves: a throw there still answers 500, Gloebit
+            // retries, and the retry finds the transaction already enacted/consumed/canceled and answers true.
+            // It is NOT true any more for consumeHold/cancelHold's own transactionAlerts.* calls -- those are
+            // wrapped in SafeAlert and fail closed (logged, this.consumed/this.canceled unaffected) rather than
+            // propagating, since by the time they run the real action is already determined and persisted.
             try {
                 // Call proper state processor
                 switch (stateRequested) {
