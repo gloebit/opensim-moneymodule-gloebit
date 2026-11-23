@@ -1258,6 +1258,11 @@ namespace Gloebit.GloebitMoneyModule {
             catch (ArgumentException e) {
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitWebResponseCallback ArgumentException e:{0}", e.Message);
             }
+            catch (Exception e) {
+                // This runs on an I/O completion thread, where any unhandled exception
+                // (e.g. an IOException on a network reset) terminates the whole OpenSim process.
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitWebResponseCallback failed: {0}", e);
+            }
 
         }
         

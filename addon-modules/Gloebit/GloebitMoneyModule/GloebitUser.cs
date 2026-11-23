@@ -59,6 +59,10 @@ namespace Gloebit.GloebitMoneyModule {
 
         private object userLock = new object();
 
+        // m_readFailed marks a blank stand-in that Get returned because the database read failed.
+        // It must stay non-public: the generic table handlers map every public field to a column.
+        private bool m_readFailed = false;
+
         public GloebitUser() {
         }
 
@@ -112,11 +116,14 @@ namespace Gloebit.GloebitMoneyModule {
                 try {
                     users = GloebitUserData.Instance.Get(keys, values);
                 } catch(Exception e) {
-                    // Don't fall through to the "no prior user" case.  A blank user built after a
-                    // failed read would be cached as unauthorized, and storing it (e.g. from
-                    // IsNewSession) would overwrite the user's saved token with an empty one.
+                    // Return a blank stand-in so callers carry on as for an unauthorized user, but
+                    // don't cache it: the next Get re-reads instead of treating this user as
+                    // unauthorized for the rest of the process.  IsNewSession checks m_readFailed so
+                    // it never stores the stand-in over the user's saved token.
                     m_log.ErrorFormat("[GLOEBITMONEYMODULE] failed GloebitUser.Get because {0}", e);
-                    throw;
+                    GloebitUser standIn = new GloebitUser(appKeyStr, agentIdStr, String.Empty, String.Empty, String.Empty);
+                    standIn.m_readFailed = true;
+                    return standIn;
                 }
 
                 switch(users.Length) {
@@ -172,6 +179,11 @@ namespace Gloebit.GloebitMoneyModule {
             // Before we return true, Ensure our cache is up to date
             GloebitUser.InvalidateCache(UUID.Parse(this.PrincipalID));
             GloebitUser u_from_db = GloebitUser.Get(this.AppKey, UUID.Parse(this.PrincipalID));
+            if (u_from_db.m_readFailed) {
+                // We don't know the stored session or token, so storing would overwrite them with blanks.
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] GloebitUser.IsNewSession could not read user {0}; skipping new session messaging", this.PrincipalID);
+                return false;
+            }
             if (u_from_db.LastSessionID == newSessionIDStr) {
                 m_log.DebugFormat("[GLOEBITMONEYMODULE] User Cache was out of date.  Updated cache.  User is not new session");
                 // cache was out of date.  update local user copy form db
