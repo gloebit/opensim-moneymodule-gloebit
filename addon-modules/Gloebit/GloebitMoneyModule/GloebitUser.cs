@@ -112,8 +112,11 @@ namespace Gloebit.GloebitMoneyModule {
                 try {
                     users = GloebitUserData.Instance.Get(keys, values);
                 } catch(Exception e) {
-                    m_log.WarnFormat("[GLOEBITMONEYMODULE] failed GloebitUser.Get because {0}", e);
-                    users = new GloebitUser[0];
+                    // Don't fall through to the "no prior user" case.  A blank user built after a
+                    // failed read would be cached as unauthorized, and storing it (e.g. from
+                    // IsNewSession) would overwrite the user's saved token with an empty one.
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] failed GloebitUser.Get because {0}", e);
+                    throw;
                 }
 
                 switch(users.Length) {

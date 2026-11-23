@@ -1271,41 +1271,48 @@ namespace Gloebit.GloebitMoneyModule {
             // m_log.InfoFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitReadCallback");
             
             // Get the RequestState object from AsyncResult.
-            GloebitRequestState myRequestState = (GloebitRequestState)ar.AsyncState;
-            Stream responseStream = myRequestState.responseStream;
+            try {
+                GloebitRequestState myRequestState = (GloebitRequestState)ar.AsyncState;
+                Stream responseStream = myRequestState.responseStream;
             
-            // Handle data read.
-            int bytesRead = responseStream.EndRead( ar );
-            if (bytesRead > 0)
-            {
-                // Decode and store the bytesRead in responseData
-                Char[] charBuffer = new Char[GloebitRequestState.BUFFER_SIZE];
-                int len = myRequestState.streamDecoder.GetChars(myRequestState.bufferRead, 0, bytesRead, charBuffer, 0);
-                String str = new String(charBuffer, 0, len);
-                myRequestState.responseData.Append(str);
+                // Handle data read.
+                int bytesRead = responseStream.EndRead( ar );
+                if (bytesRead > 0)
+                {
+                    // Decode and store the bytesRead in responseData
+                    Char[] charBuffer = new Char[GloebitRequestState.BUFFER_SIZE];
+                    int len = myRequestState.streamDecoder.GetChars(myRequestState.bufferRead, 0, bytesRead, charBuffer, 0);
+                    String str = new String(charBuffer, 0, len);
+                    myRequestState.responseData.Append(str);
                 
-                // Continue reading data until
-                // responseStream.EndRead returns 0 for end of stream.
-                // TODO: should we be doing anything with result???
-                IAsyncResult result = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, GloebitReadCallBack, myRequestState);
-            }
-            else
-            {
-                // Done Reading
-                
-                // Close down the response stream.
-                responseStream.Close();
-                
-                if (myRequestState.responseData.Length <= 0) {
-                    // TODO: Is this necessarily an error if we don't have data???
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitReadCallback error: No Data");
-                    // TODO: signal error
+                    // Continue reading data until
+                    // responseStream.EndRead returns 0 for end of stream.
+                    // TODO: should we be doing anything with result???
+                    IAsyncResult result = responseStream.BeginRead(myRequestState.bufferRead, 0, GloebitRequestState.BUFFER_SIZE, GloebitReadCallBack, myRequestState);
                 }
+                else
+                {
+                    // Done Reading
                 
-                if (myRequestState.continuation != null) {
-                    OSDMap responseDataMap = (OSDMap)OSDParser.DeserializeJson(myRequestState.responseData.ToString());
-                    myRequestState.continuation(responseDataMap);
+                    // Close down the response stream.
+                    responseStream.Close();
+                
+                    if (myRequestState.responseData.Length <= 0) {
+                        // TODO: Is this necessarily an error if we don't have data???
+                        m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitReadCallback error: No Data");
+                        // TODO: signal error
+                    }
+                
+                    if (myRequestState.continuation != null) {
+                        OSDMap responseDataMap = (OSDMap)OSDParser.DeserializeJson(myRequestState.responseData.ToString());
+                        myRequestState.continuation(responseDataMap);
+                    }
                 }
+            } catch (Exception e) {
+                // This runs on an I/O completion thread, where an unhandled exception terminates the whole
+                // OpenSim process.  The continuations parse the response and write to the database
+                // (e.g. GloebitUser.Authorize), so a failure there must be logged, not allowed to escape.
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitReadCallBack failed: {0}", e);
             }
         }
         
