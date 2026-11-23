@@ -79,3 +79,11 @@
     ;GLBSpecificConnectionString = "Data Source=localhost;Database=opensim;User ID=opensim;Password=***;Old Guids=true;"
     ;GLBSpecificStorageProvider = "OpenSim.Data.PGSQL.dll"
     ;GLBSpecificConnectionString = "Server=localhost;Database=opensim;User Id=opensim; password=***;"
+    ;;
+    ;; SQLite - If your sim uses SQLite, give Gloebit its own database file.
+    ;; SQLite allows only one writer per file at a time, so sharing OpenSim.db
+    ;; with the region can fail with "database is locked".  The file and tables
+    ;; are created on startup.  The path is relative to the directory OpenSim
+    ;; runs from (normally bin/); use an absolute path if you start it elsewhere.
+    ;GLBSpecificStorageProvider = "OpenSim.Data.SQLite.dll"
+    ;GLBSpecificConnectionString = "URI=file:Gloebit.db,version=3"
