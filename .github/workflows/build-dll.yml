@@ -229,7 +229,7 @@ jobs:
               echo "  the best fix if it doesn't load; otherwise pick the dated \`opensim-$MASTER_VER-...\` pre-release"
               echo "  on the [releases page](https://github.com/${{ github.repository }}/releases) closest to your OpenSim's commit."
             fi
-            echo "- A crash with \`MissingMethodException\` means the DLL doesn't match your OpenSim build."
+            echo "- A crash with \`MissingMethodException\` naming an OpenSim method usually means the DLL doesn't match your OpenSim build."
             echo
             echo "## Installation"
             echo "1. Download the DLL matching your OpenSim version and platform"
