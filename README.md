@@ -44,6 +44,20 @@ Pre-built DLLs for older OpenSim versions are available [here](http://dev.gloebi
 2. Configure the plugin
   * Follow the instructions [here](http://dev.gloebit.com/opensim/configuration-instructions/).
 
+## Using SQLite
+
+If your sim uses SQLite, give Gloebit its own database file. By default Gloebit stores its tables in the `[DatabaseService]` database, which for SQLite is the same `OpenSim.db` file the region writes to. SQLite allows only one writer per file at a time, so the two can collide with a `database is locked` error. A separate file reduces that contention (Gloebit's own tables still share their file). Add this to the `[Gloebit]` section of your config, replacing any existing `GLBSpecific*` lines, and restart:
+
+```ini
+GLBSpecificStorageProvider = "OpenSim.Data.SQLite.dll"
+GLBSpecificConnectionString = "URI=file:Gloebit.db,version=3"
+```
+
+- You don't need to create the file: SQLite creates it, and Gloebit creates its tables on startup.
+- The path is relative to the directory OpenSim runs from (normally `bin/`). Use an absolute path if you start OpenSim from somewhere else.
+- SQLite is for a single sim process. Processes sharing one SQLite file compete for its write lock again, and a file can't be shared across servers. For multiple sim processes, use one MySQL or PGSQL database for Gloebit so users only authorize once.
+- Switch while no purchases are in progress. Gloebit data already in `OpenSim.db` (user authorizations, pending transactions, object subscriptions) is not copied over, so users will need to authorize Gloebit again, and owners of scripted objects that pay out may need to re-authorize them.
+
 # Understanding, Contributing to, and Porting this Plugin
 
 ## Code Organization - The breakdown of the functional layers

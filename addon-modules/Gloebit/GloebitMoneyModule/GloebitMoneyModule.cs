@@ -2444,23 +2444,29 @@ namespace Gloebit.GloebitMoneyModule
 
             System.Threading.ThreadPool.QueueUserWorkItem(delegate 
             {
-                m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion AgentID:{0} SessionId:{1} SecureSessionId:{2}", client.AgentId, client.SessionId, client.SecureSessionId);
+                try {
+                    m_log.DebugFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion AgentID:{0} SessionId:{1} SecureSessionId:{2}", client.AgentId, client.SessionId, client.SecureSessionId);
 
-                GloebitUser user = GloebitUser.Get(m_key, client.AgentId);
-                // If authed, update balance immediately
-                if (user.IsAuthed()) {
-                    // TODO: may now be able to remove client from UpdateBalance as we moved this call here and out of OnNewClient
-                    // Don't send Buy Gloebits messaging so that we don't spam --- last arg is 0
-                    UpdateBalance(client.AgentId, client, 0);
-                } else {
-                    //update viewer balance to zero in case user came from alt money module region and has old viewer
-                    //Note: New Firestorm viewer will request update and will get double send here.
-                    int zeroBal = 0;
-                    client.SendMoneyBalance(UUID.Zero, true, new byte[0], zeroBal, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
-                }
-                if (user.IsNewSession(client.SessionId)) {
-                    // Send welcome messaging
-                    SendNewSessionMessaging(client, user);
+                    GloebitUser user = GloebitUser.Get(m_key, client.AgentId);
+                    // If authed, update balance immediately
+                    if (user.IsAuthed()) {
+                        // TODO: may now be able to remove client from UpdateBalance as we moved this call here and out of OnNewClient
+                        // Don't send Buy Gloebits messaging so that we don't spam --- last arg is 0
+                        UpdateBalance(client.AgentId, client, 0);
+                    } else {
+                        //update viewer balance to zero in case user came from alt money module region and has old viewer
+                        //Note: New Firestorm viewer will request update and will get double send here.
+                        int zeroBal = 0;
+                        client.SendMoneyBalance(UUID.Zero, true, new byte[0], zeroBal, 0, UUID.Zero, false, UUID.Zero, false, 0, String.Empty);
+                    }
+                    if (user.IsNewSession(client.SessionId)) {
+                        // Send welcome messaging
+                        SendNewSessionMessaging(client, user);
+                    }
+                } catch (Exception e) {
+                    // An unhandled exception on a ThreadPool thread terminates the whole OpenSim process,
+                    // so a failed balance update or session store (e.g. SQLite "database is locked") must not escape.
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] OnCompleteMovementToRegion failed for {0}: {1}", client.AgentId, e);
                 }
             }, null);
         }
@@ -3582,23 +3588,29 @@ namespace Gloebit.GloebitMoneyModule
                 delay = 10; // Delay 10 seconds if viewer isn't fully loaded, shows up as offline while away
             }
             Thread welcomeMessageThread = new Thread(delegate() {
-                Thread.Sleep(delay * 1000);  // Delay milliseconds
-                // Deliver welcome message if we have welcome popup enabled
-                if (m_showWelcomeMessage) {
-                    sendMessageToClient(client, msg, client.AgentId);
-                }
+                try {
+                    Thread.Sleep(delay * 1000);  // Delay milliseconds
+                    // Deliver welcome message if we have welcome popup enabled
+                    if (m_showWelcomeMessage) {
+                        sendMessageToClient(client, msg, client.AgentId);
+                    }
 
-                // If authed, delivery url where user can purchase Gloebits
-                if (user.IsAuthed()) {
-                    if (m_showNewSessionPurchaseIM) {
-                        Uri url = m_apiW.BuildPurchaseURI(BaseURI, user);
-                        SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                    // If authed, delivery url where user can purchase Gloebits
+                    if (user.IsAuthed()) {
+                        if (m_showNewSessionPurchaseIM) {
+                            Uri url = m_apiW.BuildPurchaseURI(BaseURI, user);
+                            SendUrlToClient(client, "How to purchase gloebits:", "Buy gloebits you can spend in this area:", url);
+                        }
+                    } else {
+                        if (m_showNewSessionAuthIM) {
+                            // If not Authed, request auth.
+                            m_apiW.Authorize(user, client.Name);
+                        }
                     }
-                } else {
-                    if (m_showNewSessionAuthIM) {
-                        // If not Authed, request auth.
-                        m_apiW.Authorize(user, client.Name);
-                    }
+                } catch (Exception e) {
+                    // An unhandled exception on this thread would terminate the whole OpenSim process.
+                    // Missing the welcome messaging is far better than losing the region.
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] Failed to send new session messaging to {0}: {1}", client.AgentId, e);
                 }
             });
             welcomeMessageThread.Start();
