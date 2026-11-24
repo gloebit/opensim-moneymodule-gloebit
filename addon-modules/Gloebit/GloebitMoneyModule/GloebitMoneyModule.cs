@@ -789,7 +789,18 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
         
+        /// <summary>
+        /// GetCurrencyBaseURI returns the address viewers send currency requests (quotes,
+        /// buying) to: GLBCallbackBaseURI's scheme, host and port when set, since a sim behind
+        /// a proxy is reached at that URL, otherwise the region's ServerURI.
+        /// </summary>
         private string GetCurrencyBaseURI(Scene scene) {
+            if (m_overrideBaseURI != null) {
+                UriBuilder root = new UriBuilder(m_overrideBaseURI);
+                root.Path = "/";
+                root.Query = String.Empty;
+                return root.Uri.ToString();
+            }
             return scene.RegionInfo.ServerURI;
         }
         

@@ -62,8 +62,9 @@
     ;;;;; CONFIGURE THE PUBLIC URL OF THIS SIM ;;;;;
     ;; Optional - If not set, Gloebit uses the region's server URL
     ;; (http://<ExternalHostName>:<port>/) as the address Gloebit sends users
-    ;; back to after they authorize, and for the callbacks Gloebit makes to
-    ;; settle purchases.
+    ;; back to after they authorize, for the callbacks Gloebit makes to settle
+    ;; purchases, and as the currency address viewers are given (for quotes
+    ;; and buying gloebits in the viewer).
     ;;
     ;; Set it when that URL isn't how the internet reaches this sim, e.g. behind
     ;; a reverse proxy that serves HTTPS without the port.  Only the scheme, host
