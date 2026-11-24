@@ -1262,6 +1262,7 @@ namespace Gloebit.GloebitMoneyModule {
                 // This runs on an I/O completion thread, where any unhandled exception
                 // (e.g. an IOException on a network reset) terminates the whole OpenSim process.
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitWebResponseCallback failed: {0}", e);
+                CloseResponseStream(myRequestState);
             }
 
         }
@@ -1318,6 +1319,23 @@ namespace Gloebit.GloebitMoneyModule {
                 // OpenSim process.  The continuations parse the response and write to the database
                 // (e.g. GloebitUser.Authorize), so a failure there must be logged, not allowed to escape.
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI.GloebitReadCallBack failed: {0}", e);
+                CloseResponseStream(ar.AsyncState as GloebitRequestState);
+            }
+        }
+
+        /// <summary>
+        /// Closes a request's response stream after a failed callback so the HTTP connection is
+        /// released.  Close is idempotent, so a stream already closed by the success path is fine.
+        /// Never throws: callers run on I/O completion threads.
+        /// </summary>
+        private static void CloseResponseStream(GloebitRequestState requestState) {
+            if (requestState == null || requestState.responseStream == null) {
+                return;
+            }
+            try {
+                requestState.responseStream.Close();
+            } catch (Exception e) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GloebitAPI failed to close response stream: {0}", e);
             }
         }
         
