@@ -266,8 +266,15 @@ namespace Gloebit.GloebitMoneyModule
             }
             
 
-            foreach (string warning in GloebitCompatibility.Check()) {
-                m_log.ErrorFormat("[GLOEBITMONEYMODULE] {0}", warning);
+            // Skip on sims where Gloebit is off everywhere: the check JIT-compiles the whole DLL.
+            if (m_enabled || (m_enabledRegions != null && m_enabledRegions.Length > 0)) {
+                GloebitCompatibility.CompatibilityReport compatibility = GloebitCompatibility.Check();
+                foreach (string error in compatibility.Errors) {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] {0}", error);
+                }
+                foreach (string warning in compatibility.Warnings) {
+                    m_log.WarnFormat("[GLOEBITMONEYMODULE] {0}", warning);
+                }
             }
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}, GLBEnvironment: {1}, GLBApiUrl: {2} GLBKeyAlias {3}, GLBKey: {4}, GLBSecret {5}",
