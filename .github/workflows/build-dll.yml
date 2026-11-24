@@ -5,8 +5,7 @@ on:
     tags:
       - 'build-*'
   schedule:
-    # Weekly build against OpenSim master, published as the rolling "opensim-master-weekly" pre-release
-    # and kept as a dated pre-release per OpenSim commit.
+    # Weekly build against OpenSim master, published as the rolling "opensim-master-weekly" pre-release.
     - cron: '0 6 * * 1'
   workflow_dispatch:
     inputs:
@@ -226,8 +225,8 @@ jobs:
             if [ -n "$MASTER_LABEL" ]; then
               echo "- **$MASTER_VER** (what OpenSim built from git master reports): use the \`Gloebit--$MASTER_VER-...\` DLL,"
               echo "  built against the OpenSim master commit named in its file name. Keeping OpenSim up to date is"
-              echo "  the best fix if it doesn't load; otherwise pick the dated \`opensim-$MASTER_VER-...\` pre-release"
-              echo "  on the [releases page](https://github.com/${{ github.repository }}/releases) closest to your OpenSim's commit."
+              echo "  the best fix if it doesn't load; otherwise use the \`Gloebit--$MASTER_VER-...\` DLL from the numbered"
+              echo "  [\`build-*\` release](https://github.com/${{ github.repository }}/releases) whose OpenSim commit is closest to yours."
             fi
             echo "- A crash with \`MissingMethodException\` naming an OpenSim method usually means the DLL doesn't match your OpenSim build."
             echo
@@ -285,7 +284,7 @@ jobs:
             echo "[\`${sha:0:10}\`](https://github.com/opensim/opensim/commit/$sha), committed $date."
             echo
             echo "Rebuilt every week from the latest Gloebit module and the latest OpenSim master, so it"
-            echo "replaces itself; each OpenSim and module commit pair is also kept as a dated \`opensim-${label%%-*}-...\` pre-release."
+            echo "replaces itself. Each numbered \`build-*\` release also keeps the master DLL it was built with."
             echo "For an OpenSim release (0.9.3.0), use the latest numbered \`build-*\` release instead."
             echo
             echo "Module commit: [\`${GITHUB_SHA:0:7}\`](https://github.com/${{ github.repository }}/commit/$GITHUB_SHA). Built $(date -u +%Y-%m-%d)."
@@ -308,32 +307,3 @@ jobs:
           done
           gh release edit "$WEEKLY_TAG" --repo "$REPO" --prerelease --title "$TITLE" --notes-file notes.md
           gh api -X PATCH "repos/$REPO/git/refs/tags/$WEEKLY_TAG" -f sha="$GITHUB_SHA" -F force=true > /dev/null
-
-      - name: Keep a dated pre-release for this OpenSim commit
-        # One per (OpenSim master commit, Gloebit module commit), so someone on an older OpenSim build
-        # can find the closest DLL, and module fixes still reach it.  Skipped when neither has changed.
-        run: |
-          IFS='|' read -r ref sha date label < <(cat info/*.txt | sort -u | head -1)
-          REPO="${{ github.repository }}"
-          ARCHIVE_TAG="opensim-${label}--gloebit-${GITHUB_SHA:0:7}"
-          view_rc=0
-          view_out=$(gh release view "$ARCHIVE_TAG" --repo "$REPO" 2>&1) || view_rc=$?
-          if [ "$view_rc" -eq 0 ]; then
-            echo "$ARCHIVE_TAG already exists"
-            exit 0
-          fi
-          if ! printf '%s\n' "$view_out" | grep -q -- "release not found"; then
-            echo "could not check for $ARCHIVE_TAG: $view_out" >&2
-            exit 1
-          fi
-          {
-            echo "Gloebit Money Module DLLs for OpenSim **${label%%-*}**, built against OpenSim master at"
-            echo "[\`${sha:0:10}\`](https://github.com/opensim/opensim/commit/$sha), committed $date."
-            echo
-            echo "Gloebit module commit: [\`${GITHUB_SHA:0:7}\`](https://github.com/$REPO/commit/$GITHUB_SHA)."
-            echo
-            echo "A point-in-time build kept for OpenSim installs near this commit. For current OpenSim,"
-            echo "use the [\`$WEEKLY_TAG\`](https://github.com/$REPO/releases/tag/$WEEKLY_TAG) pre-release."
-          } > archive-notes.md
-          gh release create "$ARCHIVE_TAG" dlls/*.dll --repo "$REPO" --prerelease --latest=false \
-            --target "$GITHUB_SHA" --title "OpenSim ${label%%-*}: ${sha:0:7} ($date)" --notes-file archive-notes.md

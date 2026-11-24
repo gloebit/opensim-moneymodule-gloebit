@@ -25,7 +25,7 @@ These builds are compiled against the official OpenSim 0.9.3 source on .NET 8. T
 
 To find your OpenSim version, type `show version` in the OpenSim console:
 - **0.9.3.0**: use the `Gloebit--0.9.3.0--...` DLL.
-- **The version OpenSim master reports** (0.9.3.1 Dev as of Nov 2026, for any OpenSim built from git master since Nov 2024): use the DLL named for that version, e.g. `Gloebit--0.9.3.1Dev-...`, built against the OpenSim master commit in its file name. If it doesn't load, update OpenSim, or pick the dated `opensim-0.9.3.1Dev-<commit>-<date>--gloebit-<commit>` pre-release closest to your OpenSim's commit (kept from Nov 2026 on).
+- **The version OpenSim master reports** (0.9.3.1 Dev as of Nov 2026, for any OpenSim built from git master since Nov 2024): use the DLL named for that version, e.g. `Gloebit--0.9.3.1Dev-...`, built against the OpenSim master commit in its file name. If it doesn't load, update OpenSim, or use that DLL from the numbered `build-*` release whose OpenSim commit (in the file name and release notes) is closest to yours.
 - A crash with `MissingMethodException` naming an OpenSim method usually means the DLL doesn't match your OpenSim build.
 
 ## OpenSim 0.9.2.x and earlier (Mono/.NET 4.x)
