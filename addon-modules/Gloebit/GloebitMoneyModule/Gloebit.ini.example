@@ -70,7 +70,10 @@
     ;; a reverse proxy that serves HTTPS without the port.  Give only a scheme,
     ;; host and optional port: a path prefix isn't supported.  The URL must reach
     ;; this sim's HTTP server at its root (its /gloebit/ paths and the currency
-    ;; handler), or authorizations and purchases will fail.
+    ;; handler), or authorizations and purchases will fail.  It applies to every
+    ;; region on this sim.  Gloebit's servers refuse callbacks to localhost and
+    ;; private addresses.  Changing it while users are authorizing can make
+    ;; those authorizations fail; they can simply authorize again.
     ; GLBCallbackBaseURI = "https://sim.example.com/"
 
     ;;;;; CONFIGURE SINGLE GLOEBIT DB FOR APP OR GRID ;;;;;;

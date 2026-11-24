@@ -58,10 +58,11 @@ namespace Gloebit.GloebitMoneyModule {
         /// returns the running OpenSim's values.  A mismatch alone is a warning: builds that
         /// differ in version can still share every API this DLL uses.
         ///
-        /// Then it loads every type in this DLL and JIT-compiles every method with
-        /// RuntimeHelpers.PrepareMethod.  Compiling a method resolves the members it calls, so
-        /// a member that was changed or removed is reported here, at startup, instead of when
-        /// a user first triggers it.  This also catches builds that share a version label but
+        /// Then it loads every type in this DLL and JIT-compiles each non-generic method and
+        /// constructor declared in it with RuntimeHelpers.PrepareMethod (generic methods, and
+        /// methods of generic types, have no single body to compile and are skipped).
+        /// Compiling a method resolves the members it calls, so a member that was changed or
+        /// removed is reported here, at startup, instead of when a user first triggers it.  This also catches builds that share a version label but
         /// differ in API.  It can't catch changed behavior behind an unchanged signature.
         /// All such failures are reported as one error; it doesn't guess at their cause.
         ///
@@ -81,7 +82,7 @@ namespace Gloebit.GloebitMoneyModule {
                 List<string> failures = FindFailures();
                 if (failures.Count > 0) {
                     report.Errors.Add(String.Format(
-                        "{0} part(s) of this Gloebit DLL can't run on this OpenSim.  Gloebit features that use them will fail, and could crash the region, until a matching DLL is installed.  This usually means the DLL was built for a different OpenSim build; download the one matching `show version` from {1}.  First {2}: {3}",
+                        "{0} part(s) of this Gloebit DLL can't run on this OpenSim.  Gloebit features that use them will fail, and could crash the region.  This usually means the DLL was built for a different OpenSim build (download the one matching `show version` from {1}), or that a library it references is missing from bin/ (if it's for something this sim doesn't use, such as another database provider, it's harmless).  First {2}: {3}",
                         failures.Count, RELEASES_URL, Math.Min(failures.Count, MAX_REPORTED),
                         String.Join("; ", failures.GetRange(0, Math.Min(failures.Count, MAX_REPORTED)))));
                 }
@@ -135,9 +136,10 @@ namespace Gloebit.GloebitMoneyModule {
                 types = typeof(GloebitCompatibility).Assembly.GetTypes();
             } catch (ReflectionTypeLoadException e) {
                 types = e.Types;
+                string noLocation = null; // a type-load message names its own type
                 foreach (Exception loaderException in e.LoaderExceptions) {
                     if (loaderException != null) {
-                        record(null, loaderException);
+                        record(noLocation, loaderException);
                     }
                 }
             }

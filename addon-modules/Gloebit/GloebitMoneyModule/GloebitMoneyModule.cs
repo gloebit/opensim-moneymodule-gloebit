@@ -2129,6 +2129,27 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         /// <summary>
+        /// IsLoopbackOrPrivate reports whether uri's host is localhost or a loopback,
+        /// private (10/8, 172.16/12, 192.168/16) or link-local IPv4 address, or a loopback,
+        /// link-local or unique-local IPv6 address.  Host names aren't resolved.
+        /// </summary>
+        private static bool IsLoopbackOrPrivate(Uri uri) {
+            if (uri.IsLoopback) {
+                return true;
+            }
+            IPAddress address;
+            if (!IPAddress.TryParse(uri.Host.Trim('[', ']'), out address)) {
+                return false;
+            }
+            byte[] b = address.GetAddressBytes();
+            if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) {
+                return b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
+                       (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254);
+            }
+            return address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || (b[0] & 0xfe) == 0xfc;
+        }
+
+        /// <summary>
         /// ParseCallbackBaseURI returns the GLBCallbackBaseURI setting as a Uri holding only its
         /// scheme, host and port, or null to keep the default (the region's ServerURI).  It
         /// returns null, and logs an error, for a value that isn't an absolute http or https URL,
@@ -2150,6 +2171,9 @@ namespace Gloebit.GloebitMoneyModule
                 return null;
             }
             Uri baseUri = new UriBuilder(uri.Scheme, uri.Host, uri.Port).Uri;
+            if (IsLoopbackOrPrivate(baseUri)) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] GLBCallbackBaseURI {0} is a loopback or private address.  Gloebit's servers refuse callbacks to those, so purchases will fail unless this sim uses a local Gloebit test server", baseUri);
+            }
             m_log.InfoFormat("[GLOEBITMONEYMODULE] Using GLBCallbackBaseURI {0} for links, callbacks and the viewer currency address instead of the region's server URL", baseUri);
             return baseUri;
         }
