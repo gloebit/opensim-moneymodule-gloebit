@@ -59,6 +59,23 @@
     ;# {GLBShowWelcomeMessage} {Show welcome message when entering a region}
     ; GLBShowWelcomeMessage = true
 
+    ;;;;; CONFIGURE THE PUBLIC URL OF THIS SIM ;;;;;
+    ;; Optional - If not set, Gloebit uses the region's server URL
+    ;; (http://<ExternalHostName>:<port>/) as the address Gloebit sends users
+    ;; back to after they authorize, for the callbacks Gloebit makes to settle
+    ;; purchases, and as the currency address viewers are given (for quotes
+    ;; and buying gloebits in the viewer).
+    ;;
+    ;; Set it when that URL isn't how the internet reaches this sim, e.g. behind
+    ;; a reverse proxy that serves HTTPS without the port.  Give only a scheme,
+    ;; host and optional port: a path prefix isn't supported.  The URL must reach
+    ;; this sim's HTTP server at its root (its /gloebit/ paths and the currency
+    ;; handler), or authorizations and purchases will fail.  It applies to every
+    ;; region on this sim.  Gloebit's servers refuse callbacks to localhost and
+    ;; private addresses.  Changing it while users are authorizing can make
+    ;; those authorizations fail; they can simply authorize again.
+    ; GLBCallbackBaseURI = "https://sim.example.com/"
+
     ;;;;; CONFIGURE SINGLE GLOEBIT DB FOR APP OR GRID ;;;;;;
     ;; Optional - If not configured here, Gloebit will use the DataService 
     ;; ConnectionString

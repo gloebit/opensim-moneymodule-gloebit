@@ -300,6 +300,18 @@ namespace Gloebit.GloebitMoneyModule
                     m_enabled = false;
             }
 
+            // After the checks above that can disable the module: skip on sims where Gloebit is
+            // off everywhere, since the check JIT-compiles the whole DLL.
+            if (m_configured && (m_enabled || (m_enabledRegions != null && m_enabledRegions.Length > 0))) {
+                GloebitCompatibility.CompatibilityReport compatibility = GloebitCompatibility.Check();
+                foreach (string error in compatibility.Errors) {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] {0}", error);
+                }
+                foreach (string warning in compatibility.Warnings) {
+                    m_log.WarnFormat("[GLOEBITMONEYMODULE] {0}", warning);
+                }
+            }
+
             if (m_enabled)
             {
                 // Setting to large negative so if not found is not 0
@@ -547,10 +559,6 @@ namespace Gloebit.GloebitMoneyModule
                     case "custom":
                         m_environment = GLBEnv.Custom;
                         m_apiUrl = config.GetString("GLBApiUrl", SANDBOX_URL);
-                        string overrideBaseURIStr = config.GetString("GLBCallbackBaseURI", null);
-                        if(overrideBaseURIStr != null) {
-                            m_overrideBaseURI = new Uri(overrideBaseURIStr);
-                        }
                         m_log.Warn("[GLOEBITMONEYMODULE] GLBEnvironment \"custom\" unsupported, things will probably fail later");
                         break;
                     default:
@@ -559,6 +567,7 @@ namespace Gloebit.GloebitMoneyModule
                         m_log.WarnFormat("[GLOEBITMONEYMODULE] GLBEnvironment \"{0}\" unrecognized, setting to None", envString); 
                         break;
                 }
+                m_overrideBaseURI = ParseCallbackBaseURI(config.GetString("GLBCallbackBaseURI", null));
                 m_keyAlias = config.GetString("GLBKeyAlias", null);
                 m_key = config.GetString("GLBKey", null);
                 m_secret = config.GetString("GLBSecret", null);
@@ -781,7 +790,18 @@ namespace Gloebit.GloebitMoneyModule
             }
         }
         
+        /// <summary>
+        /// GetCurrencyBaseURI returns the address viewers send currency requests (quotes,
+        /// buying) to: GLBCallbackBaseURI's scheme, host and port when set, since a sim behind
+        /// a proxy is reached at that URL, otherwise the region's ServerURI.
+        /// </summary>
         private string GetCurrencyBaseURI(Scene scene) {
+            if (m_overrideBaseURI != null) {
+                UriBuilder root = new UriBuilder(m_overrideBaseURI);
+                root.Path = "/";
+                root.Query = String.Empty;
+                return root.Uri.ToString();
+            }
             return scene.RegionInfo.ServerURI;
         }
         
@@ -2095,8 +2115,8 @@ namespace Gloebit.GloebitMoneyModule
         private Uri BaseURI {
             get {
                 if(m_overrideBaseURI != null) {
-                    // Overriding default behavior to hardcode callback base uri
-                    // Generally used for testing
+                    // GLBCallbackBaseURI, e.g. for a region behind a proxy whose public
+                    // URL differs from ServerURI (another host, or no port)
                     return m_overrideBaseURI;
                 } else {
                     return new Uri(GetAnyScene().RegionInfo.ServerURI);
@@ -2106,6 +2126,56 @@ namespace Gloebit.GloebitMoneyModule
 
         public Uri GetBaseURI() {
             return BaseURI;
+        }
+
+        /// <summary>
+        /// IsLoopbackOrPrivate reports whether uri's host is localhost or a loopback,
+        /// private (10/8, 172.16/12, 192.168/16) or link-local IPv4 address, or a loopback,
+        /// link-local or unique-local IPv6 address.  Host names aren't resolved.
+        /// </summary>
+        private static bool IsLoopbackOrPrivate(Uri uri) {
+            if (uri.IsLoopback) {
+                return true;
+            }
+            IPAddress address;
+            if (!IPAddress.TryParse(uri.Host.Trim('[', ']'), out address)) {
+                return false;
+            }
+            byte[] b = address.GetAddressBytes();
+            if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) {
+                return b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
+                       (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254);
+            }
+            return address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || (b[0] & 0xfe) == 0xfc;
+        }
+
+        /// <summary>
+        /// ParseCallbackBaseURI returns the GLBCallbackBaseURI setting as a Uri holding only its
+        /// scheme, host and port, or null to keep the default (the region's ServerURI).  It
+        /// returns null, and logs an error, for a value that isn't an absolute http or https URL,
+        /// or that has a path, query or user info: every link and callback built from it sets its
+        /// own path, so a path prefix can't work, and user info would be sent to users and Gloebit.
+        /// </summary>
+        private static Uri ParseCallbackBaseURI(string value) {
+            if (String.IsNullOrWhiteSpace(value)) {
+                return null;
+            }
+            Uri uri;
+            if (!Uri.TryCreate(value.Trim(), UriKind.Absolute, out uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GLBCallbackBaseURI \"{0}\" is not an absolute http or https URL; using the region's server URL instead", value);
+                return null;
+            }
+            if (uri.AbsolutePath != "/" || !String.IsNullOrEmpty(uri.Query) || !String.IsNullOrEmpty(uri.UserInfo)) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GLBCallbackBaseURI \"{0}\" must be only a scheme, host and optional port (e.g. https://sim.example.com/); a path, query or user info isn't supported.  Using the region's server URL instead", value);
+                return null;
+            }
+            Uri baseUri = new UriBuilder(uri.Scheme, uri.Host, uri.Port).Uri;
+            if (IsLoopbackOrPrivate(baseUri)) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] GLBCallbackBaseURI {0} is a loopback or private address.  Gloebit's servers refuse callbacks to those, so purchases will fail unless this sim uses a local Gloebit test server", baseUri);
+            }
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] Using GLBCallbackBaseURI {0} for links, callbacks and the viewer currency address instead of the region's server URL", baseUri);
+            return baseUri;
         }
 
         public string resolveAgentName(UUID agentID)
