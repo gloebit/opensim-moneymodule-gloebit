@@ -67,9 +67,10 @@
     ;; and buying gloebits in the viewer).
     ;;
     ;; Set it when that URL isn't how the internet reaches this sim, e.g. behind
-    ;; a reverse proxy that serves HTTPS without the port.  Only the scheme, host
-    ;; and port are used; any path is ignored.  The URL must reach this sim's HTTP
-    ;; server (its /gloebit/ paths), or authorizations and purchases will fail.
+    ;; a reverse proxy that serves HTTPS without the port.  Give only a scheme,
+    ;; host and optional port: a path prefix isn't supported.  The URL must reach
+    ;; this sim's HTTP server at its root (its /gloebit/ paths and the currency
+    ;; handler), or authorizations and purchases will fail.
     ; GLBCallbackBaseURI = "https://sim.example.com/"
 
     ;;;;; CONFIGURE SINGLE GLOEBIT DB FOR APP OR GRID ;;;;;;

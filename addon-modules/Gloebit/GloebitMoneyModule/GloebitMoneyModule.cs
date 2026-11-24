@@ -266,17 +266,6 @@ namespace Gloebit.GloebitMoneyModule
             }
             
 
-            // Skip on sims where Gloebit is off everywhere: the check JIT-compiles the whole DLL.
-            if (m_enabled || (m_enabledRegions != null && m_enabledRegions.Length > 0)) {
-                GloebitCompatibility.CompatibilityReport compatibility = GloebitCompatibility.Check();
-                foreach (string error in compatibility.Errors) {
-                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] {0}", error);
-                }
-                foreach (string warning in compatibility.Warnings) {
-                    m_log.WarnFormat("[GLOEBITMONEYMODULE] {0}", warning);
-                }
-            }
-
             m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}, GLBEnvironment: {1}, GLBApiUrl: {2} GLBKeyAlias {3}, GLBKey: {4}, GLBSecret {5}",
                 m_enabled, m_environment, m_apiUrl, m_keyAlias, m_key, (m_secret == null ? "null" : "configured"));
             if (m_enabled && String.IsNullOrEmpty(m_secret)) {
@@ -309,6 +298,18 @@ namespace Gloebit.GloebitMoneyModule
             if(m_configured) {
                 if (!InitGloebitAPI())
                     m_enabled = false;
+            }
+
+            // After the checks above that can disable the module: skip on sims where Gloebit is
+            // off everywhere, since the check JIT-compiles the whole DLL.
+            if (m_configured && (m_enabled || (m_enabledRegions != null && m_enabledRegions.Length > 0))) {
+                GloebitCompatibility.CompatibilityReport compatibility = GloebitCompatibility.Check();
+                foreach (string error in compatibility.Errors) {
+                    m_log.ErrorFormat("[GLOEBITMONEYMODULE] {0}", error);
+                }
+                foreach (string warning in compatibility.Warnings) {
+                    m_log.WarnFormat("[GLOEBITMONEYMODULE] {0}", warning);
+                }
             }
 
             if (m_enabled)
@@ -2128,10 +2129,11 @@ namespace Gloebit.GloebitMoneyModule
         }
 
         /// <summary>
-        /// ParseCallbackBaseURI returns the GLBCallbackBaseURI setting as a Uri, or null to keep
-        /// the default (the region's ServerURI).  It returns null, and logs an error, for a value
-        /// that isn't an absolute http or https URL.  Only the scheme, host and port are used:
-        /// every link and callback built from it sets its own path.
+        /// ParseCallbackBaseURI returns the GLBCallbackBaseURI setting as a Uri holding only its
+        /// scheme, host and port, or null to keep the default (the region's ServerURI).  It
+        /// returns null, and logs an error, for a value that isn't an absolute http or https URL,
+        /// or that has a path, query or user info: every link and callback built from it sets its
+        /// own path, so a path prefix can't work, and user info would be sent to users and Gloebit.
         /// </summary>
         private static Uri ParseCallbackBaseURI(string value) {
             if (String.IsNullOrWhiteSpace(value)) {
@@ -2143,11 +2145,13 @@ namespace Gloebit.GloebitMoneyModule
                 m_log.ErrorFormat("[GLOEBITMONEYMODULE] GLBCallbackBaseURI \"{0}\" is not an absolute http or https URL; using the region's server URL instead", value);
                 return null;
             }
-            if (uri.AbsolutePath != "/" || !String.IsNullOrEmpty(uri.Query)) {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] GLBCallbackBaseURI \"{0}\": only its scheme, host and port are used; the path and query are ignored", value);
+            if (uri.AbsolutePath != "/" || !String.IsNullOrEmpty(uri.Query) || !String.IsNullOrEmpty(uri.UserInfo)) {
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] GLBCallbackBaseURI \"{0}\" must be only a scheme, host and optional port (e.g. https://sim.example.com/); a path, query or user info isn't supported.  Using the region's server URL instead", value);
+                return null;
             }
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] Using GLBCallbackBaseURI {0}://{1} for links and callbacks instead of the region's server URL", uri.Scheme, uri.Authority);
-            return uri;
+            Uri baseUri = new UriBuilder(uri.Scheme, uri.Host, uri.Port).Uri;
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] Using GLBCallbackBaseURI {0} for links, callbacks and the viewer currency address instead of the region's server URL", baseUri);
+            return baseUri;
         }
 
         public string resolveAgentName(UUID agentID)
