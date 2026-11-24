@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
@@ -32,7 +31,7 @@ namespace Gloebit.GloebitMoneyModule {
     public static class GloebitCompatibility {
 
         /// <summary>
-        /// MAX_REPORTED caps how many failures each message lists.
+        /// MAX_REPORTED caps how many failures the error lists.
         /// </summary>
         public const int MAX_REPORTED = 10;
 
@@ -46,8 +45,8 @@ namespace Gloebit.GloebitMoneyModule {
         /// Warnings for what might.
         /// </summary>
         public class CompatibilityReport {
-            public List<string> Errors = new List<string>();   // OpenSim code this DLL needs is missing
-            public List<string> Warnings = new List<string>(); // version mismatch, missing non-OpenSim assemblies, other failures
+            public List<string> Errors = new List<string>();   // code in this DLL that can't run on this OpenSim
+            public List<string> Warnings = new List<string>(); // version mismatch, or a check that couldn't run
         }
 
         /// <summary>
@@ -61,14 +60,10 @@ namespace Gloebit.GloebitMoneyModule {
         ///
         /// Then it loads every type in this DLL and JIT-compiles every method with
         /// RuntimeHelpers.PrepareMethod.  Compiling a method resolves the members it calls, so
-        /// an OpenSim member that was changed or removed is reported here, at startup, instead
-        /// of when a user first triggers it.  This also catches builds that share a version
-        /// label but differ in API.  It can't catch changed behavior behind an unchanged
-        /// signature.
-        ///
-        /// Failures are grouped by cause: a missing OpenSim member or type is an error (the
-        /// DLL doesn't match this OpenSim); a missing non-OpenSim assembly (e.g. a database
-        /// provider this sim doesn't use) and anything else are warnings.
+        /// a member that was changed or removed is reported here, at startup, instead of when
+        /// a user first triggers it.  This also catches builds that share a version label but
+        /// differ in API.  It can't catch changed behavior behind an unchanged signature.
+        /// All such failures are reported as one error; it doesn't guess at their cause.
         ///
         /// Check catches its own exceptions and reports them as warnings.
         /// </summary>
@@ -83,44 +78,17 @@ namespace Gloebit.GloebitMoneyModule {
                 report.Warnings.Add(String.Format("Could not compare OpenSim versions: {0}", e.Message));
             }
             try {
-                Findings findings = FindFailures();
-                if (findings.OpenSimMismatch.Count > 0) {
+                List<string> failures = FindFailures();
+                if (failures.Count > 0) {
                     report.Errors.Add(String.Format(
-                        "{0} part(s) of this Gloebit DLL use OpenSim code that this OpenSim doesn't have, so they will fail when used.  First {1}: {2}.  This DLL was built for a different OpenSim build; download the one matching `show version` from {3}",
-                        findings.OpenSimMismatch.Count, Math.Min(findings.OpenSimMismatch.Count, MAX_REPORTED),
-                        String.Join("; ", Head(findings.OpenSimMismatch)), RELEASES_URL));
-                }
-                if (findings.MissingAssemblies.Count > 0) {
-                    report.Warnings.Add(String.Format(
-                        "This Gloebit DLL references assemblies that couldn't be loaded: {0}.  Gloebit features that use them will fail; if they belong to something this sim doesn't use (e.g. another database provider), this is harmless",
-                        String.Join("; ", Head(new List<string>(findings.MissingAssemblies.Keys)))));
-                }
-                if (findings.Other.Count > 0) {
-                    report.Warnings.Add(String.Format(
-                        "{0} part(s) of this Gloebit DLL could not be compiled.  First {1}: {2}",
-                        findings.Other.Count, Math.Min(findings.Other.Count, MAX_REPORTED),
-                        String.Join("; ", Head(findings.Other))));
+                        "{0} part(s) of this Gloebit DLL can't run on this OpenSim.  Gloebit features that use them will fail, and could crash the region, until a matching DLL is installed.  This usually means the DLL was built for a different OpenSim build; download the one matching `show version` from {1}.  First {2}: {3}",
+                        failures.Count, RELEASES_URL, Math.Min(failures.Count, MAX_REPORTED),
+                        String.Join("; ", failures.GetRange(0, Math.Min(failures.Count, MAX_REPORTED)))));
                 }
             } catch (Exception e) {
                 report.Warnings.Add(String.Format("Could not check this DLL's references: {0}", e.Message));
             }
             return report;
-        }
-
-        /// <summary>
-        /// Findings groups the failures FindFailures saw by cause.
-        /// </summary>
-        private class Findings {
-            public List<string> OpenSimMismatch = new List<string>(); // "Type.Method: message" or a type-load message
-            public Dictionary<string, bool> MissingAssemblies = new Dictionary<string, bool>(); // assembly names, as a set
-            public List<string> Other = new List<string>();
-        }
-
-        /// <summary>
-        /// Head returns the first MAX_REPORTED items of items.
-        /// </summary>
-        private static List<string> Head(List<string> items) {
-            return items.GetRange(0, Math.Min(items.Count, MAX_REPORTED));
         }
 
         /// <summary>
@@ -146,11 +114,22 @@ namespace Gloebit.GloebitMoneyModule {
 
         /// <summary>
         /// FindFailures loads each type declared in this assembly and JIT-compiles each of its
-        /// methods and constructors, recording every failure by cause and continuing.  Generic
-        /// and abstract methods are skipped: they have no single compilable body.
+        /// methods and constructors, returning each distinct failure ("Type.Method: message",
+        /// or a type-load message) and continuing past it.  Generic and abstract methods are
+        /// skipped: they have no single compilable body.
         /// </summary>
-        private static Findings FindFailures() {
-            Findings findings = new Findings();
+        private static List<string> FindFailures() {
+            List<string> failures = new List<string>();
+            HashSet<string> seen = new HashSet<string>();
+            Action<string, Exception> record = (where, e) => {
+                // one line per entry: some messages carry newlines
+                string message = String.Join(" ", e.Message.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)).TrimEnd('.');
+                string entry = where == null ? message : where + ": " + message;
+                if (seen.Add(entry)) {
+                    failures.Add(entry);
+                }
+            };
+
             Type[] types;
             try {
                 types = typeof(GloebitCompatibility).Assembly.GetTypes();
@@ -158,7 +137,7 @@ namespace Gloebit.GloebitMoneyModule {
                 types = e.Types;
                 foreach (Exception loaderException in e.LoaderExceptions) {
                     if (loaderException != null) {
-                        Record(findings, null, loaderException);
+                        record(null, loaderException);
                     }
                 }
             }
@@ -176,7 +155,7 @@ namespace Gloebit.GloebitMoneyModule {
                     methods.AddRange(type.GetMethods(all));
                     methods.AddRange(type.GetConstructors(all));
                 } catch (Exception e) {
-                    Record(findings, type.Name, e);
+                    record(type.Name, e);
                     continue;
                 }
                 foreach (MethodBase method in methods) {
@@ -186,54 +165,11 @@ namespace Gloebit.GloebitMoneyModule {
                         }
                         RuntimeHelpers.PrepareMethod(method.MethodHandle);
                     } catch (Exception e) {
-                        Record(findings, type.Name + "." + method.Name, e);
+                        record(type.Name + "." + method.Name, e);
                     }
                 }
             }
-            return findings;
-        }
-
-        /// <summary>
-        /// Record files failure e under its cause.  where names the method that failed, or is
-        /// null for a type that failed to load (its message names the type).  A missing member
-        /// or type is an OpenSim mismatch when its message names OpenSim; a missing or
-        /// mismatched assembly that isn't OpenSim's is a missing assembly.
-        /// </summary>
-        private static void Record(Findings findings, string where, Exception e) {
-            string message = e.Message.TrimEnd('.');
-            string entry = where == null ? message : where + ": " + message;
-            if (e is FileNotFoundException || e is FileLoadException || e is BadImageFormatException) {
-                string assembly = MissingAssemblyName(e);
-                if (assembly.StartsWith("OpenSim", StringComparison.Ordinal)) {
-                    findings.OpenSimMismatch.Add(entry);
-                } else {
-                    findings.MissingAssemblies[assembly] = true;
-                }
-            } else if ((e is MissingMemberException || e is TypeLoadException) &&
-                       message.IndexOf("OpenSim", StringComparison.Ordinal) >= 0) {
-                // MissingMethodException and MissingFieldException are MissingMemberExceptions
-                findings.OpenSimMismatch.Add(entry);
-            } else {
-                findings.Other.Add(entry);
-            }
-        }
-
-        /// <summary>
-        /// MissingAssemblyName returns the simple name of the assembly a load failure is
-        /// about, or its message when the exception doesn't name one.
-        /// </summary>
-        private static string MissingAssemblyName(Exception e) {
-            string fileName = (e as FileNotFoundException)?.FileName ??
-                              (e as FileLoadException)?.FileName ??
-                              (e as BadImageFormatException)?.FileName;
-            if (String.IsNullOrEmpty(fileName)) {
-                return e.Message.TrimEnd('.');
-            }
-            try {
-                return new AssemblyName(fileName).Name;
-            } catch (Exception) {
-                return fileName;
-            }
+            return failures;
         }
     }
 }
