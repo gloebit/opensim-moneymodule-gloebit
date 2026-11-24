@@ -5,14 +5,15 @@ on:
     tags:
       - 'build-*'
   schedule:
-    # Weekly build against OpenSim master, published as the rolling "opensim-master-weekly" pre-release.
+    # Weekly build against OpenSim master, published as the rolling "opensim-master-weekly" pre-release
+    # and kept as a dated pre-release per OpenSim commit.
     - cron: '0 6 * * 1'
   workflow_dispatch:
     inputs:
       opensim_versions:
         description: 'Comma-separated OpenSim refs to build against'
         required: false
-        default: '0.9.3.0,0.9.3.1Dev,master'
+        default: '0.9.3.0,master'
       publish_weekly:
         description: 'Also replace the opensim-master-weekly pre-release with this run''s master DLLs'
         type: boolean
@@ -41,7 +42,7 @@ jobs:
           elif [ "${{ github.event_name }}" = "schedule" ]; then
             VERSIONS="master"
           else
-            VERSIONS="0.9.3.0,0.9.3.1Dev,master"
+            VERSIONS="0.9.3.0,master"
           fi
           JSON=$(echo "$VERSIONS" | jq -R -c 'split(",")')
           echo "versions=$JSON" >> "$GITHUB_OUTPUT"
@@ -136,15 +137,25 @@ jobs:
           OS_SHORT="${OS_SHORT/macos-latest/macos}"
           OPENSIM_LABEL="${{ matrix.opensim_version }}"
           if [ "$OPENSIM_LABEL" = "master" ]; then
-            # master moves daily: name the exact OpenSim commit and its date
-            OPENSIM_LABEL="master-${OPENSIM_SHORT}-${OPENSIM_DATE}"
+            # Label master with the version it reports at startup (e.g. "0.9.3.1 Dev" -> 0.9.3.1Dev),
+            # which is what users see in `show version`, plus the exact commit and its date.
+            VINFO=opensim/OpenSim/Framework/VersionInfo.cs
+            VER=$(sed -n 's/.*VersionNumber = "\([0-9.]*\)".*/\1/p' "$VINFO" | head -1)
+            FLAVOUR=$(sed -n 's/.*VERSION_FLAVOUR = Flavour\.\([A-Za-z]*\).*/\1/p' "$VINFO" | head -1)
+            if [ -z "$VER" ] || [ -z "$FLAVOUR" ]; then
+              echo "could not read VersionNumber/VERSION_FLAVOUR from $VINFO" >&2
+              exit 1
+            fi
+            if [ "$FLAVOUR" = "Release" ]; then FLAVOUR=""; fi
+            OPENSIM_LABEL="${VER}${FLAVOUR}-${OPENSIM_SHORT}-${OPENSIM_DATE}"
           fi
           DLL_NAME="Gloebit--${OPENSIM_LABEL}--${OS_SHORT}--${DATE}--${GLOEBIT_HASH}.dll"
           echo "dll_name=$DLL_NAME" >> "$GITHUB_OUTPUT"
+          echo "opensim_label=$OPENSIM_LABEL" >> "$GITHUB_OUTPUT"
           echo "os_short=$OS_SHORT" >> "$GITHUB_OUTPUT"
           # one line per build, collected into the release notes
           mkdir -p info
-          printf '%s|%s|%s\n' "${{ matrix.opensim_version }}" "$OPENSIM_SHA" "$OPENSIM_DATE" \
+          printf '%s|%s|%s|%s\n' "${{ matrix.opensim_version }}" "$OPENSIM_SHA" "$OPENSIM_DATE" "$OPENSIM_LABEL" \
             > "info/opensim-${{ matrix.opensim_version }}-${OS_SHORT}.txt"
 
       - name: Rename and upload DLL
@@ -193,19 +204,27 @@ jobs:
             echo "Gloebit Money Module DLLs for OpenSim 0.9.3.x (.NET 8). Platforms: Linux, Windows, macOS."
             echo
             echo "## Built against"
-            echo "| OpenSim | Commit | Commit date |"
-            echo "|---|---|---|"
-            cat info/*.txt | sort -u | while IFS='|' read -r ref sha date; do
-              echo "| \`$ref\` | [\`${sha:0:10}\`](https://github.com/opensim/opensim/commit/$sha) | $date |"
+            echo "| OpenSim | Built from | Commit | Commit date |"
+            echo "|---|---|---|---|"
+            cat info/*.txt | sort -u | while IFS='|' read -r ref sha date label; do
+              echo "| \`$label\` | \`$ref\` | [\`${sha:0:10}\`](https://github.com/opensim/opensim/commit/$sha) | $date |"
             done
             echo
-            if ls dlls/Gloebit--master-* >/dev/null 2>&1; then
-              echo "The \`master\` DLLs are built against the OpenSim master commit above (also in the file name)."
-              echo "Use them if you run a recent OpenSim dev build. Master changes often; a newer DLL is published"
-              echo "weekly as the [\`$WEEKLY_TAG\`](https://github.com/${{ github.repository }}/releases/tag/$WEEKLY_TAG) pre-release."
+            if grep -q '^master|' info/*.txt; then
+              echo "OpenSim master changes often; a DLL built against newer master is published weekly as the"
+              echo "[\`$WEEKLY_TAG\`](https://github.com/${{ github.repository }}/releases/tag/$WEEKLY_TAG) pre-release."
             else
-              echo "No \`master\` DLLs in this release: the build against OpenSim master failed."
+              echo "No 0.9.3.1 Dev DLLs in this release: the build against OpenSim master failed."
             fi
+            echo
+            echo "## Which DLL do I need?"
+            echo "Type \`show version\` in the OpenSim console (or check the version line at startup):"
+            echo "- **0.9.3.0**: use the \`Gloebit--0.9.3.0--...\` DLL."
+            echo "- **0.9.3.1 Dev** (any OpenSim built from git master since Nov 2024): use the \`Gloebit--0.9.3.1Dev-...\` DLL,"
+            echo "  built against the newest OpenSim master commit named in its file name. Keeping OpenSim up to date is"
+            echo "  the best fix if it doesn't load; otherwise pick the dated \`opensim-*\` pre-release on the"
+            echo "  [releases page](https://github.com/${{ github.repository }}/releases) closest to your OpenSim's commit."
+            echo "- A crash with \`MissingMethodException\` means the DLL doesn't match your OpenSim build."
             echo
             echo "## Installation"
             echo "1. Download the DLL matching your OpenSim version and platform"
@@ -255,13 +274,14 @@ jobs:
             echo "expected 3 master DLLs (linux, windows, macos), got $COUNT; keeping last week's pre-release" >&2
             exit 1
           fi
-          IFS='|' read -r ref sha date < <(cat info/*.txt | sort -u | head -1)
+          IFS='|' read -r ref sha date label < <(cat info/*.txt | sort -u | head -1)
           {
-            echo "Gloebit Money Module DLLs built against **OpenSim master** at"
+            echo "Gloebit Money Module DLLs for OpenSim **${label%%-*}** (OpenSim master) at"
             echo "[\`${sha:0:10}\`](https://github.com/opensim/opensim/commit/$sha), committed $date."
             echo
             echo "Rebuilt every week from the latest Gloebit module and the latest OpenSim master, so it"
-            echo "replaces itself. For an OpenSim release (0.9.3.0), use the latest numbered \`build-*\` release instead."
+            echo "replaces itself; each OpenSim commit built is also kept as a dated \`opensim-*\` pre-release."
+            echo "For an OpenSim release (0.9.3.0), use the latest numbered \`build-*\` release instead."
             echo
             echo "Module commit: [\`${GITHUB_SHA:0:7}\`](https://github.com/${{ github.repository }}/commit/$GITHUB_SHA). Built $(date -u +%Y-%m-%d)."
           } > notes.md
@@ -283,3 +303,24 @@ jobs:
           done
           gh release edit "$WEEKLY_TAG" --repo "$REPO" --prerelease --title "$TITLE" --notes-file notes.md
           gh api -X PATCH "repos/$REPO/git/refs/tags/$WEEKLY_TAG" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+
+      - name: Keep a dated pre-release for this OpenSim commit
+        # One per OpenSim master commit, so someone on an older OpenSim build can find the closest DLL.
+        # Skipped when OpenSim master hasn't moved since the last one.
+        run: |
+          IFS='|' read -r ref sha date label < <(cat info/*.txt | sort -u | head -1)
+          REPO="${{ github.repository }}"
+          ARCHIVE_TAG="opensim-${label}"
+          if gh release view "$ARCHIVE_TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "$ARCHIVE_TAG already exists; OpenSim master hasn't moved"
+            exit 0
+          fi
+          {
+            echo "Gloebit Money Module DLLs for OpenSim **${label%%-*}**, built against OpenSim master at"
+            echo "[\`${sha:0:10}\`](https://github.com/opensim/opensim/commit/$sha), committed $date."
+            echo
+            echo "A point-in-time build kept for OpenSim installs near this commit. For current OpenSim,"
+            echo "use the [\`$WEEKLY_TAG\`](https://github.com/$REPO/releases/tag/$WEEKLY_TAG) pre-release."
+          } > archive-notes.md
+          gh release create "$ARCHIVE_TAG" dlls/*.dll --repo "$REPO" --prerelease --latest=false \
+            --target "$GITHUB_SHA" --title "OpenSim ${label%%-*}: ${sha:0:7} ($date)" --notes-file archive-notes.md
